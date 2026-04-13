@@ -15,107 +15,90 @@
             background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
             color: #b0b0b0; 
             font-family: 'Unifont', monospace;
-            /* Pixel-perfect rendering */
             image-rendering: pixelated;
             -webkit-font-smoothing: none;
             -moz-osx-font-smoothing: grayscale;
             margin: 0;
             padding: 30px;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
             overflow: hidden;
         }
 
         #terminal-log {
             white-space: pre-wrap;
             word-wrap: break-word;
-            line-height: 1.2;
+            line-height: 1.4;
         }
 
-        .input-area {
-            display: flex;
-            margin-top: 10px;
+        .input-wrapper {
+            display: inline-flex;
+            width: 100%;
+            align-items: baseline;
         }
 
-        #prompt { margin-right: 10px; color: #d0d0d0; min-width: 5px; }
-
-        input {
+        .user-input-line {
             background: transparent;
             border: none;
             color: #ffffff;
             font-family: 'Unifont', monospace;
             font-size: inherit;
             outline: none;
-            width: 100%;
+            flex-grow: 1;
+            margin-left: 8px;
+            padding: 0;
         }
 
-        .system-msg { color: #555555; }
-        .success-msg { color: #888888; font-weight: bold; }
-        .error-msg { color: #ff5555; }
-        .highlight { color: #ffffff; }
-        .user-entry { color: #d0d0d0; margin-bottom: 20px; border-left: 2px solid #333; padding-left: 10px; }
-        
-        input:disabled { opacity: 0; }
+        /* Prevent user from seeing a cursor until it's their turn */
+        .user-input-line:disabled {
+            caret-color: transparent;
+            cursor: default;
+        }
+
+        .system-msg { color: #555555; display: block; }
+        .success-msg { color: #888888; font-weight: bold; display: block; }
+        .error-msg { color: #ff5555; display: block; }
+        .highlight { color: #ffffff; display: block; }
+        .history-line { display: block; margin-bottom: 5px; }
     </style>
 </head>
 <body>
 
 <div id="terminal-log"></div>
 
-<div class="input-area">
-    <span id="prompt"></span>
-    <input type="text" id="user-input" autofocus autocomplete="off">
-</div>
-
 <script>
     const log = document.getElementById('terminal-log');
-    const input = document.getElementById('user-input');
-    const prompt = document.getElementById('prompt');
-
-    let currentState = "INIT";
-    let tempUser = "";
     let msgQueue = [];
     let isProcessing = false;
+    let currentState = "INIT";
+    let tempUser = "";
 
-    // The primary function to add to the sequence
-    function addToQueue(text, className = "", waitAfter = false) {
-        msgQueue.push({ text, className, waitAfter });
+    function addToQueue(text, className = "", isRequest = false) {
+        msgQueue.push({ text, className, isRequest });
         if (!isProcessing) processQueue();
     }
 
     async function processQueue() {
         isProcessing = true;
-        input.disabled = true;
-        
-        // Ensure prompt is hidden while the computer "talks"
-        const savedPrompt = prompt.textContent;
-        prompt.textContent = "";
 
         while (msgQueue.length > 0) {
             const item = msgQueue.shift();
-            await typeLine(item.text, item.className);
             
-            // If this line was an input request, we STOP and wait
-            if (item.waitAfter) {
-                break; 
+            if (item.isRequest) {
+                // This line will handle its own resolve after user hits Enter
+                await typeLineInline(item.text, item.className);
+            } else {
+                await typeLineSimple(item.text, item.className);
             }
         }
-
-        // Only show prompt and enable input when queue is empty or waiting
-        input.disabled = false;
-        input.focus();
         isProcessing = false;
     }
 
-    function typeLine(text, className) {
+    function typeLineSimple(text, className) {
         return new Promise((resolve) => {
             const div = document.createElement('div');
-            div.className = className;
+            div.className = className + " history-line";
             log.appendChild(div);
 
             let i = 0;
-            const speed = 30; 
             const timer = setInterval(() => {
                 if (i < text.length) {
                     div.textContent += text.charAt(i);
@@ -124,52 +107,61 @@
                     clearInterval(timer);
                     resolve();
                 }
-            }, speed);
+            }, 30);
         });
     }
 
-    window.onload = () => {
-        const storedUser = localStorage.getItem('session_user');
-        const storedPass = localStorage.getItem('session_pass');
+    function typeLineInline(text, className) {
+        return new Promise((resolve) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = "input-wrapper history-line " + className;
+            
+            const label = document.createElement('span');
+            wrapper.appendChild(label);
+            
+            const input = document.createElement('input');
+            input.type = "text";
+            input.className = "user-input-line";
+            input.autocomplete = "off";
+            input.spellcheck = false;
+            input.disabled = true; // LOCKED until typing is done
+            wrapper.appendChild(input);
+            
+            log.appendChild(wrapper);
 
-        addToQueue("Welcome to Laser Chess Online (Core Edition) - Standard Variant!", "highlight");
-
-        if (storedUser && storedPass) {
-            addToQueue(`RETURNING OPERATOR: ${storedUser}`, "system-msg");
-            addToQueue(`Session Username: ${storedUser}`);
-            addToQueue(`Session Password: ${storedPass}`, "user-entry");
-            initSessionCreated();
-        } else {
-            startLoginSequence();
-        }
-    };
-
-    function startLoginSequence() {
-        addToQueue("--- NEW SESSION INITIALIZED ---", "system-msg");
-        // Setting waitAfter to true tells the engine: "Stop here and let them type"
-        addToQueue("Session Username:", "", true); 
-        currentState = "USERNAME";
+            let i = 0;
+            const timer = setInterval(() => {
+                if (i < text.length) {
+                    label.textContent += text.charAt(i);
+                    i++;
+                } else {
+                    clearInterval(timer);
+                    // UNLOCK phase
+                    input.disabled = false;
+                    input.focus();
+                    
+                    const handleEnter = (e) => {
+                        if (e.key === 'Enter') {
+                            const val = input.value.trim();
+                            // Re-lock the specific input once submitted
+                            input.disabled = true;
+                            input.removeEventListener('keydown', handleEnter);
+                            handleStateLogic(val);
+                            resolve();
+                        }
+                    };
+                    input.addEventListener('keydown', handleEnter);
+                }
+            }, 35);
+        });
     }
 
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !isProcessing && !input.disabled) {
-            const val = input.value.trim();
-            if (val === "" && currentState !== "PASSWORD") return;
-            
-            handleSequence(val);
-            input.value = "";
-        }
-    });
-
-    async function handleSequence(val) {
-        // Log the user's input to the screen first
-        await typeLine(`> ${val}`, "user-entry");
-
+    function handleStateLogic(val) {
         switch(currentState) {
             case "USERNAME":
                 tempUser = val;
-                addToQueue("Session Password:", "", true);
                 currentState = "PASSWORD";
+                addToQueue("Session Password:", "", true);
                 break;
 
             case "PASSWORD":
@@ -184,14 +176,32 @@
                 break;
             
             case "MODE_SELECT":
-                // Logic for game start goes here
+                // Ready for game logic hand-off
                 break;
         }
     }
 
+    window.onload = () => {
+        const storedUser = localStorage.getItem('session_user');
+        const storedPass = localStorage.getItem('session_pass');
+
+        addToQueue("Welcome to Laser Chess Online (Core Edition) - Standard Variant!", "highlight");
+
+        if (storedUser && storedPass) {
+            addToQueue(`RETURNING OPERATOR: ${storedUser}`, "system-msg");
+            addToQueue(`Session Username: ${storedUser}`);
+            addToQueue(`Session Password: ${storedPass}`);
+            initSessionCreated();
+        } else {
+            addToQueue("--- NEW SESSION INITIALIZED ---", "system-msg");
+            currentState = "USERNAME";
+            addToQueue("Session Username:", "", true);
+        }
+    };
+
     function initSessionCreated() {
         addToQueue("Local Session created.", "success-msg");
-        addToQueue("Type R if you want to play as Red, B if you want to play Blue, A for whatever color is available for a quick match in the public lobby. Or press PR(if you want a private match where you are red) or PB(if you want a private match where you are blue). You will receive a game ID which will expire in 24H.", "", true);
+        addToQueue("Choose Mode [R/B/A/PR/PB]:", "", true);
         currentState = "MODE_SELECT";
     }
 </script>
