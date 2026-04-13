@@ -52,6 +52,10 @@
             cursor: default;
         }
 
+        /* Dynamic Color Highlights */
+        .txt-red { color: #ff4444; font-weight: bold; }
+        .txt-blue { color: #4444ff; font-weight: bold; }
+
         .system-msg { color: #555555; display: block; }
         .success-msg { color: #888888; font-weight: bold; display: block; }
         .error-msg { color: #ff5555; display: block; }
@@ -69,6 +73,14 @@
     let isProcessing = false;
     let currentState = "INIT";
     let tempUser = "";
+
+    // Helper to colorize specific words within a string
+    function colorize(text) {
+        return text.replace(/(red|blue)/gi, (match) => {
+            const cls = match.toLowerCase() === 'red' ? 'txt-red' : 'txt-blue';
+            return `<span class="${cls}">${match}</span>`;
+        });
+    }
 
     function addToQueue(text, className = "", isRequest = false) {
         msgQueue.push({ text, className, isRequest });
@@ -88,6 +100,7 @@
         isProcessing = false;
     }
 
+    // Types text char by char, then applies the color spans at the end of the line
     function typeLineSimple(text, className) {
         return new Promise((resolve) => {
             const div = document.createElement('div');
@@ -100,6 +113,8 @@
                     i++;
                 } else {
                     clearInterval(timer);
+                    // Apply HTML coloring after raw text typing is done
+                    div.innerHTML = colorize(div.textContent);
                     resolve();
                 }
             }, 30);
@@ -128,6 +143,7 @@
                     i++;
                 } else {
                     clearInterval(timer);
+                    label.innerHTML = colorize(label.textContent);
                     input.disabled = false;
                     input.focus();
                     const handleEnter = (e) => {
@@ -162,7 +178,14 @@
                 localStorage.setItem('session_pass', val);
                 initSessionCreated();
                 break;
+            case "MODE_SELECT":
+                processGameStart(val.toUpperCase());
+                break;
         }
+    }
+
+    function processGameStart(choice) {
+        addToQueue(`INITIALIZING MODE: ${choice}...`, "system-msg");
     }
 
     window.onload = () => {
