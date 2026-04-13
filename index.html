@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <title>Laser Chess Standard - Standard Variant(Core Edition)</title>
     <style>
-        /* Using a high-reliability Google Font as the base for terminal aesthetic */
-        @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
+        /* High-tech, mono-weight digital font */
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
 
         body {
             background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
             color: #b0b0b0; 
-            font-family: 'Courier Prime', monospace;
+            font-family: 'JetBrains Mono', monospace;
             margin: 0;
             padding: 30px;
             display: flex;
@@ -22,7 +22,8 @@
         #terminal-log {
             white-space: pre-wrap;
             word-wrap: break-word;
-            line-height: 1.4;
+            line-height: 1.5;
+            letter-spacing: 0.5px;
         }
 
         .input-area {
@@ -36,7 +37,7 @@
             background: transparent;
             border: none;
             color: #ffffff;
-            font-family: 'Courier Prime', monospace;
+            font-family: 'JetBrains Mono', monospace;
             font-size: inherit;
             outline: none;
             width: 100%;
@@ -45,10 +46,10 @@
         .system-msg { color: #666666; }
         .success-msg { color: #888888; font-weight: bold; }
         .error-msg { color: #ff5555; }
-        .highlight { color: #ffffff; }
+        .highlight { color: #ffffff; text-shadow: 0 0 8px rgba(255,255,255,0.3); }
         .user-entry { color: #d0d0d0; margin-bottom: 20px; border-left: 2px solid #333; padding-left: 10px; }
         
-        input:disabled { opacity: 0.3; }
+        input:disabled { opacity: 0; } /* Completely hide input when typing */
     </style>
 </head>
 <body>
@@ -80,14 +81,11 @@
     async function processQueue() {
         processingQueue = true;
         input.disabled = true;
-        // Keep prompt empty while typing
-        const oldPrompt = prompt.textContent;
-        prompt.textContent = "";
+        prompt.textContent = ""; 
 
         while (msgQueue.length > 0) {
             const { text, className, newPrompt } = msgQueue.shift();
             await typeLine(text, className);
-            // If the message came with a specific prompt instruction, set it now
             if (newPrompt !== null) {
                 prompt.textContent = newPrompt;
             }
@@ -105,7 +103,7 @@
             log.appendChild(div);
 
             let i = 0;
-            const speed = 40; 
+            const speed = 35; 
             const timer = setInterval(() => {
                 if (i < text.length) {
                     div.textContent += text.charAt(i);
@@ -119,9 +117,7 @@
     }
 
     window.onload = () => {
-        // Ensure prompt is blank on load
         prompt.textContent = "";
-
         addToQueue("Welcome to Laser Chess Online (Core Edition) - Standard Variant!", "highlight");
         
         const storedUser = localStorage.getItem('session_user');
