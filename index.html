@@ -4,14 +4,13 @@
     <meta charset="UTF-8">
     <title>Laser Chess Standard - Standard Variant(Core Edition)</title>
     <style>
-        /* Updated to a stable 2026 CDN link for Unifont */
-        @import url('https://fonts.cdnfonts.com/css/uni');
+        /* Using a high-reliability Google Font as the base for terminal aesthetic */
+        @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
 
         body {
             background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
             color: #b0b0b0; 
-            /* Updated font-family to match the CDN's naming convention */
-            font-family: 'Uni', monospace;
+            font-family: 'Courier Prime', monospace;
             margin: 0;
             padding: 30px;
             display: flex;
@@ -37,7 +36,7 @@
             background: transparent;
             border: none;
             color: #ffffff;
-            font-family: 'Uni', monospace;
+            font-family: 'Courier Prime', monospace;
             font-size: inherit;
             outline: none;
             width: 100%;
@@ -71,8 +70,8 @@
     let msgQueue = [];
     let processingQueue = false;
 
-    function addToQueue(text, className = "") {
-        msgQueue.push({ text, className });
+    function addToQueue(text, className = "", newPrompt = null) {
+        msgQueue.push({ text, className, newPrompt });
         if (!processingQueue) {
             processQueue();
         }
@@ -81,10 +80,17 @@
     async function processQueue() {
         processingQueue = true;
         input.disabled = true;
+        // Keep prompt empty while typing
+        const oldPrompt = prompt.textContent;
+        prompt.textContent = "";
 
         while (msgQueue.length > 0) {
-            const { text, className } = msgQueue.shift();
+            const { text, className, newPrompt } = msgQueue.shift();
             await typeLine(text, className);
+            // If the message came with a specific prompt instruction, set it now
+            if (newPrompt !== null) {
+                prompt.textContent = newPrompt;
+            }
         }
 
         processingQueue = false;
@@ -113,6 +119,9 @@
     }
 
     window.onload = () => {
+        // Ensure prompt is blank on load
+        prompt.textContent = "";
+
         addToQueue("Welcome to Laser Chess Online (Core Edition) - Standard Variant!", "highlight");
         
         const storedUser = localStorage.getItem('session_user');
@@ -121,7 +130,7 @@
         if (storedUser && storedPass) {
             addToQueue(`RETURNING OPERATOR: ${storedUser}`, "system-msg");
             addToQueue(`Session Username: ${storedUser}`);
-            addToQueue(`Session Password: ${storedPass}`, "user-entry");
+            addToQueue(`Session Password: ${storedPass}`, "user-entry", ">");
             initSessionCreated();
         } else {
             startLoginSequence();
@@ -129,8 +138,7 @@
     };
 
     function startLoginSequence() {
-        addToQueue("--- NEW SESSION INITIALIZED ---", "system-msg");
-        setTimeout(() => { prompt.textContent = "Session Username:"; }, 100);
+        addToQueue("--- NEW SESSION INITIALIZED ---", "system-msg", "Session Username:");
         currentState = "USERNAME";
     }
 
@@ -148,15 +156,14 @@
         switch(currentState) {
             case "USERNAME":
                 tempUser = val;
-                addToQueue(`${currentPrompt} ${val}`, "user-entry");
-                setTimeout(() => { prompt.textContent = "Session Password:"; }, 100);
+                addToQueue(`${currentPrompt} ${val}`, "user-entry", "Session Password:");
                 currentState = "PASSWORD";
                 break;
 
             case "PASSWORD":
                 if (val.length === 0 || val.length > 20) {
                     addToQueue(`${currentPrompt} ${val}`, "error-msg");
-                    addToQueue("ERROR: PASSWORD MUST BE 1-20 CHARACTERS.", "error-msg");
+                    addToQueue("ERROR: PASSWORD MUST BE 1-20 CHARACTERS.", "error-msg", "Session Password:");
                     return;
                 }
                 localStorage.setItem('session_user', tempUser);
@@ -169,8 +176,7 @@
 
     function initSessionCreated() {
         addToQueue("Local Session created.", "success-msg");
-        addToQueue("Type R if you want to play as Red, B if you want to play Blue, A for whatever color is available for a quick match in the public lobby. Or press PR(if you want a private match where you are red) or PB(if you want a private match where you are blue). You will receive a game ID which will expire in 24H.");
-        setTimeout(() => { prompt.textContent = ">"; }, 100);
+        addToQueue("Type R if you want to play as Red, B if you want to play Blue, A for whatever color is available for a quick match in the public lobby. Or press PR(if you want a private match where you are red) or PB(if you want a private match where you are blue). You will receive a game ID which will expire in 24H.", "", ">");
         currentState = "MODE_SELECT";
     }
 </script>
