@@ -4,15 +4,14 @@
     <meta charset="UTF-8">
     <title>Laser Chess Standard - Standard Variant(Core Edition)</title>
     <style>
-        @font-face {
-            font-family: 'Unifont';
-            src: url('https://cdn.jsdelivr.net/npm/gnu-unifont@1.0.0/unifont.woff2') format('woff2');
-        }
+        /* Updated to a stable 2026 CDN link for Unifont */
+        @import url('https://fonts.cdnfonts.com/css/uni');
 
         body {
             background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
             color: #b0b0b0; 
-            font-family: 'Unifont', monospace;
+            /* Updated font-family to match the CDN's naming convention */
+            font-family: 'Uni', monospace;
             margin: 0;
             padding: 30px;
             display: flex;
@@ -38,7 +37,7 @@
             background: transparent;
             border: none;
             color: #ffffff;
-            font-family: 'Unifont', monospace;
+            font-family: 'Uni', monospace;
             font-size: inherit;
             outline: none;
             width: 100%;
