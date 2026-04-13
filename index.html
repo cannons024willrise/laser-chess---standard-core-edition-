@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Laser Chess Standard(Core)</title>
+    <title>Laser Chess Standard - Standard Variant(Core Edition)</title>
     <style>
         @font-face {
             font-family: 'Unifont';
@@ -47,17 +47,15 @@
         .system-msg { color: #666666; }
         .success-msg { color: #888888; font-weight: bold; }
         .error-msg { color: #ff5555; }
-        .highlight { color: #ffffff; text-shadow: 0 0 5px rgba(255,255,255,0.2); }
+        .highlight { color: #ffffff; }
         .user-entry { color: #d0d0d0; margin-bottom: 20px; border-left: 2px solid #333; padding-left: 10px; }
-        
-        input:disabled { opacity: 0.3; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
 <div id="terminal-log"></div>
 
-<div class="input-area" id="input-container">
+<div class="input-area">
     <span id="prompt"></span>
     <input type="text" id="user-input" autofocus autocomplete="off">
 </div>
@@ -69,87 +67,89 @@
 
     let currentState = "INIT";
     let tempUser = "";
-    let isTyping = false;
 
-    window.onload = async () => {
-        await typePrint("Welcome to Laser Chess Online (Core Edition) - Standard Variant!", "highlight");
+    // The Typing Engine
+    function typeOut(text, className = "", speed = 40) {
+        const div = document.createElement('div');
+        div.className = className;
+        log.appendChild(div);
+
+        let i = 0;
+        const timer = setInterval(() => {
+            if (i < text.length) {
+                div.textContent += text.charAt(i);
+                i++;
+            } else {
+                clearInterval(timer);
+            }
+        }, speed);
+    }
+
+    window.onload = () => {
+        typeOut("Welcome to Laser Chess Online (Core Edition) - Standard Variant!", "highlight");
         
         const storedUser = localStorage.getItem('session_user');
         const storedPass = localStorage.getItem('session_pass');
 
-        if (storedUser && storedPass) {
-            await typePrint(`RETURNING OPERATOR: ${storedUser}`, "system-msg");
-            await typePrint(`Session Username: ${storedUser}`);
-            await typePrint(`Session Password: ${storedPass}`, "user-entry");
-            await initSessionCreated();
-        } else {
-            await startLoginSequence();
-        }
+        // Delay checks slightly to allow the welcome message to start
+        setTimeout(() => {
+            if (storedUser && storedPass) {
+                typeOut(`RETURNING OPERATOR: ${storedUser}`, "system-msg");
+                typeOut(`Session Username: ${storedUser}`);
+                typeOut(`Session Password: ${storedPass}`, "user-entry");
+                initSessionCreated();
+            } else {
+                startLoginSequence();
+            }
+        }, 500);
     };
 
-    async function startLoginSequence() {
-        await typePrint("--- NEW SESSION INITIALIZED ---", "system-msg");
+    function startLoginSequence() {
+        typeOut("--- NEW SESSION INITIALIZED ---", "system-msg");
         prompt.textContent = "Session Username:";
         currentState = "USERNAME";
     }
 
-    async function typePrint(text, className = "", speed = 50) {
-        lockInput(true);
-        const div = document.createElement('div');
-        div.className = className;
-        log.appendChild(div);
-        
-        for (let i = 0; i < text.length; i++) {
-            div.textContent += text[i];
-            await new Promise(res => setTimeout(res, speed));
-        }
-        lockInput(false);
-    }
-
-    function lockInput(lock) {
-        isTyping = lock;
-        input.disabled = lock;
-        if (!lock) input.focus();
-    }
-
     input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !isTyping) {
+        if (e.key === 'Enter') {
             const val = input.value.trim();
             handleSequence(val);
             input.value = "";
         }
     });
 
-    async function handleSequence(val) {
+    function handleSequence(val) {
         const currentPrompt = prompt.textContent;
         
         switch(currentState) {
             case "USERNAME":
                 tempUser = val;
-                await typePrint(`${currentPrompt} ${val}`, "user-entry");
+                typeOut(`${currentPrompt} ${val}`, "user-entry");
                 prompt.textContent = "Session Password:";
                 currentState = "PASSWORD";
                 break;
 
             case "PASSWORD":
                 if (val.length === 0 || val.length > 20) {
-                    await typePrint(`${currentPrompt} ${val}`, "error-msg");
-                    await typePrint("ERROR: PASSWORD MUST BE 1-20 CHARACTERS.", "error-msg");
+                    typeOut(`${currentPrompt} ${val}`, "error-msg");
+                    typeOut("ERROR: PASSWORD MUST BE 1-20 CHARACTERS.", "error-msg");
                     return;
                 }
                 localStorage.setItem('session_user', tempUser);
                 localStorage.setItem('session_pass', val);
-                await typePrint(`${currentPrompt} ${val}`, "user-entry");
-                await initSessionCreated();
+                typeOut(`${currentPrompt} ${val}`, "user-entry");
+                initSessionCreated();
                 break;
         }
     }
 
-    async function initSessionCreated() {
-        await typePrint("Local Session created.", "success-msg");
-        await typePrint("Type R if you want to play as Red, B if you want to play Blue, A for whatever color is available for a quick match in the public lobby. Or press PR(if you want a private match where you are red) or PB(if you want a private match where you are blue). You will receive a game ID which will expire in 24H.");
-        prompt.textContent = ">";
-        currentState = "MODE_SELECT";
+    function initSessionCreated() {
+        setTimeout(() => {
+            typeOut("Local Session created.", "success-msg");
+            typeOut("Type R/B/A/PR/PB to proceed.");
+            prompt.textContent = ">";
+            currentState = "MODE_SELECT";
+        }, 1000);
     }
 </script>
 
