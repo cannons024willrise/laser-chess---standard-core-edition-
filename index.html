@@ -1,179 +1,345 @@
 <!DOCTYPE html>
+
 <html lang="en">
+
 <head>
+
     <meta charset="UTF-8">
-    <title>Laser Chess- Standard(Core)</title>
+
+    <title>LASER_CHESS_CORE</title>
+
     <style>
+
         @font-face {
+
             font-family: 'Unifont';
+
             src: url('https://cdn.jsdelivr.net/npm/gnu-unifont@1.0.0/unifont.woff2') format('woff2');
+
         }
+
+
 
         body {
-            background-color: #050505;
-            color: #00ff41;
+
+            /* Muted Grey aesthetic with a subtle radial gradient */
+
+            background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
+
+            color: #b0b0b0; 
+
             font-family: 'Unifont', monospace;
+
             margin: 0;
-            padding: 20px;
+
+            padding: 30px;
+
             display: flex;
+
             flex-direction: column;
+
             height: 100vh;
+
             overflow-y: scroll;
+
             scrollbar-width: none;
+
         }
+
+
 
         #terminal-log {
+
             white-space: pre-wrap;
+
             word-wrap: break-word;
-            line-height: 1.2;
+
+            line-height: 1.4;
+
         }
+
+
 
         .input-area {
+
             display: flex;
+
             margin-top: 10px;
+
         }
 
-        #prompt { margin-right: 10px; color: #00ff41; }
+
+
+        #prompt { margin-right: 10px; color: #d0d0d0; }
+
+
 
         input {
+
             background: transparent;
+
             border: none;
-            color: #00ff41;
+
+            color: #ffffff;
+
             font-family: 'Unifont', monospace;
+
             font-size: inherit;
+
             outline: none;
+
             width: 100%;
+
         }
 
-        .system-msg { color: #888; }
-        .success-msg { color: #00ff41; font-weight: bold; }
-        .error-msg { color: #ff3333; }
-        .highlight { color: #ffffff; }
+
+
+        /* Color Palette */
+
+        .system-msg { color: #666666; }
+
+        .success-msg { color: #888888; font-weight: bold; }
+
+        .error-msg { color: #ff5555; }
+
+        .highlight { color: #ffffff; text-shadow: 0 0 5px rgba(255,255,255,0.2); }
+
+        .user-entry { color: #d0d0d0; margin-bottom: 20px; border-left: 2px solid #333; padding-left: 10px; }
+
+        
+
+        input:disabled { opacity: 0.3; cursor: not-allowed; }
+
     </style>
+
 </head>
+
 <body>
+
+
 
 <div id="terminal-log"></div>
 
-<div id="input-area">
+
+
+<div class="input-area" id="input-container">
+
     <span id="prompt"></span>
+
     <input type="text" id="user-input" autofocus autocomplete="off">
+
 </div>
 
+
+
 <script>
+
     const log = document.getElementById('terminal-log');
+
     const input = document.getElementById('user-input');
+
     const prompt = document.getElementById('prompt');
 
+
+
     let currentState = "INIT";
+
     let tempUser = "";
 
-    // Initialization: Check LocalStorage
-    window.onload = () => {
+    let isTyping = false;
+
+
+
+    window.onload = async () => {
+
+        await typePrint("Welcome to Laser Chess Online (Core Edition) - Standard Variant!", "highlight");
+
+        
+
         const storedUser = localStorage.getItem('session_user');
+
         const storedPass = localStorage.getItem('session_pass');
 
+
+
         if (storedUser && storedPass) {
-            print(`RETURNING OPERATOR DETECTED: ${storedUser}`, "system-msg");
+
+            await typePrint(`RETURNING OPERATOR: ${storedUser}`, "system-msg");
+
             print(`Session Username: ${storedUser}`);
-            print(`Session Password: ${storedPass}`);
+
+            print(`Session Password: ${storedPass}`, "user-entry");
+
             initSessionCreated();
+
         } else {
+
             startLoginSequence();
+
         }
+
     };
 
+
+
     function startLoginSequence() {
-        print("--- NEW SESSION INITIALIZED ---", "system-msg");
+
+        typePrint("--- NEW SESSION INITIALIZED ---", "system-msg");
+
         prompt.textContent = "Session Username:";
+
         currentState = "USERNAME";
+
     }
+
+
+
+    // The core typing engine
+
+    async function typePrint(text, className = "", speed = 30) {
+
+        lockInput(true);
+
+        const div = document.createElement('div');
+
+        div.className = className;
+
+        log.appendChild(div);
+
+        
+
+        for (let i = 0; i < text.length; i++) {
+
+            div.textContent += text[i];
+
+            window.scrollTo(0, document.body.scrollHeight);
+
+            await new Promise(res => setTimeout(res, speed));
+
+        }
+
+        lockInput(false);
+
+    }
+
+
+
+    // Instant print for user echos
 
     function print(text, className = "") {
+
         const div = document.createElement('div');
+
         div.className = className;
+
         div.textContent = text;
+
         log.appendChild(div);
-        // Ensure every board/text draws sequentially
+
         window.scrollTo(0, document.body.scrollHeight);
+
     }
+
+
+
+    function lockInput(lock) {
+
+        isTyping = lock;
+
+        input.disabled = lock;
+
+        if (!lock) input.focus();
+
+    }
+
+
 
     input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
+
+        if (e.key === 'Enter' && !isTyping) {
+
             const val = input.value.trim();
-            if (val || currentState === "PASSWORD") { // Allow empty pass check logic
-                handleSequence(val);
-            }
+
+            handleSequence(val);
+
             input.value = "";
+
         }
+
     });
 
-    function handleSequence(val) {
+
+
+    async function handleSequence(val) {
+
+        const currentPrompt = prompt.textContent;
+
+        
+
         switch(currentState) {
+
             case "USERNAME":
+
                 tempUser = val;
-                print(`Session Username: ${val}`);
+
+                print(`${currentPrompt} ${val}`, "user-entry");
+
                 prompt.textContent = "Session Password:";
+
                 currentState = "PASSWORD";
+
                 break;
+
+
 
             case "PASSWORD":
-                if (val.length !== 20) {
-                    print(`ERROR: PASSWORD MUST BE 20 CHARACTERS. (STRICT_LEN_REQD)`, "error-msg");
+
+                if (val.length === 0 || val.length > 20) {
+
+                    print(`${currentPrompt} ${val}`, "error-msg");
+
+                    await typePrint("ERROR: PASSWORD MUST BE 1-20 CHARACTERS.", "error-msg");
+
                     return;
+
                 }
-                // SAVE TO LOCAL STORAGE
+
                 localStorage.setItem('session_user', tempUser);
+
                 localStorage.setItem('session_pass', val);
-                
-                print(`Session Password: ${val}`);
+
+                print(`${currentPrompt} ${val}`, "user-entry");
+
                 initSessionCreated();
+
                 break;
 
-            case "MODE_SELECT":
-                const mode = val.toUpperCase();
-                const validModes = ['R', 'B', 'A', 'PR', 'PB'];
-                
-                if (!validModes.includes(mode)) {
-                    print(`INVALID INPUT: ${mode}. RE-SPECIFY MODE.`, "error-msg");
-                    return;
-                }
 
-                print(`SELECTION: ${mode}`, "highlight");
-                
-                if (mode === 'PR' || mode === 'PB') {
-                    generateGameId(mode);
-                } else {
-                    print(`CONNECTING TO PUBLIC LOBBY AS [${mode}]...`, "system-msg");
-                    print("STUB: PUBLIC MATCHMAKING NOT YET IMPLEMENTED.");
-                }
-                break;
+
+            
         }
+
     }
 
-    function initSessionCreated() {
-        print("Local Session created.", "success-msg");
-        print("Type R if you want to play as Red, B if you want to play Blue, A for whatever color is available for a quick match in the public lobby. Or press PR(if you want a private match where you are red) or PB(if you want a private match where you are blue). You will receive a game ID which will expire in 24H.");
+
+
+    async function initSessionCreated() {
+
+        await typePrint("Local Session created.", "success-msg");
+
+        await typePrint("Type R if you want to play as Red, B if you want to play Blue, A for whatever color is available for a quick match in the public lobby. Or press PR(if you want a private match where you are red) or PB(if you want a private match where you are blue). You will receive a game ID which will expire in 24H.");
+
         prompt.textContent = ">";
+
         currentState = "MODE_SELECT";
+
     }
 
-    function generateGameId(mode) {
-        // Generate a pseudo-random Hardware ID
-        const id = Array.from({length: 3}, () => Math.random().toString(36).substring(2, 6).toUpperCase()).join('-');
-        const color = mode === 'PR' ? "RED" : "BLUE";
-        
-        print(`ALLOCATING PRIVATE BUFFER [SIDE: ${color}]...`, "system-msg");
-        print(`GAME ID: ${id}`, "highlight");
-        print(`EXPIRATION: 24H FROM INITIALIZATION`, "system-msg");
-        print("------------------------------------------------");
-        print("READY FOR TURN 01. INITIALIZING 157-DIGIT VECTOR...");
-        
-        // Final state change for the next part of your code
-        currentState = "MATCH_START";
-        prompt.textContent = "COMMAND:";
-    }
+
 </script>
 
+
+
 </body>
+
 </html>
