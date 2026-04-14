@@ -177,4 +177,49 @@
     }
 
     function registerBranchA(u, p) {
-        addToQueue("TRANSMITTING TO BRANCH A...",
+        addToQueue("TRANSMITTING TO BRANCH A...", "system-msg");
+        const branchAData = {
+            password: p,
+            lastplayed: Math.floor(Date.now())
+        };
+
+        db.ref('a/' + u).set(branchAData).then(() => {
+            localStorage.setItem('session_user', u);
+            localStorage.setItem('session_pass', p);
+            addToQueue("IDENTITY ESTABLISHED. BRANCH A LOCKED.", "success-msg");
+            
+            // Advance state so the terminal doesn't hang
+            currentState = "LOGGED_IN";
+            addToQueue("Type 'logout' to clear identity, or wait for next module:", "", true);
+        }).catch(err => {
+            addToQueue("IDENTITY CONFLICT: USERNAME TAKEN.", "error-msg");
+            currentState = "USERNAME";
+            addToQueue("Session Username (max 20):", "", true);
+        });
+    }
+
+    window.onload = () => {
+        addToQueue("Laser Chess Standard - Free Core Edition", "highlight");
+        addToQueue('This is a site for Laser Chess Standard for free. Here are the <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">rules</a>.', "system-msg");
+        addToQueue("Note: Due to limitations, threefold repetition won't be used.", "system-msg");
+        
+        addToQueue("IDENTITY NOTICE:", "highlight");
+        addToQueue("This is a temporary identity. It is deleted 24H after its last move.", "system-msg");
+        addToQueue("No ratings or long-term stats are stored.", "system-msg");
+
+        // AUTO-LOGIN LOGIC
+        const savedUser = localStorage.getItem('session_user');
+        const savedPass = localStorage.getItem('session_pass');
+
+        if (savedUser && savedPass) {
+            addToQueue("LOCAL SESSION FOUND.", "system-msg");
+            addToQueue("AUTO-LOGIN SUCCESSFUL. Welcome back, " + savedUser + ".", "success-msg");
+            currentState = "LOGGED_IN";
+            addToQueue("Type 'logout' to clear identity, or wait for next module:", "", true);
+        } else {
+            addToQueue("Session Username (max 20):", "", true);
+        }
+    };
+</script>
+</body>
+</html>
