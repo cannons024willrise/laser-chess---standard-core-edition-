@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Laser Chess - Standard Version (Core Edition)</title>
+    <title>Laser Chess - Core Auth</title>
     <style>
         @font-face {
             font-family: 'Unifont';
@@ -13,6 +13,7 @@
             background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
             color: #b0b0b0; font-family: 'Unifont', monospace;
             font-size: 16px; margin: 0; padding: 30px; line-height: 1.6;
+            image-rendering: pixelated;
         }
 
         #terminal-log { display: flex; flex-direction: column; }
@@ -24,10 +25,11 @@
         }
 
         .system-msg { color: #666; margin-bottom: 5px; }
-        .success-msg { color: #00ff00; font-weight: bold; }
-        .error-msg { color: #ff5555; }
+        .success-msg { color: #00ff00; font-weight: bold; margin-bottom: 5px; }
+        .error-msg { color: #ff5555; margin-bottom: 5px; }
         .highlight { color: #ffffff; margin-bottom: 10px; }
         .rules-link { color: #4444ff; text-decoration: underline; font-weight: bold; }
+        .history-line { margin-bottom: 5px; }
     </style>
 </head>
 <body>
@@ -52,47 +54,118 @@
     const db = firebase.database();
 
     const log = document.getElementById('terminal-log');
+    let msgQueue = [];
+    let isProcessing = false;
     let currentState = "USERNAME";
     let tempUser = "";
 
+    // QUEUE SYSTEM RESTORED
     function addToQueue(text, className = "", isRequest = false) {
-        if (isRequest) {
+        msgQueue.push({ text, className, isRequest });
+        if (!isProcessing) processQueue();
+    }
+
+    async function processQueue() {
+        isProcessing = true;
+        while (msgQueue.length > 0) {
+            const item = msgQueue.shift();
+            if (item.isRequest) {
+                await typeLineInline(item.text, item.className);
+            } else {
+                await typeLineSimple(item.text, item.className);
+            }
+        }
+        isProcessing = false;
+    }
+
+    // TYPEWRITER FOR STANDARD LINES
+    function typeLineSimple(text, className) {
+        return new Promise((resolve) => {
+            const div = document.createElement('div');
+            if (className) div.className = className + " history-line";
+            else div.className = "history-line";
+            
+            log.appendChild(div);
+
+            // Strip HTML for the typing effect so tags don't break
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = text;
+            const plainText = tempDiv.textContent;
+
+            let i = 0;
+            const timer = setInterval(() => {
+                if (i < plainText.length) {
+                    div.textContent += plainText.charAt(i);
+                    i++;
+                } else {
+                    clearInterval(timer);
+                    // Inject the actual HTML once typing finishes (activates the link)
+                    div.innerHTML = text; 
+                    window.scrollTo(0, document.body.scrollHeight);
+                    resolve();
+                }
+            }, 15); // Typing speed
+        });
+    }
+
+    // TYPEWRITER FOR INPUT LINES
+    function typeLineInline(text, className) {
+        return new Promise((resolve) => {
             const wrapper = document.createElement('div');
-            wrapper.className = "input-wrapper";
+            wrapper.className = "input-wrapper history-line";
+            if (className) wrapper.classList.add(className);
+
             const label = document.createElement('span');
-            label.textContent = text;
             const input = document.createElement('input');
             input.type = "text";
             input.className = "user-input-line";
             input.maxLength = 20;
+            input.disabled = true; // Lock input while typing
+
             wrapper.appendChild(label);
             wrapper.appendChild(input);
             log.appendChild(wrapper);
-            input.focus();
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    const val = input.value.trim();
-                    input.disabled = true;
-                    handleStateLogic(val);
+
+            let i = 0;
+            const timer = setInterval(() => {
+                if (i < text.length) {
+                    label.textContent += text.charAt(i);
+                    i++;
+                } else {
+                    clearInterval(timer);
+                    input.disabled = false; // Unlock input
+                    input.focus();
+                    window.scrollTo(0, document.body.scrollHeight);
+
+                    const handleEnter = (e) => {
+                        if (e.key === 'Enter') {
+                            const val = input.value.trim();
+                            input.disabled = true; // Lock after submission
+                            input.removeEventListener('keydown', handleEnter);
+                            handleStateLogic(val);
+                            resolve(); // Allow the queue to continue
+                        }
+                    };
+                    input.addEventListener('keydown', handleEnter);
                 }
-            });
-        } else {
-            const line = document.createElement('div');
-            line.className = className;
-            line.innerHTML = text;
-            log.appendChild(line);
-        }
-        window.scrollTo(0, document.body.scrollHeight);
+            }, 15); // Typing speed
+        });
     }
 
     function handleStateLogic(val) {
         if (currentState === "USERNAME") {
-            if (val.length === 0) return addToQueue("Username required:", "error-msg", true);
+            if (val.length === 0) {
+                addToQueue("Username required:", "error-msg", true);
+                return;
+            }
             tempUser = val;
             currentState = "PASSWORD";
             addToQueue("Session Password (max 20):", "", true);
         } else if (currentState === "PASSWORD") {
-            if (val.length === 0) return addToQueue("Password required:", "error-msg", true);
+            if (val.length === 0) {
+                addToQueue("Password required:", "error-msg", true);
+                return;
+            }
             registerBranchA(tempUser, val);
         }
     }
