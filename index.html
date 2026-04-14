@@ -28,6 +28,7 @@
         .error-msg { color: #ff5555; }
         .highlight { color: #ffffff; margin-bottom: 10px; }
         .rules-box { color: #888; border: 1px solid #333; padding: 10px; margin: 15px 0; font-size: 14px; background: rgba(0,0,0,0.3); }
+        .rules-link { color: #4444ff; text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -56,7 +57,6 @@
     let tempUser = "";
 
     function addToQueue(text, className = "", isRequest = false) {
-        const div = document.createElement(isRequest ? 'div' : 'span');
         if (isRequest) {
             const wrapper = document.createElement('div');
             wrapper.className = "input-wrapper";
@@ -80,7 +80,7 @@
         } else {
             const line = document.createElement('div');
             line.className = className;
-            line.textContent = text;
+            line.innerHTML = text; // Allowed for the rules link
             log.appendChild(line);
         }
         window.scrollTo(0, document.body.scrollHeight);
@@ -100,11 +100,9 @@
 
     function registerBranchA(u, p) {
         addToQueue("WRITING TO BRANCH A...", "system-msg");
-        
-        // Final Branch A Schema: username { password, lastplayed }
         const branchAData = {
             password: p,
-            lastplayed: Math.floor(Date.now()) // Integer timestamp
+            lastplayed: Math.floor(Date.now())
         };
 
         db.ref('a/' + u).set(branchAData).then(() => {
@@ -121,7 +119,7 @@
 
     window.onload = () => {
         addToQueue("Laser Chess Standard - Free Core Edition", "highlight");
-        addToQueue("A site for Laser Chess Standard for free. Uses Thinkfun Rules.", "system-msg");
+        addToQueue('A site for Laser Chess Standard for free. Uses <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">Thinkfun Rules</a>.', "system-msg");
         
         const rules = document.createElement('div');
         rules.className = "rules-box";
