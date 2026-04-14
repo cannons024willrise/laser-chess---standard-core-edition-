@@ -2,9 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Laser Chess Standard - Standard Variant (Core Edition)</title>
+    <title>Laser Chess - Standard Version (Core Edition)</title>
     <style>
-        /* FONT IMPORT - EXACT FILENAME */
         @font-face {
             font-family: 'Unifont';
             src: url('unifont-15.0.01.ttf') format('truetype');
@@ -12,7 +11,6 @@
             font-style: normal;
         }
 
-        /* CORE THEME */
         body {
             background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
             color: #b0b0b0; 
@@ -26,7 +24,6 @@
             background-attachment: fixed;
         }
 
-        /* TERMINAL LOG CONTAINER */
         #terminal-log {
             white-space: pre-wrap;
             word-wrap: break-word;
@@ -35,7 +32,6 @@
             flex-direction: column;
         }
 
-        /* INLINE INPUT LAYOUT (Prevents dropping to bottom) */
         .input-wrapper {
             display: flex;
             align-items: baseline;
@@ -47,7 +43,7 @@
         .user-input-line {
             background: transparent;
             border: none;
-            color: #00ff00; /* Phosphor green for user text */
+            color: #00ff00;
             font-family: 'Unifont', monospace;
             font-size: 16px;
             outline: none;
@@ -57,7 +53,6 @@
             caret-color: #00ff00;
         }
 
-        /* COLOR CODING */
         .txt-red { color: #ff4444; font-weight: bold; }
         .txt-blue { color: #4444ff; font-weight: bold; }
         .system-msg { color: #555555; display: block; margin-bottom: 5px; }
@@ -75,7 +70,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
 
 <script>
-    // FIREBASE CONFIG
     const firebaseConfig = {
         apiKey: "AIzaSyBuT7P1iTdXcZW-y05DX-kseuLrPGmaWSs",
         authDomain: "laserchess-web-free.firebaseapp.com",
@@ -89,7 +83,6 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // DOM ELEMENTS & STATE
     const log = document.getElementById('terminal-log');
     let msgQueue = [];
     let isProcessing = false;
@@ -97,7 +90,6 @@
     let tempUser = "";
     let tempMode = "";
 
-    // COLOR PARSER
     function colorize(text) {
         return text.replace(/(red|blue)/gi, (match) => {
             const cls = match.toLowerCase() === 'red' ? 'txt-red' : 'txt-blue';
@@ -105,7 +97,6 @@
         });
     }
 
-    // QUEUE MANAGER (Prevents async overlaps / black screens)
     function addToQueue(text, className = "", isRequest = false) {
         msgQueue.push({ text, className, isRequest });
         if (!isProcessing) processQueue();
@@ -124,13 +115,11 @@
         isProcessing = false;
     }
 
-    // STANDARD TYPEWRITER (For system messages)
     function typeLineSimple(text, className) {
         return new Promise((resolve) => {
             const div = document.createElement('div');
             div.className = className + " history-line";
             log.appendChild(div);
-            
             let i = 0;
             const timer = setInterval(() => {
                 if (i < text.length) {
@@ -142,19 +131,16 @@
                     window.scrollTo(0, document.body.scrollHeight);
                     resolve();
                 }
-            }, 15); // Fast typing speed
+            }, 15);
         });
     }
 
-    // INLINE TYPEWRITER (For user prompts)
     function typeLineInline(text, className) {
         return new Promise((resolve) => {
             const wrapper = document.createElement('div');
             wrapper.className = "input-wrapper history-line " + className;
-            
             const label = document.createElement('span');
             wrapper.appendChild(label);
-            
             const input = document.createElement('input');
             input.type = "text";
             input.className = "user-input-line";
@@ -162,7 +148,6 @@
             input.spellcheck = false;
             input.disabled = true; 
             wrapper.appendChild(input);
-            
             log.appendChild(wrapper);
 
             let i = 0;
@@ -176,7 +161,6 @@
                     input.disabled = false;
                     input.focus();
                     window.scrollTo(0, document.body.scrollHeight);
-                    
                     const handleEnter = (e) => {
                         if (e.key === 'Enter') {
                             const val = input.value.trim();
@@ -192,7 +176,6 @@
         });
     }
 
-    // STATE MACHINE LOGIC
     function handleStateLogic(val) {
         switch(currentState) {
             case "USERNAME":
@@ -204,14 +187,22 @@
                 localStorage.setItem('session_user', tempUser);
                 localStorage.setItem('session_pass', val);
                 addToQueue("Local Session established.", "success-msg");
-                addToQueue("PR: Private Red | PB: Private Blue");
-                addToQueue("Choose Mode [PR/PB]:", "", true);
+                addToQueue("R: Public Red  | B: Public Blue");
+                addToQueue("P: Private Session (UUID)");
+                addToQueue("Choose Mode:", "", true);
                 currentState = "MODE_SELECT";
                 break;
             case "MODE_SELECT":
                 tempMode = val.toUpperCase();
-                currentState = "UUID_INPUT";
-                addToQueue("Enter 24H Game UUID:", "", true);
+                if (tempMode === "R" || tempMode === "B") {
+                    submitLobbyRequest(tempMode.toLowerCase());
+                } else if (tempMode === "P") {
+                    currentState = "UUID_INPUT";
+                    addToQueue("Enter 24H Game UUID:", "", true);
+                } else {
+                    addToQueue("INVALID MODE. R/B/P ONLY.", "error-msg");
+                    addToQueue("Choose Mode:", "", true);
+                }
                 break;
             case "UUID_INPUT":
                 performHandshake(val);
@@ -219,38 +210,54 @@
         }
     }
 
-    // FIREBASE HANDSHAKE LOGIC
-    function performHandshake(uuid) {
-        const isRed = (tempMode === 'PR' || tempMode === 'R');
-        const passKey = isRed ? 'passwordred' : 'passwordblue';
-        const userKey = isRed ? 'usernamered' : 'usernameblue';
+    function submitLobbyRequest(colorCode) {
+        const timestamp = Date.now();
+        const u = localStorage.getItem('session_user');
+        const p = localStorage.getItem('session_pass');
+        
+        addToQueue(`TRANSMITTING LOBBY REQUEST [${colorCode.toUpperCase()}]...`, "system-msg");
+        
+        // Keys: 0=Color, 1=User, 2=Pass
+        db.ref('requests/' + timestamp).set({
+            "0": colorCode,
+            "1": u,
+            "2": p
+        }).then(() => {
+            addToQueue("REQUEST QUEUED. Awaiting peer...", "success-msg");
+        }).catch(err => {
+            addToQueue("DENIED: IDENTITY COLLISION OR TIMEOUT.", "error-msg");
+            addToQueue("Choose Mode:", "", true);
+            currentState = "MODE_SELECT";
+        });
+    }
 
-        addToQueue(`CONTACTING SUB-NODE: ${passKey.toUpperCase()}...`, "system-msg");
+    function performHandshake(uuid) {
+        // Red is R (Public) or PR (Private)
+        const isRed = (tempMode === 'R' || tempMode === 'PR');
+        const userKey = isRed ? '1' : '3';
+        const passKey = isRed ? '2' : '4';
+
+        addToQueue(`CONNECTING TO NODE ${uuid}...`, "system-msg");
 
         db.ref('games/' + uuid).once('value').then(snap => {
             if (snap.exists()) {
                 const data = snap.val();
                 if (data[passKey] === localStorage.getItem('session_pass') && data[userKey] === localStorage.getItem('session_user')) {
                     addToQueue("HANDSHAKE SUCCESSFUL.", "success-msg");
-                    // Assuming the 157-digit string is stored here
-                    addToQueue("STATE_HEX: " + data.gamestate.substring(0, 48) + "...", "highlight");
+                    addToQueue("STATE_HEX: " + data['0'].substring(0, 48) + "...", "highlight");
                 } else {
-                    addToQueue("DENIED: NODE PARAM MISMATCH.", "error-msg");
+                    addToQueue("DENIED: AUTH MISMATCH.", "error-msg");
                     addToQueue("Enter 24H Game UUID:", "", true);
                 }
             } else {
-                addToQueue("ERROR: UUID EXPIRED OR INVALID.", "error-msg");
+                addToQueue("ERROR: INVALID UUID.", "error-msg");
                 addToQueue("Enter 24H Game UUID:", "", true);
             }
-        }).catch(error => {
-            addToQueue("CRITICAL: DATABASE CONNECTION FAILED.", "error-msg");
-            console.error(error);
         });
     }
 
-    // BOOT SEQUENCE
     window.onload = () => {
-        addToQueue("Laser Chess Online [Core Edition]", "highlight");
+        addToQueue("Laser Chess - Standard Version (Core Edition)", "highlight");
         addToQueue("Initializing terminal instance...", "system-msg");
         addToQueue("Session Username:", "", true);
     };
