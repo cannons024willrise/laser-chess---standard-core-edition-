@@ -180,9 +180,9 @@
         db.ref('a/' + u).set(branchAData).then(() => {
             localStorage.setItem('session_user', u);
             localStorage.setItem('session_pass', p);
-            addToQueue("IDENTITY ESTABLISHED. BRANCH A LOCKED.", "success-msg");
+            addToQueue("Temporary account created.", "success-msg");
         }).catch(err => {
-            addToQueue("IDENTITY CONFLICT: USERNAME TAKEN.", "error-msg");
+            addToQueue("USERNAME TAKEN.", "error-msg");
             currentState = "USERNAME";
             addToQueue("Session Username (max 20):", "", true);
         });
