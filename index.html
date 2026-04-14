@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Laser Chess Standard - Core Edition</title>
+    <title>Laser Chess Standard - Standard Variant (Core Edition)</title>
     <style>
+        /* FONT IMPORT - EXACT FILENAME */
         @font-face {
             font-family: 'Unifont';
             src: url('unifont-15.0.01.ttf') format('truetype');
@@ -11,62 +12,70 @@
             font-style: normal;
         }
 
+        /* CORE THEME */
         body {
-            background: #0a0a0a;
+            background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
             color: #b0b0b0; 
             font-family: 'Unifont', monospace;
             font-size: 16px;
+            image-rendering: pixelated;
+            -webkit-font-smoothing: none;
             margin: 0;
-            padding: 20px;
+            padding: 30px;
+            overflow-x: hidden;
+            background-attachment: fixed;
+        }
+
+        /* TERMINAL LOG CONTAINER */
+        #terminal-log {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.5;
             display: flex;
             flex-direction: column;
-            height: 100vh;
-            box-sizing: border-box;
         }
 
-        #terminal-log {
-            flex-grow: 1;
-            overflow-y: auto;
-            white-space: pre-wrap;
-        }
-
-        .input-line {
+        /* INLINE INPUT LAYOUT (Prevents dropping to bottom) */
+        .input-wrapper {
             display: flex;
-            align-items: center;
-            margin-top: 5px;
+            align-items: baseline;
+            width: 100%;
+            margin-top: 2px;
+            margin-bottom: 5px;
         }
 
-        .prompt { color: #ffffff; margin-right: 10px; }
-
-        #user-input {
+        .user-input-line {
             background: transparent;
             border: none;
-            color: #00ff00; /* Phosphor green input */
+            color: #00ff00; /* Phosphor green for user text */
             font-family: 'Unifont', monospace;
             font-size: 16px;
             outline: none;
             flex-grow: 1;
+            margin-left: 8px;
+            padding: 0;
+            caret-color: #00ff00;
         }
 
-        .txt-red { color: #ff4444; }
-        .txt-blue { color: #4444ff; }
-        .system-msg { color: #555555; }
-        .success { color: #00ff00; }
-        .highlight { color: #ffffff; }
+        /* COLOR CODING */
+        .txt-red { color: #ff4444; font-weight: bold; }
+        .txt-blue { color: #4444ff; font-weight: bold; }
+        .system-msg { color: #555555; display: block; margin-bottom: 5px; }
+        .success-msg { color: #00ff00; font-weight: bold; display: block; margin-bottom: 5px; }
+        .error-msg { color: #ff5555; display: block; margin-bottom: 5px; }
+        .highlight { color: #ffffff; display: block; margin-bottom: 5px; }
+        .history-line { display: block; margin-bottom: 5px; }
     </style>
 </head>
 <body>
 
 <div id="terminal-log"></div>
-<div class="input-line" id="input-container" style="display:none;">
-    <span class="prompt" id="current-prompt"></span>
-    <input type="text" id="user-input" autocomplete="off" spellcheck="false">
-</div>
 
 <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
 
 <script>
+    // FIREBASE CONFIG
     const firebaseConfig = {
         apiKey: "AIzaSyBuT7P1iTdXcZW-y05DX-kseuLrPGmaWSs",
         authDomain: "laserchess-web-free.firebaseapp.com",
@@ -80,59 +89,129 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
+    // DOM ELEMENTS & STATE
     const log = document.getElementById('terminal-log');
-    const inputContainer = document.getElementById('input-container');
-    const userInput = document.getElementById('user-input');
-    const promptSpan = document.getElementById('current-prompt');
-
+    let msgQueue = [];
+    let isProcessing = false;
     let currentState = "USERNAME";
     let tempUser = "";
     let tempMode = "";
 
-    function write(text, style = "") {
-        const div = document.createElement('div');
-        div.className = style;
-        // Colorize red/blue automatically
-        div.innerHTML = text.replace(/(red|blue)/gi, '<span class="txt-$1">$1</span>');
-        log.appendChild(div);
-        log.scrollTop = log.scrollHeight;
+    // COLOR PARSER
+    function colorize(text) {
+        return text.replace(/(red|blue)/gi, (match) => {
+            const cls = match.toLowerCase() === 'red' ? 'txt-red' : 'txt-blue';
+            return `<span class="${cls}">${match}</span>`;
+        });
     }
 
-    function ask(promptText) {
-        inputContainer.style.display = 'flex';
-        promptSpan.textContent = promptText;
-        userInput.value = "";
-        userInput.focus();
+    // QUEUE MANAGER (Prevents async overlaps / black screens)
+    function addToQueue(text, className = "", isRequest = false) {
+        msgQueue.push({ text, className, isRequest });
+        if (!isProcessing) processQueue();
     }
 
-    userInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            const val = userInput.value.trim();
-            inputContainer.style.display = 'none';
-            write(`${promptSpan.textContent} ${val}`, "highlight");
-            handleLogic(val);
+    async function processQueue() {
+        isProcessing = true;
+        while (msgQueue.length > 0) {
+            const item = msgQueue.shift();
+            if (item.isRequest) {
+                await typeLineInline(item.text, item.className);
+            } else {
+                await typeLineSimple(item.text, item.className);
+            }
         }
-    });
+        isProcessing = false;
+    }
 
-    function handleLogic(val) {
+    // STANDARD TYPEWRITER (For system messages)
+    function typeLineSimple(text, className) {
+        return new Promise((resolve) => {
+            const div = document.createElement('div');
+            div.className = className + " history-line";
+            log.appendChild(div);
+            
+            let i = 0;
+            const timer = setInterval(() => {
+                if (i < text.length) {
+                    div.textContent += text.charAt(i);
+                    i++;
+                } else {
+                    clearInterval(timer);
+                    div.innerHTML = colorize(div.textContent);
+                    window.scrollTo(0, document.body.scrollHeight);
+                    resolve();
+                }
+            }, 15); // Fast typing speed
+        });
+    }
+
+    // INLINE TYPEWRITER (For user prompts)
+    function typeLineInline(text, className) {
+        return new Promise((resolve) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = "input-wrapper history-line " + className;
+            
+            const label = document.createElement('span');
+            wrapper.appendChild(label);
+            
+            const input = document.createElement('input');
+            input.type = "text";
+            input.className = "user-input-line";
+            input.autocomplete = "off";
+            input.spellcheck = false;
+            input.disabled = true; 
+            wrapper.appendChild(input);
+            
+            log.appendChild(wrapper);
+
+            let i = 0;
+            const timer = setInterval(() => {
+                if (i < text.length) {
+                    label.textContent += text.charAt(i);
+                    i++;
+                } else {
+                    clearInterval(timer);
+                    label.innerHTML = colorize(label.textContent);
+                    input.disabled = false;
+                    input.focus();
+                    window.scrollTo(0, document.body.scrollHeight);
+                    
+                    const handleEnter = (e) => {
+                        if (e.key === 'Enter') {
+                            const val = input.value.trim();
+                            input.disabled = true;
+                            input.removeEventListener('keydown', handleEnter);
+                            handleStateLogic(val);
+                            resolve();
+                        }
+                    };
+                    input.addEventListener('keydown', handleEnter);
+                }
+            }, 20);
+        });
+    }
+
+    // STATE MACHINE LOGIC
+    function handleStateLogic(val) {
         switch(currentState) {
             case "USERNAME":
                 tempUser = val;
                 currentState = "PASSWORD";
-                ask("Session Password:");
+                addToQueue("Session Password:", "", true);
                 break;
             case "PASSWORD":
                 localStorage.setItem('session_user', tempUser);
                 localStorage.setItem('session_pass', val);
-                write("Local Session Established.", "success");
-                write("Modes: PR (Private Red) | PB (Private Blue)");
+                addToQueue("Local Session established.", "success-msg");
+                addToQueue("PR: Private Red | PB: Private Blue");
+                addToQueue("Choose Mode [PR/PB]:", "", true);
                 currentState = "MODE_SELECT";
-                ask("Choose Mode:");
                 break;
             case "MODE_SELECT":
                 tempMode = val.toUpperCase();
                 currentState = "UUID_INPUT";
-                ask("Enter 24H Game UUID:");
+                addToQueue("Enter 24H Game UUID:", "", true);
                 break;
             case "UUID_INPUT":
                 performHandshake(val);
@@ -140,35 +219,40 @@
         }
     }
 
+    // FIREBASE HANDSHAKE LOGIC
     function performHandshake(uuid) {
         const isRed = (tempMode === 'PR' || tempMode === 'R');
         const passKey = isRed ? 'passwordred' : 'passwordblue';
         const userKey = isRed ? 'usernamered' : 'usernameblue';
 
-        write(`Contacting sub-node: ${passKey.toUpperCase()}...`, "system-msg");
+        addToQueue(`CONTACTING SUB-NODE: ${passKey.toUpperCase()}...`, "system-msg");
 
         db.ref('games/' + uuid).once('value').then(snap => {
             if (snap.exists()) {
                 const data = snap.val();
-                if (data[passKey] === localStorage.getItem('session_pass')) {
-                    write("HANDSHAKE SUCCESS.", "success");
-                    write("GAMELOG: " + data.gamestate.substring(0, 40) + "...", "highlight");
+                if (data[passKey] === localStorage.getItem('session_pass') && data[userKey] === localStorage.getItem('session_user')) {
+                    addToQueue("HANDSHAKE SUCCESSFUL.", "success-msg");
+                    // Assuming the 157-digit string is stored here
+                    addToQueue("STATE_HEX: " + data.gamestate.substring(0, 48) + "...", "highlight");
                 } else {
-                    write("AUTH_DENIED: Check UUID or Password.", "error-msg");
-                    ask("Enter 24H Game UUID:");
+                    addToQueue("DENIED: NODE PARAM MISMATCH.", "error-msg");
+                    addToQueue("Enter 24H Game UUID:", "", true);
                 }
             } else {
-                write("ERROR: UUID not found.", "error-msg");
-                ask("Enter 24H Game UUID:");
+                addToQueue("ERROR: UUID EXPIRED OR INVALID.", "error-msg");
+                addToQueue("Enter 24H Game UUID:", "", true);
             }
+        }).catch(error => {
+            addToQueue("CRITICAL: DATABASE CONNECTION FAILED.", "error-msg");
+            console.error(error);
         });
     }
 
-    // Immediate start
+    // BOOT SEQUENCE
     window.onload = () => {
-        write("Laser Chess Core Edition v1.0", "highlight");
-        write("---", "system-msg");
-        ask("Session Username:");
+        addToQueue("Laser Chess Online [Core Edition]", "highlight");
+        addToQueue("Initializing terminal instance...", "system-msg");
+        addToQueue("Session Username:", "", true);
     };
 </script>
 </body>
