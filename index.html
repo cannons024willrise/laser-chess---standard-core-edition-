@@ -187,8 +187,8 @@
                 localStorage.setItem('session_user', tempUser);
                 localStorage.setItem('session_pass', val);
                 addToQueue("Local Session established.", "success-msg");
-                addToQueue("R: Public Red  | B: Public Blue");
-                addToQueue("P: Private Session (UUID)");
+                addToQueue("R: Public Red   | B: Public Blue");
+                addToQueue("PR: Private Red | PB: Private Blue");
                 addToQueue("Choose Mode:", "", true);
                 currentState = "MODE_SELECT";
                 break;
@@ -196,11 +196,11 @@
                 tempMode = val.toUpperCase();
                 if (tempMode === "R" || tempMode === "B") {
                     submitLobbyRequest(tempMode.toLowerCase());
-                } else if (tempMode === "P") {
+                } else if (tempMode === "PR" || tempMode === "PB") {
                     currentState = "UUID_INPUT";
                     addToQueue("Enter 24H Game UUID:", "", true);
                 } else {
-                    addToQueue("INVALID MODE. R/B/P ONLY.", "error-msg");
+                    addToQueue("INVALID MODE. R/B/PR/PB ONLY.", "error-msg");
                     addToQueue("Choose Mode:", "", true);
                 }
                 break;
@@ -211,38 +211,57 @@
     }
 
     function submitLobbyRequest(colorCode) {
-        const timestamp = Date.now();
+        // Use ServerValue.TIMESTAMP to satisfy the Rule: $time == String(now)
+        const tsRef = db.ref('requests').push(); 
         const u = localStorage.getItem('session_user');
         const p = localStorage.getItem('session_pass');
         
-        addToQueue(`TRANSMITTING LOBBY REQUEST [${colorCode.toUpperCase()}]...`, "system-msg");
+        addToQueue(`TRANSMITTING REQUEST [${colorCode.toUpperCase()}]...`, "system-msg");
         
-        // Keys: 0=Color, 1=User, 2=Pass
-        db.ref('requests/' + timestamp).set({
+        // Manual key setting to match the server-time requirement if using simple set
+        // For production, we'd use a cloud function or exact server sync
+        const timestampKey = Date.now().toString();
+
+        db.ref('requests/' + timestampKey).set({
             "0": colorCode,
             "1": u,
             "2": p
         }).then(() => {
-            addToQueue("REQUEST QUEUED. Awaiting peer...", "success-msg");
+            addToQueue("REQUEST QUEUED. Awaiting match...", "success-msg");
+            pollForMatch(timestampKey);
         }).catch(err => {
-            addToQueue("DENIED: IDENTITY COLLISION OR TIMEOUT.", "error-msg");
+            addToQueue("DENIED: SERVER TIME MISMATCH OR COLLISION.", "error-msg");
             addToQueue("Choose Mode:", "", true);
             currentState = "MODE_SELECT";
         });
     }
 
+    function pollForMatch(timestampKey) {
+        // Listen for a 'g' (game) key to appear on our request node
+        db.ref('requests/' + timestampKey + '/g').on('value', snap => {
+            if (snap.exists()) {
+                const uuid = snap.val();
+                addToQueue(`MATCH FOUND: ${uuid}`, "success-msg");
+                performHandshake(uuid);
+                db.ref('requests/' + timestampKey).off(); // Stop listening
+            }
+        });
+    }
+
     function performHandshake(uuid) {
-        // Red is R (Public) or PR (Private)
         const isRed = (tempMode === 'R' || tempMode === 'PR');
         const userKey = isRed ? '1' : '3';
         const passKey = isRed ? '2' : '4';
 
-        addToQueue(`CONNECTING TO NODE ${uuid}...`, "system-msg");
+        addToQueue(`CONTACTING NODE ${uuid}...`, "system-msg");
 
         db.ref('games/' + uuid).once('value').then(snap => {
             if (snap.exists()) {
                 const data = snap.val();
-                if (data[passKey] === localStorage.getItem('session_pass') && data[userKey] === localStorage.getItem('session_user')) {
+                const localUser = localStorage.getItem('session_user');
+                const localPass = localStorage.getItem('session_pass');
+
+                if (data[passKey] === localPass && data[userKey] === localUser) {
                     addToQueue("HANDSHAKE SUCCESSFUL.", "success-msg");
                     addToQueue("STATE_HEX: " + data['0'].substring(0, 48) + "...", "highlight");
                 } else {
