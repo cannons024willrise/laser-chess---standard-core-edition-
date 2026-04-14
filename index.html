@@ -2,24 +2,29 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Laser Chess Standard - Standard Variant(Core Edition)</title>
+    <title>Laser Chess Standard - Standard Variant (Core Edition)</title>
     <style>
-       @font-face {
-    font-family: 'Unifont';
-font-weight: normal;
-    font-style: normal;
-}
+        @font-face {
+            font-family: 'Unifont';
+            /* Pointing to your local file to avoid decoding errors */
+            src: url('./unifont.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+        }
 
         body {
             background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
             color: #b0b0b0; 
             font-family: 'Unifont', monospace;
+            font-size: 16px; /* Native Unifont resolution */
             image-rendering: pixelated;
             -webkit-font-smoothing: none;
             -moz-osx-font-smoothing: grayscale;
             margin: 0;
             padding: 30px;
-            overflow: hidden;
+            overflow-y: auto; /* Changed to auto to handle long terminal logs */
+            height: 100vh;
+            box-sizing: border-box;
         }
 
         #terminal-log {
@@ -56,7 +61,7 @@ font-weight: normal;
         .txt-blue { color: #4444ff; font-weight: bold; }
 
         .system-msg { color: #555555; display: block; }
-        .success-msg { color: #888888; font-weight: bold; display: block; }
+        .success-msg { color: #00ff00; font-weight: bold; display: block; } /* Greener for success */
         .error-msg { color: #ff5555; display: block; }
         .highlight { color: #ffffff; display: block; }
         .history-line { display: block; margin-bottom: 5px; }
@@ -66,14 +71,24 @@ font-weight: normal;
 
 <div id="terminal-log"></div>
 
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
 <script>
+    // Initialize Firebase (Paste your actual config here)
+    const firebaseConfig = {
+        databaseURL: "YOUR_DATABASE_URL"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
     const log = document.getElementById('terminal-log');
     let msgQueue = [];
     let isProcessing = false;
     let currentState = "INIT";
     let tempUser = "";
+    let tempMode = "";
 
-    // Helper to colorize specific words within a string
     function colorize(text) {
         return text.replace(/(red|blue)/gi, (match) => {
             const cls = match.toLowerCase() === 'red' ? 'txt-red' : 'txt-blue';
@@ -99,7 +114,6 @@ font-weight: normal;
         isProcessing = false;
     }
 
-    // Types text char by char, then applies the color spans at the end of the line
     function typeLineSimple(text, className) {
         return new Promise((resolve) => {
             const div = document.createElement('div');
@@ -112,11 +126,11 @@ font-weight: normal;
                     i++;
                 } else {
                     clearInterval(timer);
-                    // Apply HTML coloring after raw text typing is done
                     div.innerHTML = colorize(div.textContent);
+                    window.scrollTo(0, document.body.scrollHeight);
                     resolve();
                 }
-            }, 30);
+            }, 15); // Faster typing for better UX
         });
     }
 
@@ -156,7 +170,7 @@ font-weight: normal;
                     };
                     input.addEventListener('keydown', handleEnter);
                 }
-            }, 35);
+            }, 20);
         });
     }
 
@@ -178,13 +192,57 @@ font-weight: normal;
                 initSessionCreated();
                 break;
             case "MODE_SELECT":
-                processGameStart(val.toUpperCase());
+                const mode = val.toUpperCase();
+                if (['PR', 'PB', 'R', 'B', 'A'].includes(mode)) {
+                    tempMode = mode;
+                    currentState = "UUID_INPUT";
+                    addToQueue(`INITIALIZING MODE: ${mode}...`, "system-msg");
+                    addToQueue("Enter 24H Game UUID:", "", true);
+                } else {
+                    addToQueue("ERROR: INVALID MODE.", "error-msg");
+                    addToQueue("Choose Mode [R/B/A/PR/PB]:", "", true);
+                }
+                break;
+            case "UUID_INPUT":
+                authenticateMatch(val);
                 break;
         }
     }
 
-    function processGameStart(choice) {
-        addToQueue(`INITIALIZING MODE: ${choice}...`, "system-msg");
+    function authenticateMatch(uuid) {
+        const user = localStorage.getItem('session_user');
+        const pass = localStorage.getItem('session_pass');
+        
+        // Logic: Determine which subnode param to check against
+        const isRed = (tempMode === 'PR' || tempMode === 'R');
+        const passTarget = isRed ? 'passwordred' : 'passwordblue';
+        const userTarget = isRed ? 'usernamered' : 'usernameblue';
+
+        addToQueue(`CONNECTING TO SUB-NODE: ${passTarget.toUpperCase()}...`, "system-msg");
+
+        db.ref(`games/${uuid}`)
+            .orderByChild(passTarget)
+            .equalTo(pass)
+            .once('value')
+            .then(snap => {
+                if (snap.exists()) {
+                    const data = snap.val();
+                    const actualData = data[Object.keys(data)[0]];
+                    
+                    if (actualData[userTarget] === user) {
+                        addToQueue("HANDSHAKE SUCCESSFUL. RETRIEVING DATA...", "success-msg");
+                        // This is your 157-digit gamestate
+                        const state = actualData.gamestate;
+                        addToQueue(`STATE_LOADED: ${state.substring(0, 10)}...[157 DIGITS]`, "system-msg");
+                    } else {
+                        addToQueue("CRITICAL ERROR: USERNAME MISMATCH FOR THIS NODE.", "error-msg");
+                        addToQueue("Enter 24H Game UUID:", "", true);
+                    }
+                } else {
+                    addToQueue("CRITICAL ERROR: INVALID UUID OR PASSWORD PARAMS.", "error-msg");
+                    addToQueue("Enter 24H Game UUID:", "", true);
+                }
+            });
     }
 
     window.onload = () => {
@@ -193,8 +251,6 @@ font-weight: normal;
         addToQueue("Welcome to Laser Chess Online (Core Edition) - Standard Variant!", "highlight");
         if (storedUser && storedPass) {
             addToQueue(`RETURNING OPERATOR: ${storedUser}`, "system-msg");
-            addToQueue(`Session Username: ${storedUser}`);
-            addToQueue(`Session Password: ${storedPass}`);
             initSessionCreated();
         } else {
             addToQueue("--- NEW SESSION INITIALIZED ---", "system-msg");
@@ -204,13 +260,10 @@ font-weight: normal;
     };
 
     function initSessionCreated() {
-        addToQueue("Local Session created.", "success-msg");
-        addToQueue("R: Play as Red (Public Lobby)");
-        addToQueue("B: Play as Blue (Public Lobby)");
-        addToQueue("A: Quick Match (Any available color)");
-        addToQueue("PR: Private Match (You are Red)");
-        addToQueue("PB: Private Match (You are Blue)");
-        addToQueue("Private matches generate a 24H Game ID.");
+        addToQueue("Local Session established.", "success-msg");
+        addToQueue("PR: Private Match (Red Slot)");
+        addToQueue("PB: Private Match (Blue Slot)");
+        addToQueue("R/B/A: Public/Quick Match Modes");
         addToQueue("Choose Mode [R/B/A/PR/PB]:", "", true);
         currentState = "MODE_SELECT";
     }
