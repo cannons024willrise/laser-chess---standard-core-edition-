@@ -59,7 +59,6 @@
     let currentState = "USERNAME";
     let tempUser = "";
 
-    // QUEUE SYSTEM RESTORED
     function addToQueue(text, className = "", isRequest = false) {
         msgQueue.push({ text, className, isRequest });
         if (!isProcessing) processQueue();
@@ -78,7 +77,6 @@
         isProcessing = false;
     }
 
-    // TYPEWRITER FOR STANDARD LINES
     function typeLineSimple(text, className) {
         return new Promise((resolve) => {
             const div = document.createElement('div');
@@ -87,7 +85,6 @@
             
             log.appendChild(div);
 
-            // Strip HTML for the typing effect so tags don't break
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = text;
             const plainText = tempDiv.textContent;
@@ -99,16 +96,14 @@
                     i++;
                 } else {
                     clearInterval(timer);
-                    // Inject the actual HTML once typing finishes (activates the link)
                     div.innerHTML = text; 
                     window.scrollTo(0, document.body.scrollHeight);
                     resolve();
                 }
-            }, 15); // Typing speed
+            }, 15);
         });
     }
 
-    // TYPEWRITER FOR INPUT LINES
     function typeLineInline(text, className) {
         return new Promise((resolve) => {
             const wrapper = document.createElement('div');
@@ -120,7 +115,7 @@
             input.type = "text";
             input.className = "user-input-line";
             input.maxLength = 20;
-            input.disabled = true; // Lock input while typing
+            input.disabled = true;
 
             wrapper.appendChild(label);
             wrapper.appendChild(input);
@@ -133,22 +128,22 @@
                     i++;
                 } else {
                     clearInterval(timer);
-                    input.disabled = false; // Unlock input
+                    input.disabled = false;
                     input.focus();
                     window.scrollTo(0, document.body.scrollHeight);
 
                     const handleEnter = (e) => {
                         if (e.key === 'Enter') {
                             const val = input.value.trim();
-                            input.disabled = true; // Lock after submission
+                            input.disabled = true;
                             input.removeEventListener('keydown', handleEnter);
                             handleStateLogic(val);
-                            resolve(); // Allow the queue to continue
+                            resolve(); 
                         }
                     };
                     input.addEventListener('keydown', handleEnter);
                 }
-            }, 15); // Typing speed
+            }, 15); 
         });
     }
 
@@ -167,38 +162,19 @@
                 return;
             }
             registerBranchA(tempUser, val);
+        } else if (currentState === "LOGGED_IN") {
+            if (val.toLowerCase() === 'logout') {
+                localStorage.removeItem('session_user');
+                localStorage.removeItem('session_pass');
+                addToQueue("LOCAL CACHE CLEARED. SESSION TERMINATED.", "system-msg");
+                currentState = "USERNAME";
+                addToQueue("Session Username (max 20):", "", true);
+            } else {
+                addToQueue("Command not recognized. Waiting for Matchmaking branch.", "system-msg");
+                addToQueue("Type 'logout' to clear identity:", "", true);
+            }
         }
     }
 
     function registerBranchA(u, p) {
-        addToQueue("TRANSMITTING TO BRANCH A...", "system-msg");
-        const branchAData = {
-            password: p,
-            lastplayed: Math.floor(Date.now())
-        };
-
-        db.ref('a/' + u).set(branchAData).then(() => {
-            localStorage.setItem('session_user', u);
-            localStorage.setItem('session_pass', p);
-            addToQueue("Temporary account created.", "success-msg");
-        }).catch(err => {
-            addToQueue("USERNAME TAKEN.", "error-msg");
-            currentState = "USERNAME";
-            addToQueue("Session Username (max 20):", "", true);
-        });
-    }
-
-    window.onload = () => {
-        addToQueue("Laser Chess Standard Version - Core Edition", "highlight");
-        addToQueue('This is a site for Laser Chess Standard for free. Here are the <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">rules</a>.', "system-msg");
-        addToQueue("Note: Due to limitations, threefold repetition won't be used.", "system-msg");
-        
-        addToQueue("IDENTITY NOTICE:", "highlight");
-        addToQueue("This is a temporary identity. It is deleted 24H after its last move.", "system-msg");
-        addToQueue("No ratings or long-term stats are stored.", "system-msg");
-        
-        addToQueue("Session Username (max 20):", "", true);
-    };
-</script>
-</body>
-</html>
+        addToQueue("TRANSMITTING TO BRANCH A...",
