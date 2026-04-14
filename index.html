@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Laser Chess - Branch A Auth</title>
+    <title>Laser Chess - Standard Version (Core Edition)</title>
     <style>
         @font-face {
             font-family: 'Unifont';
@@ -12,7 +12,7 @@
         body {
             background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
             color: #b0b0b0; font-family: 'Unifont', monospace;
-            font-size: 16px; margin: 0; padding: 30px;
+            font-size: 16px; margin: 0; padding: 30px; line-height: 1.6;
         }
 
         #terminal-log { display: flex; flex-direction: column; }
@@ -20,15 +20,14 @@
         .user-input-line {
             background: transparent; border: none; color: #00ff00;
             font-family: 'Unifont', monospace; font-size: 16px;
-            outline: none; flex-grow: 1; margin-left: 8px;
+            outline: none; flex-grow: 1; margin-left: 8px; caret-color: #00ff00;
         }
 
         .system-msg { color: #666; margin-bottom: 5px; }
         .success-msg { color: #00ff00; font-weight: bold; }
         .error-msg { color: #ff5555; }
         .highlight { color: #ffffff; margin-bottom: 10px; }
-        .rules-box { color: #888; border: 1px solid #333; padding: 10px; margin: 15px 0; font-size: 14px; background: rgba(0,0,0,0.3); }
-        .rules-link { color: #4444ff; text-decoration: underline; }
+        .rules-link { color: #4444ff; text-decoration: underline; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -80,7 +79,7 @@
         } else {
             const line = document.createElement('div');
             line.className = className;
-            line.innerHTML = text; // Allowed for the rules link
+            line.innerHTML = text;
             log.appendChild(line);
         }
         window.scrollTo(0, document.body.scrollHeight);
@@ -99,7 +98,7 @@
     }
 
     function registerBranchA(u, p) {
-        addToQueue("WRITING TO BRANCH A...", "system-msg");
+        addToQueue("TRANSMITTING TO BRANCH A...", "system-msg");
         const branchAData = {
             password: p,
             lastplayed: Math.floor(Date.now())
@@ -109,9 +108,8 @@
             localStorage.setItem('session_user', u);
             localStorage.setItem('session_pass', p);
             addToQueue("IDENTITY ESTABLISHED. BRANCH A LOCKED.", "success-msg");
-            addToQueue("Credentials cached in local storage.", "system-msg");
         }).catch(err => {
-            addToQueue("IDENTITY CONFLICT: USERNAME ALREADY TAKEN.", "error-msg");
+            addToQueue("IDENTITY CONFLICT: USERNAME TAKEN.", "error-msg");
             currentState = "USERNAME";
             addToQueue("Session Username (max 20):", "", true);
         });
@@ -119,18 +117,12 @@
 
     window.onload = () => {
         addToQueue("Laser Chess Standard - Free Core Edition", "highlight");
-        addToQueue('A site for Laser Chess Standard for free. Uses <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">Thinkfun Rules</a>.', "system-msg");
+        addToQueue('This is a site for Laser Chess Standard for free. Here are the <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">rules</a>.', "system-msg");
+        addToQueue("Note: Due to limitations, threefold repetition won't be used.", "system-msg");
         
-        const rules = document.createElement('div');
-        rules.className = "rules-box";
-        rules.innerHTML = "<strong>RULES:</strong> Move or Rotate one piece per turn, then fire laser.<br>" +
-                          "Hits on non-mirrored surfaces eliminate pieces. King hit = Game Over.<br>" +
-                          "<em>Note: Threefold repetition is disabled due to platform limitations.</em>";
-        log.appendChild(rules);
-
         addToQueue("IDENTITY NOTICE:", "highlight");
         addToQueue("This is a temporary identity. It is deleted 24H after its last move.", "system-msg");
-        addToQueue("No ratings or long-term data are stored.", "system-msg");
+        addToQueue("No ratings or long-term stats are stored.", "system-msg");
         
         addToQueue("Session Username (max 20):", "", true);
     };
