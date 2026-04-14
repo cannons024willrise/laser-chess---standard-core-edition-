@@ -2,64 +2,32 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Laser Chess - Standard Version (Core Edition)</title>
+    <title>Laser Chess - Branch A Auth</title>
     <style>
         @font-face {
             font-family: 'Unifont';
             src: url('unifont-15.0.01.ttf') format('truetype');
-            font-weight: normal;
-            font-style: normal;
         }
 
         body {
             background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
-            color: #b0b0b0; 
-            font-family: 'Unifont', monospace;
-            font-size: 16px;
-            image-rendering: pixelated;
-            -webkit-font-smoothing: none;
-            margin: 0;
-            padding: 30px;
-            overflow-x: hidden;
-            background-attachment: fixed;
+            color: #b0b0b0; font-family: 'Unifont', monospace;
+            font-size: 16px; margin: 0; padding: 30px;
         }
 
-        #terminal-log {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            line-height: 1.5;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .input-wrapper {
-            display: flex;
-            align-items: baseline;
-            width: 100%;
-            margin-top: 2px;
-            margin-bottom: 5px;
-        }
-
+        #terminal-log { display: flex; flex-direction: column; }
+        .input-wrapper { display: flex; align-items: baseline; margin-top: 5px; }
         .user-input-line {
-            background: transparent;
-            border: none;
-            color: #00ff00;
-            font-family: 'Unifont', monospace;
-            font-size: 16px;
-            outline: none;
-            flex-grow: 1;
-            margin-left: 8px;
-            padding: 0;
-            caret-color: #00ff00;
+            background: transparent; border: none; color: #00ff00;
+            font-family: 'Unifont', monospace; font-size: 16px;
+            outline: none; flex-grow: 1; margin-left: 8px;
         }
 
-        .txt-red { color: #ff4444; font-weight: bold; }
-        .txt-blue { color: #4444ff; font-weight: bold; }
-        .system-msg { color: #555555; display: block; margin-bottom: 5px; }
-        .success-msg { color: #00ff00; font-weight: bold; display: block; margin-bottom: 5px; }
-        .error-msg { color: #ff5555; display: block; margin-bottom: 5px; }
-        .highlight { color: #ffffff; display: block; margin-bottom: 5px; }
-        .history-line { display: block; margin-bottom: 5px; }
+        .system-msg { color: #666; margin-bottom: 5px; }
+        .success-msg { color: #00ff00; font-weight: bold; }
+        .error-msg { color: #ff5555; }
+        .highlight { color: #ffffff; margin-bottom: 10px; }
+        .rules-box { color: #888; border: 1px solid #333; padding: 10px; margin: 15px 0; font-size: 14px; background: rgba(0,0,0,0.3); }
     </style>
 </head>
 <body>
@@ -84,201 +52,89 @@
     const db = firebase.database();
 
     const log = document.getElementById('terminal-log');
-    let msgQueue = [];
-    let isProcessing = false;
     let currentState = "USERNAME";
     let tempUser = "";
-    let tempMode = "";
-
-    function colorize(text) {
-        return text.replace(/(red|blue)/gi, (match) => {
-            const cls = match.toLowerCase() === 'red' ? 'txt-red' : 'txt-blue';
-            return `<span class="${cls}">${match}</span>`;
-        });
-    }
 
     function addToQueue(text, className = "", isRequest = false) {
-        msgQueue.push({ text, className, isRequest });
-        if (!isProcessing) processQueue();
-    }
-
-    async function processQueue() {
-        isProcessing = true;
-        while (msgQueue.length > 0) {
-            const item = msgQueue.shift();
-            if (item.isRequest) {
-                await typeLineInline(item.text, item.className);
-            } else {
-                await typeLineSimple(item.text, item.className);
-            }
-        }
-        isProcessing = false;
-    }
-
-    function typeLineSimple(text, className) {
-        return new Promise((resolve) => {
-            const div = document.createElement('div');
-            div.className = className + " history-line";
-            log.appendChild(div);
-            let i = 0;
-            const timer = setInterval(() => {
-                if (i < text.length) {
-                    div.textContent += text.charAt(i);
-                    i++;
-                } else {
-                    clearInterval(timer);
-                    div.innerHTML = colorize(div.textContent);
-                    window.scrollTo(0, document.body.scrollHeight);
-                    resolve();
-                }
-            }, 15);
-        });
-    }
-
-    function typeLineInline(text, className) {
-        return new Promise((resolve) => {
+        const div = document.createElement(isRequest ? 'div' : 'span');
+        if (isRequest) {
             const wrapper = document.createElement('div');
-            wrapper.className = "input-wrapper history-line " + className;
+            wrapper.className = "input-wrapper";
             const label = document.createElement('span');
-            wrapper.appendChild(label);
+            label.textContent = text;
             const input = document.createElement('input');
             input.type = "text";
             input.className = "user-input-line";
-            input.autocomplete = "off";
-            input.spellcheck = false;
-            input.disabled = true; 
+            input.maxLength = 20;
+            wrapper.appendChild(label);
             wrapper.appendChild(input);
             log.appendChild(wrapper);
-
-            let i = 0;
-            const timer = setInterval(() => {
-                if (i < text.length) {
-                    label.textContent += text.charAt(i);
-                    i++;
-                } else {
-                    clearInterval(timer);
-                    label.innerHTML = colorize(label.textContent);
-                    input.disabled = false;
-                    input.focus();
-                    window.scrollTo(0, document.body.scrollHeight);
-                    const handleEnter = (e) => {
-                        if (e.key === 'Enter') {
-                            const val = input.value.trim();
-                            input.disabled = true;
-                            input.removeEventListener('keydown', handleEnter);
-                            handleStateLogic(val);
-                            resolve();
-                        }
-                    };
-                    input.addEventListener('keydown', handleEnter);
+            input.focus();
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    const val = input.value.trim();
+                    input.disabled = true;
+                    handleStateLogic(val);
                 }
-            }, 20);
-        });
+            });
+        } else {
+            const line = document.createElement('div');
+            line.className = className;
+            line.textContent = text;
+            log.appendChild(line);
+        }
+        window.scrollTo(0, document.body.scrollHeight);
     }
 
     function handleStateLogic(val) {
-        switch(currentState) {
-            case "USERNAME":
-                tempUser = val;
-                currentState = "PASSWORD";
-                addToQueue("Session Password:", "", true);
-                break;
-            case "PASSWORD":
-                localStorage.setItem('session_user', tempUser);
-                localStorage.setItem('session_pass', val);
-                addToQueue("Local Session established.", "success-msg");
-                addToQueue("R: Public Red   | B: Public Blue");
-                addToQueue("PR: Private Red | PB: Private Blue");
-                addToQueue("Choose Mode:", "", true);
-                currentState = "MODE_SELECT";
-                break;
-            case "MODE_SELECT":
-                tempMode = val.toUpperCase();
-                if (tempMode === "R" || tempMode === "B") {
-                    submitLobbyRequest(tempMode.toLowerCase());
-                } else if (tempMode === "PR" || tempMode === "PB") {
-                    currentState = "UUID_INPUT";
-                    addToQueue("Enter 24H Game UUID:", "", true);
-                } else {
-                    addToQueue("INVALID MODE. R/B/PR/PB ONLY.", "error-msg");
-                    addToQueue("Choose Mode:", "", true);
-                }
-                break;
-            case "UUID_INPUT":
-                performHandshake(val);
-                break;
+        if (currentState === "USERNAME") {
+            if (val.length === 0) return addToQueue("Username required:", "error-msg", true);
+            tempUser = val;
+            currentState = "PASSWORD";
+            addToQueue("Session Password (max 20):", "", true);
+        } else if (currentState === "PASSWORD") {
+            if (val.length === 0) return addToQueue("Password required:", "error-msg", true);
+            registerBranchA(tempUser, val);
         }
     }
 
-    function submitLobbyRequest(colorCode) {
-        // Use ServerValue.TIMESTAMP to satisfy the Rule: $time == String(now)
-        const tsRef = db.ref('requests').push(); 
-        const u = localStorage.getItem('session_user');
-        const p = localStorage.getItem('session_pass');
+    function registerBranchA(u, p) {
+        addToQueue("WRITING TO BRANCH A...", "system-msg");
         
-        addToQueue(`TRANSMITTING REQUEST [${colorCode.toUpperCase()}]...`, "system-msg");
-        
-        // Manual key setting to match the server-time requirement if using simple set
-        // For production, we'd use a cloud function or exact server sync
-        const timestampKey = Date.now().toString();
+        // Final Branch A Schema: username { password, lastplayed }
+        const branchAData = {
+            password: p,
+            lastplayed: Math.floor(Date.now()) // Integer timestamp
+        };
 
-        db.ref('requests/' + timestampKey).set({
-            "0": colorCode,
-            "1": u,
-            "2": p
-        }).then(() => {
-            addToQueue("REQUEST QUEUED. Awaiting match...", "success-msg");
-            pollForMatch(timestampKey);
+        db.ref('a/' + u).set(branchAData).then(() => {
+            localStorage.setItem('session_user', u);
+            localStorage.setItem('session_pass', p);
+            addToQueue("IDENTITY ESTABLISHED. BRANCH A LOCKED.", "success-msg");
+            addToQueue("Credentials cached in local storage.", "system-msg");
         }).catch(err => {
-            addToQueue("DENIED: SERVER TIME MISMATCH OR COLLISION.", "error-msg");
-            addToQueue("Choose Mode:", "", true);
-            currentState = "MODE_SELECT";
-        });
-    }
-
-    function pollForMatch(timestampKey) {
-        // Listen for a 'g' (game) key to appear on our request node
-        db.ref('requests/' + timestampKey + '/g').on('value', snap => {
-            if (snap.exists()) {
-                const uuid = snap.val();
-                addToQueue(`MATCH FOUND: ${uuid}`, "success-msg");
-                performHandshake(uuid);
-                db.ref('requests/' + timestampKey).off(); // Stop listening
-            }
-        });
-    }
-
-    function performHandshake(uuid) {
-        const isRed = (tempMode === 'R' || tempMode === 'PR');
-        const userKey = isRed ? '1' : '3';
-        const passKey = isRed ? '2' : '4';
-
-        addToQueue(`CONTACTING NODE ${uuid}...`, "system-msg");
-
-        db.ref('games/' + uuid).once('value').then(snap => {
-            if (snap.exists()) {
-                const data = snap.val();
-                const localUser = localStorage.getItem('session_user');
-                const localPass = localStorage.getItem('session_pass');
-
-                if (data[passKey] === localPass && data[userKey] === localUser) {
-                    addToQueue("HANDSHAKE SUCCESSFUL.", "success-msg");
-                    addToQueue("STATE_HEX: " + data['0'].substring(0, 48) + "...", "highlight");
-                } else {
-                    addToQueue("DENIED: AUTH MISMATCH.", "error-msg");
-                    addToQueue("Enter 24H Game UUID:", "", true);
-                }
-            } else {
-                addToQueue("ERROR: INVALID UUID.", "error-msg");
-                addToQueue("Enter 24H Game UUID:", "", true);
-            }
+            addToQueue("IDENTITY CONFLICT: USERNAME ALREADY TAKEN.", "error-msg");
+            currentState = "USERNAME";
+            addToQueue("Session Username (max 20):", "", true);
         });
     }
 
     window.onload = () => {
-        addToQueue("Laser Chess - Standard Version (Core Edition)", "highlight");
-        addToQueue("Initializing terminal instance...", "system-msg");
-        addToQueue("Session Username:", "", true);
+        addToQueue("Laser Chess Standard - Free Core Edition", "highlight");
+        addToQueue("A site for Laser Chess Standard for free. Uses Thinkfun Rules.", "system-msg");
+        
+        const rules = document.createElement('div');
+        rules.className = "rules-box";
+        rules.innerHTML = "<strong>RULES:</strong> Move or Rotate one piece per turn, then fire laser.<br>" +
+                          "Hits on non-mirrored surfaces eliminate pieces. King hit = Game Over.<br>" +
+                          "<em>Note: Threefold repetition is disabled due to platform limitations.</em>";
+        log.appendChild(rules);
+
+        addToQueue("IDENTITY NOTICE:", "highlight");
+        addToQueue("This is a temporary identity. It is deleted 24H after its last move.", "system-msg");
+        addToQueue("No ratings or long-term data are stored.", "system-msg");
+        
+        addToQueue("Session Username (max 20):", "", true);
     };
 </script>
 </body>
