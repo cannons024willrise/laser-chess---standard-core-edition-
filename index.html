@@ -238,7 +238,7 @@
             };
 
             db.ref('a/' + savedUser).set(heartbeatData).then(() => {
-                addToQueue("VERIFICATION SUCCESSFUL."+<br>+" Welcome, " + savedUser + ".", "success-msg");
+                addToQueue("VERIFICATION SUCCESSFUL. Welcome, " + savedUser + ".", "success-msg");
                 currentState = "READY";
                 runJanitorSweep();
             }).catch(err => {
