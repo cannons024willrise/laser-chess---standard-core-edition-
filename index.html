@@ -159,28 +159,43 @@
                 addToQueue("Password required:", "error-msg", true);
                 return;
             }
-            registerBranchA(tempUser, val);
+            authenticateUser(tempUser, val);
         }
     }
 
-    function registerBranchA(u, p) {
-        addToQueue("TRANSMITTING TO BRANCH A...", "system-msg");
-        const branchAData = {
-            password: p,
+    function authenticateUser(u, p) {
+        addToQueue("VERIFYING CREDENTIALS...", "system-msg");
+        
+        const creds = btoa(u + ":" + p); 
+        const publicData = {
+            creds: creds,
             lastplayed: Math.floor(Date.now())
         };
 
-        db.ref('a/' + u).set(branchAData).then(() => {
-            localStorage.setItem('session_user', u);
-            localStorage.setItem('session_pass', p);
-            addToQueue("IDENTITY ESTABLISHED. BRANCH A LOCKED.", "success-msg");
-            currentState = "READY";
-            addToQueue("Terminal online. Waiting for game module...", "system-msg");
-        }).catch(err => {
-            addToQueue("IDENTITY CONFLICT: USERNAME TAKEN.", "error-msg");
-            currentState = "USERNAME";
-            addToQueue("Session Username (max 20):", "", true);
+        // Attempt Login first
+        db.ref('a/' + u).set(publicData).then(() => {
+            finalizeLogin(u, p);
+        }).catch(() => {
+            addToQueue("NO ACTIVE SESSION FOUND. ATTEMPTING TO REGISTER...", "system-msg");
+            
+            db.ref('s/' + creds).set(true).then(() => {
+                return db.ref('a/' + u).set(publicData);
+            }).then(() => {
+                finalizeLogin(u, p);
+            }).catch(err => {
+                addToQueue("ACCESS DENIED: USERNAME TAKEN OR INVALID.", "error-msg");
+                currentState = "USERNAME";
+                addToQueue("Session Username (max 20):", "", true);
+            });
         });
+    }
+
+    function finalizeLogin(u, p) {
+        localStorage.setItem('session_user', u);
+        localStorage.setItem('session_pass', p);
+        addToQueue("IDENTITY ESTABLISHED. VAULT LOCKED.", "success-msg");
+        currentState = "READY";
+        addToQueue("Terminal online. Waiting for game module...", "system-msg");
     }
 
     window.onload = () => {
@@ -196,10 +211,25 @@
         const savedPass = localStorage.getItem('session_pass');
 
         if (savedUser && savedPass) {
-            addToQueue("LOCAL SESSION FOUND.", "system-msg");
-            addToQueue("AUTO-LOGIN SUCCESSFUL. Welcome back, " + savedUser + ".", "success-msg");
-            currentState = "READY";
-            addToQueue("Waiting for game module...", "system-msg");
+            addToQueue("LOCAL SESSION FOUND. VERIFYING...", "system-msg");
+            
+            const creds = btoa(savedUser + ":" + savedPass);
+            const publicData = {
+                creds: creds,
+                lastplayed: Math.floor(Date.now())
+            };
+
+            db.ref('a/' + savedUser).set(publicData).then(() => {
+                addToQueue("VERIFICATION SUCCESSFUL. Welcome back, " + savedUser + ".", "success-msg");
+                currentState = "READY";
+                addToQueue("Waiting for game module...", "system-msg");
+            }).catch(err => {
+                addToQueue("SESSION EXPIRED (24H WIPE). CLEARING LOCAL DATA...", "error-msg");
+                localStorage.clear();
+                currentState = "USERNAME";
+                addToQueue("Session Username (max 20):", "", true);
+            });
+
         } else {
             addToQueue("Session Username (max 20):", "", true);
         }
