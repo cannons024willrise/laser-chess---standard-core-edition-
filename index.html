@@ -191,9 +191,9 @@
     function finalizeLogin(u, p) {
         localStorage.setItem('session_user', u);
         localStorage.setItem('session_pass', p);
-        addToQueue("IDENTITY ESTABLISHED. VAULT LOCKED.", "success-msg");
+        addToQueue("TEMPORARY ACCOUNT CREATED", "success-msg");
         currentState = "READY";
-        addToQueue("Terminal online. Scanning for stale sessions...", "system-msg");
+        addToQueue("Scanning for stale sessions...", "system-msg");
         runJanitorSweep();
     }
 
@@ -224,7 +224,7 @@
     window.onload = () => {
         addToQueue("Laser Chess - Standard Version (Core Edition)", "highlight");
         addToQueue('Site for Laser Chess. <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">Rules</a>.', "system-msg");
-        addToQueue("IDENTITY NOTICE: 24H Auto-Wipe active.", "highlight");
+        addToQueue("IDENTITY NOTICE: ANY ACCOUNT WHICH PLAYED IT'S LAST MOVE 24 HOURS AGO WILL BE DELETED. NO RATINGS OR STAS ARE STORED IN THE CORE EDITION.", "highlight");
 
         const savedUser = localStorage.getItem('session_user');
         const savedPass = localStorage.getItem('session_pass');
