@@ -18,16 +18,19 @@
 
         #terminal-log { display: flex; flex-direction: column; }
         .input-wrapper { display: flex; align-items: baseline; margin-top: 5px; }
+        
+        /* NO GREEN - EVERYTHING HIGHLIGHTED WHITE */
         .user-input-line {
-            background: transparent; border: none; color: #00ff00;
+            background: transparent; border: none; color: #ffffff;
             font-family: 'Unifont', monospace; font-size: 16px;
-            outline: none; flex-grow: 1; margin-left: 8px; caret-color: #00ff00;
+            outline: none; flex-grow: 1; margin-left: 8px; caret-color: #ffffff;
         }
 
         .system-msg { color: #666; margin-bottom: 5px; }
-        .success-msg { color: #00ff00; font-weight: bold; margin-bottom: 5px; }
+        /* NO GREEN - SUCCESS IS NOW WHITE */
+        .success-msg { color: #ffffff; font-weight: bold; margin-bottom: 5px; }
         .error-msg { color: #ff5555; margin-bottom: 5px; }
-        .highlight { color: #ffffff; margin-bottom: 10px; }
+        .highlight { color: #ffffff; margin-bottom: 10px; font-weight: bold; }
         .rules-link { color: #4444ff; text-decoration: underline; font-weight: bold; }
         .history-line { margin-bottom: 5px; }
     </style>
@@ -80,9 +83,7 @@
     function typeLineSimple(text, className) {
         return new Promise((resolve) => {
             const div = document.createElement('div');
-            if (className) div.className = className + " history-line";
-            else div.className = "history-line";
-            
+            div.className = (className || "") + " history-line";
             log.appendChild(div);
 
             const tempDiv = document.createElement('div');
@@ -100,15 +101,14 @@
                     window.scrollTo(0, document.body.scrollHeight);
                     resolve();
                 }
-            }, 15);
+            }, 12);
         });
     }
 
     function typeLineInline(text, className) {
         return new Promise((resolve) => {
             const wrapper = document.createElement('div');
-            wrapper.className = "input-wrapper history-line";
-            if (className) wrapper.classList.add(className);
+            wrapper.className = "input-wrapper history-line " + (className || "");
 
             const label = document.createElement('span');
             const input = document.createElement('input');
@@ -143,7 +143,7 @@
                     };
                     input.addEventListener('keydown', handleEnter);
                 }
-            }, 15); 
+            }, 12); 
         });
     }
 
@@ -170,7 +170,7 @@
                 currentState = "USERNAME";
                 addToQueue("Session Username (max 20):", "", true);
             } else {
-                addToQueue("Command not recognized. Waiting for Matchmaking branch.", "system-msg");
+                addToQueue("Command not recognized.", "system-msg");
                 addToQueue("Type 'logout' to clear identity:", "", true);
             }
         }
@@ -187,10 +187,8 @@
             localStorage.setItem('session_user', u);
             localStorage.setItem('session_pass', p);
             addToQueue("IDENTITY ESTABLISHED. BRANCH A LOCKED.", "success-msg");
-            
-            // Advance state so the terminal doesn't hang
             currentState = "LOGGED_IN";
-            addToQueue("Type 'logout' to clear identity, or wait for next module:", "", true);
+            addToQueue("Type 'logout' to clear identity:", "", true);
         }).catch(err => {
             addToQueue("IDENTITY CONFLICT: USERNAME TAKEN.", "error-msg");
             currentState = "USERNAME";
@@ -207,7 +205,6 @@
         addToQueue("This is a temporary identity. It is deleted 24H after its last move.", "system-msg");
         addToQueue("No ratings or long-term stats are stored.", "system-msg");
 
-        // AUTO-LOGIN LOGIC
         const savedUser = localStorage.getItem('session_user');
         const savedPass = localStorage.getItem('session_pass');
 
@@ -215,7 +212,7 @@
             addToQueue("LOCAL SESSION FOUND.", "system-msg");
             addToQueue("AUTO-LOGIN SUCCESSFUL. Welcome back, " + savedUser + ".", "success-msg");
             currentState = "LOGGED_IN";
-            addToQueue("Type 'logout' to clear identity, or wait for next module:", "", true);
+            addToQueue("Type 'logout' to clear identity:", "", true);
         } else {
             addToQueue("Session Username (max 20):", "", true);
         }
