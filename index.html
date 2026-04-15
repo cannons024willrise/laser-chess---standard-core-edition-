@@ -53,6 +53,7 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
+    const SERVER_TIMESTAMP = firebase.database.ServerValue.TIMESTAMP;
 
     const log = document.getElementById('terminal-log');
     let msgQueue = [];
@@ -159,19 +160,24 @@
 
     function authenticateUser(u, p) {
         addToQueue("VERIFYING CREDENTIALS...", "system-msg");
-        const creds = btoa(u + ":" + p); 
-        const publicData = {
-            creds: creds,
-            lastplayed: Date.now()
+        
+        // 1. Attempt standard Login (Heartbeat to 'a')
+        const heartbeatData = {
+            password: p,
+            lastplayed: SERVER_TIMESTAMP
         };
 
-        db.ref('a/' + u).set(publicData).then(() => {
+        db.ref('a/' + u).set(heartbeatData).then(() => {
             finalizeLogin(u, p);
         }).catch(() => {
+            // 2. Login failed. Attempt Multi-Path Registration
             addToQueue("AUTHORIZATION FAILED. ATTEMPTING NEW REGISTRATION...", "system-msg");
-            db.ref('s/' + creds).set(u).then(() => {
-                return db.ref('a/' + u).set(publicData);
-            }).then(() => {
+            
+            const registrationUpdates = {};
+            registrationUpdates['s/' + u] = p; // The vault secret
+            registrationUpdates['a/' + u] = heartbeatData; // The lobby heartbeat
+
+            db.ref().update(registrationUpdates).then(() => {
                 finalizeLogin(u, p);
             }).catch(err => {
                 addToQueue("ACCESS DENIED: INVALID PASSWORD OR USERNAME TAKEN.", "error-msg");
@@ -192,13 +198,24 @@
     }
 
     function runJanitorSweep() {
-        db.ref('a').limitToFirst(5).once('value', snapshot => {
+        // Look at the whole lobby to find stale targets
+        db.ref('a').once('value', snapshot => {
+            const localNow = Date.now();
             snapshot.forEach(child => {
                 const data = child.val();
-                if (Date.now() - data.lastplayed > 86400000) {
-                    db.ref('a/' + child.key).remove()
-                        .then(() => console.log("Janitor cleaned: " + child.key))
-                        .catch(() => {}); // Expected if not expired enough or permissions lack
+                const targetUser = child.key;
+                
+                // If it looks older than 24H locally, attempt the multi-path purge
+                if (localNow - data.lastplayed > 86400000) {
+                    const purgePaths = {};
+                    purgePaths['s/' + targetUser] = null;
+                    purgePaths['a/' + targetUser] = null;
+                    purgePaths['m/' + targetUser] = null;
+                    purgePaths['g/' + targetUser] = null;
+
+                    db.ref().update(purgePaths)
+                        .then(() => console.log("Janitor wiped stale identity: " + targetUser))
+                        .catch(() => {}); // Fails silently if server disagrees on the timestamp
                 }
             });
         });
@@ -214,10 +231,13 @@
 
         if (savedUser && savedPass) {
             addToQueue("LOCAL SESSION FOUND. VERIFYING...", "system-msg");
-            const creds = btoa(savedUser + ":" + savedPass);
-            const publicData = { creds: creds, lastplayed: Date.now() };
+            
+            const heartbeatData = {
+                password: savedPass,
+                lastplayed: SERVER_TIMESTAMP
+            };
 
-            db.ref('a/' + savedUser).set(publicData).then(() => {
+            db.ref('a/' + savedUser).set(heartbeatData).then(() => {
                 addToQueue("VERIFICATION SUCCESSFUL. Welcome, " + savedUser + ".", "success-msg");
                 currentState = "READY";
                 runJanitorSweep();
