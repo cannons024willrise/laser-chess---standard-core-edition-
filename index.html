@@ -172,19 +172,22 @@
             lastplayed: Math.floor(Date.now())
         };
 
-        // Attempt Login (Updates heartbeat in 'a')
+        // Try writing to branch A immediately. 
+        // If the rules are correct, this ONLY works if branch S already contains this creds/user pair.
         db.ref('a/' + u).set(publicData).then(() => {
             finalizeLogin(u, p);
         }).catch(() => {
-            addToQueue("NO ACTIVE SESSION FOUND. ATTEMPTING TO REGISTER...", "system-msg");
+            addToQueue("AUTHORIZATION FAILED. ATTEMPTING NEW REGISTRATION...", "system-msg");
             
-            // REGISTRATION: Set the username as the VALUE in branch S
+            // Try creating the secret link in branch S.
             db.ref('s/' + creds).set(u).then(() => {
+                // Secret created. Now branch A will allow the write.
                 return db.ref('a/' + u).set(publicData);
             }).then(() => {
                 finalizeLogin(u, p);
             }).catch(err => {
-                addToQueue("ACCESS DENIED: USERNAME TAKEN OR INVALID.", "error-msg");
+                addToQueue("ACCESS DENIED: INVALID PASSWORD OR USERNAME TAKEN.", "error-msg");
+                localStorage.clear();
                 currentState = "USERNAME";
                 addToQueue("Session Username (max 20):", "", true);
             });
@@ -220,12 +223,13 @@
                 lastplayed: Math.floor(Date.now())
             };
 
+            // Heartbeat check: If S was deleted, this set() will fail due to rules.
             db.ref('a/' + savedUser).set(publicData).then(() => {
                 addToQueue("VERIFICATION SUCCESSFUL. Welcome back, " + savedUser + ".", "success-msg");
                 currentState = "READY";
                 addToQueue("Waiting for game module...", "system-msg");
             }).catch(err => {
-                addToQueue("SESSION EXPIRED (24H WIPE). CLEARING LOCAL DATA...", "error-msg");
+                addToQueue("SESSION INVALID OR EXPIRED. CLEARING LOCAL DATA...", "error-msg");
                 localStorage.clear();
                 currentState = "USERNAME";
                 addToQueue("Session Username (max 20):", "", true);
