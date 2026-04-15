@@ -19,7 +19,6 @@
         #terminal-log { display: flex; flex-direction: column; }
         .input-wrapper { display: flex; align-items: baseline; margin-top: 5px; }
         
-        /* NO GREEN - EVERYTHING HIGHLIGHTED WHITE */
         .user-input-line {
             background: transparent; border: none; color: #ffffff;
             font-family: 'Unifont', monospace; font-size: 16px;
@@ -27,7 +26,6 @@
         }
 
         .system-msg { color: #666; margin-bottom: 5px; }
-        /* NO GREEN - SUCCESS IS NOW WHITE */
         .success-msg { color: #ffffff; font-weight: bold; margin-bottom: 5px; }
         .error-msg { color: #ff5555; margin-bottom: 5px; }
         .highlight { color: #ffffff; margin-bottom: 10px; font-weight: bold; }
@@ -162,17 +160,6 @@
                 return;
             }
             registerBranchA(tempUser, val);
-        } else if (currentState === "LOGGED_IN") {
-            if (val.toLowerCase() === 'logout') {
-                localStorage.removeItem('session_user');
-                localStorage.removeItem('session_pass');
-                addToQueue("LOCAL CACHE CLEARED. SESSION TERMINATED.", "system-msg");
-                currentState = "USERNAME";
-                addToQueue("Session Username (max 20):", "", true);
-            } else {
-                addToQueue("Command not recognized.", "system-msg");
-                addToQueue("Type 'logout' to clear identity:", "", true);
-            }
         }
     }
 
@@ -187,8 +174,8 @@
             localStorage.setItem('session_user', u);
             localStorage.setItem('session_pass', p);
             addToQueue("IDENTITY ESTABLISHED. BRANCH A LOCKED.", "success-msg");
-            currentState = "LOGGED_IN";
-            addToQueue("Type 'logout' to clear identity:", "", true);
+            currentState = "READY";
+            addToQueue("Terminal online. Waiting for game module...", "system-msg");
         }).catch(err => {
             addToQueue("IDENTITY CONFLICT: USERNAME TAKEN.", "error-msg");
             currentState = "USERNAME";
@@ -211,8 +198,8 @@
         if (savedUser && savedPass) {
             addToQueue("LOCAL SESSION FOUND.", "system-msg");
             addToQueue("AUTO-LOGIN SUCCESSFUL. Welcome back, " + savedUser + ".", "success-msg");
-            currentState = "LOGGED_IN";
-            addToQueue("Type 'logout' to clear identity:", "", true);
+            currentState = "READY";
+            addToQueue("Terminal online. Waiting for game module...", "system-msg");
         } else {
             addToQueue("Session Username (max 20):", "", true);
         }
