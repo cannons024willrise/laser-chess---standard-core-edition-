@@ -83,11 +83,9 @@
             const div = document.createElement('div');
             div.className = (className || "") + " history-line";
             log.appendChild(div);
-
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = text;
             const plainText = tempDiv.textContent;
-
             let i = 0;
             const timer = setInterval(() => {
                 if (i < plainText.length) {
@@ -107,18 +105,15 @@
         return new Promise((resolve) => {
             const wrapper = document.createElement('div');
             wrapper.className = "input-wrapper history-line " + (className || "");
-
             const label = document.createElement('span');
             const input = document.createElement('input');
             input.type = "text";
             input.className = "user-input-line";
             input.maxLength = 20;
             input.disabled = true;
-
             wrapper.appendChild(label);
             wrapper.appendChild(input);
             log.appendChild(wrapper);
-
             let i = 0;
             const timer = setInterval(() => {
                 if (i < text.length) {
@@ -129,7 +124,6 @@
                     input.disabled = false;
                     input.focus();
                     window.scrollTo(0, document.body.scrollHeight);
-
                     const handleEnter = (e) => {
                         if (e.key === 'Enter') {
                             const val = input.value.trim();
@@ -165,23 +159,17 @@
 
     function authenticateUser(u, p) {
         addToQueue("VERIFYING CREDENTIALS...", "system-msg");
-        
         const creds = btoa(u + ":" + p); 
         const publicData = {
             creds: creds,
-            lastplayed: Math.floor(Date.now())
+            lastplayed: Date.now()
         };
 
-        // Try writing to branch A immediately. 
-        // If the rules are correct, this ONLY works if branch S already contains this creds/user pair.
         db.ref('a/' + u).set(publicData).then(() => {
             finalizeLogin(u, p);
         }).catch(() => {
             addToQueue("AUTHORIZATION FAILED. ATTEMPTING NEW REGISTRATION...", "system-msg");
-            
-            // Try creating the secret link in branch S.
             db.ref('s/' + creds).set(u).then(() => {
-                // Secret created. Now branch A will allow the write.
                 return db.ref('a/' + u).set(publicData);
             }).then(() => {
                 finalizeLogin(u, p);
@@ -199,42 +187,46 @@
         localStorage.setItem('session_pass', p);
         addToQueue("IDENTITY ESTABLISHED. VAULT LOCKED.", "success-msg");
         currentState = "READY";
-        addToQueue("Terminal online. Waiting for game module...", "system-msg");
+        addToQueue("Terminal online. Scanning for stale sessions...", "system-msg");
+        runJanitorSweep();
+    }
+
+    function runJanitorSweep() {
+        db.ref('a').limitToFirst(5).once('value', snapshot => {
+            snapshot.forEach(child => {
+                const data = child.val();
+                if (Date.now() - data.lastplayed > 86400000) {
+                    db.ref('a/' + child.key).remove()
+                        .then(() => console.log("Janitor cleaned: " + child.key))
+                        .catch(() => {}); // Expected if not expired enough or permissions lack
+                }
+            });
+        });
     }
 
     window.onload = () => {
         addToQueue("Laser Chess - Standard Version (Core Edition)", "highlight");
-        addToQueue('This is a site for Laser Chess - Standard Version for free. Here are the <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">rules</a>.', "system-msg");
-        addToQueue("Note: Due to limitations, threefold repetition won't be used.", "system-msg");
-        
-        addToQueue("IDENTITY NOTICE:", "highlight");
-        addToQueue("This is a temporary identity. It is deleted 24H after its last move.", "system-msg");
-        addToQueue("No ratings or long-term stats are stored.", "system-msg");
+        addToQueue('Site for Laser Chess. <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">Rules</a>.', "system-msg");
+        addToQueue("IDENTITY NOTICE: 24H Auto-Wipe active.", "highlight");
 
         const savedUser = localStorage.getItem('session_user');
         const savedPass = localStorage.getItem('session_pass');
 
         if (savedUser && savedPass) {
             addToQueue("LOCAL SESSION FOUND. VERIFYING...", "system-msg");
-            
             const creds = btoa(savedUser + ":" + savedPass);
-            const publicData = {
-                creds: creds,
-                lastplayed: Math.floor(Date.now())
-            };
+            const publicData = { creds: creds, lastplayed: Date.now() };
 
-            // Heartbeat check: If S was deleted, this set() will fail due to rules.
             db.ref('a/' + savedUser).set(publicData).then(() => {
-                addToQueue("VERIFICATION SUCCESSFUL. Welcome back, " + savedUser + ".", "success-msg");
+                addToQueue("VERIFICATION SUCCESSFUL. Welcome, " + savedUser + ".", "success-msg");
                 currentState = "READY";
-                addToQueue("Waiting for game module...", "system-msg");
+                runJanitorSweep();
             }).catch(err => {
-                addToQueue("SESSION INVALID OR EXPIRED. CLEARING LOCAL DATA...", "error-msg");
+                addToQueue("SESSION INVALID OR EXPIRED.", "error-msg");
                 localStorage.clear();
                 currentState = "USERNAME";
                 addToQueue("Session Username (max 20):", "", true);
             });
-
         } else {
             addToQueue("Session Username (max 20):", "", true);
         }
