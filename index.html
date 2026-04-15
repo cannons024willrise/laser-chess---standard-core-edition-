@@ -2,17 +2,23 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Laser Chess - Standard Version (Core Edition)</title>
     <style>
         @font-face {
             font-family: 'Unifont';
             src: url('unifont-15.0.01.ttf') format('truetype');
+            font-display: block; /* Prevents fallback font swap flicker */
         }
 
         body {
             background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
-            color: #b0b0b0; font-family: 'Unifont', monospace;
-            font-size: 16px; margin: 0; padding: 30px; line-height: 1.6;
+            color: #b0b0b0; 
+            font-family: 'Unifont', monospace;
+            font-size: 16px; 
+            margin: 0; 
+            padding: 30px; 
+            line-height: 1.6;
             image-rendering: pixelated;
         }
 
@@ -161,7 +167,6 @@
     function authenticateUser(u, p) {
         addToQueue("VERIFYING CREDENTIALS...", "system-msg");
         
-        // 1. Attempt standard Login (Heartbeat to 'a')
         const heartbeatData = {
             password: p,
             lastplayed: SERVER_TIMESTAMP
@@ -170,12 +175,11 @@
         db.ref('a/' + u).set(heartbeatData).then(() => {
             finalizeLogin(u, p);
         }).catch(() => {
-            // 2. Login failed. Attempt Multi-Path Registration
             addToQueue("AUTHORIZATION FAILED. ATTEMPTING NEW REGISTRATION...", "system-msg");
             
             const registrationUpdates = {};
-            registrationUpdates['s/' + u] = p; // The vault secret
-            registrationUpdates['a/' + u] = heartbeatData; // The lobby heartbeat
+            registrationUpdates['s/' + u] = p;
+            registrationUpdates['a/' + u] = heartbeatData;
 
             db.ref().update(registrationUpdates).then(() => {
                 finalizeLogin(u, p);
@@ -198,30 +202,37 @@
     }
 
     function runJanitorSweep() {
-        // Look at the whole lobby to find stale targets
         db.ref('a').once('value', snapshot => {
             const localNow = Date.now();
             snapshot.forEach(child => {
                 const data = child.val();
                 const targetUser = child.key;
-                
-                // If it looks older than 24H locally, attempt the multi-path purge
                 if (localNow - data.lastplayed > 86400000) {
                     const purgePaths = {};
                     purgePaths['s/' + targetUser] = null;
                     purgePaths['a/' + targetUser] = null;
                     purgePaths['m/' + targetUser] = null;
                     purgePaths['g/' + targetUser] = null;
-
-                    db.ref().update(purgePaths)
-                        .then(() => console.log("Janitor wiped stale identity: " + targetUser))
-                        .catch(() => {}); // Fails silently if server disagrees on the timestamp
+                    db.ref().update(purgePaths).catch(() => {});
                 }
             });
         });
     }
 
+    // MAIN ENTRY POINT: Waits for the font to load before processing the queue
     window.onload = () => {
+        // FontFaceSet API check
+        if (document.fonts) {
+            document.fonts.ready.then(() => {
+                startTerminal();
+            });
+        } else {
+            // Fallback for older browsers
+            startTerminal();
+        }
+    };
+
+    function startTerminal() {
         addToQueue("Laser Chess - Standard Version (Core Edition)", "highlight");
         addToQueue('Site for Laser Chess. <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">Rules</a>.', "system-msg");
         addToQueue("IDENTITY NOTICE: ANY ACCOUNT WHICH PLAYED IT'S LAST MOVE 24 HOURS AGO WILL BE DELETED. NO RATINGS OR STATS ARE STORED IN THE CORE EDITION.", "highlight");
@@ -250,7 +261,7 @@
         } else {
             addToQueue("Session Username (max 20):", "", true);
         }
-    };
+    }
 </script>
 </body>
 </html>
