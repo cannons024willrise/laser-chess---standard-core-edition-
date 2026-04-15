@@ -8,7 +8,7 @@
         @font-face {
             font-family: 'Unifont';
             src: url('unifont-15.0.01.ttf') format('truetype');
-            font-display: block; /* Prevents fallback font swap flicker */
+            font-display: block; /* Ensures text is invisible until font is ready */
         }
 
         body {
@@ -219,20 +219,25 @@
         });
     }
 
-    // MAIN ENTRY POINT: Waits for the font to load before processing the queue
-    window.onload = () => {
-        // FontFaceSet API check
+    /**
+     * FONT LOADING GUARD
+     * Ensures Unifont is fully loaded and ready before typing starts.
+     */
+    async function startTerminalWhenReady() {
         if (document.fonts) {
-            document.fonts.ready.then(() => {
-                startTerminal();
-            });
-        } else {
-            // Fallback for older browsers
-            startTerminal();
+            // Wait for 'Unifont' specifically to be loaded at 16px
+            try {
+                // Ensure the font-face is loaded and processed
+                await document.fonts.load('16px Unifont');
+                await document.fonts.ready;
+            } catch (e) {
+                console.warn("Font loading failed, falling back to default.");
+            }
         }
-    };
+        initTerminalSequence();
+    }
 
-    function startTerminal() {
+    function initTerminalSequence() {
         addToQueue("Laser Chess - Standard Version (Core Edition)", "highlight");
         addToQueue('Site for Laser Chess. <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">Rules</a>.', "system-msg");
         addToQueue("IDENTITY NOTICE: ANY ACCOUNT WHICH PLAYED IT'S LAST MOVE 24 HOURS AGO WILL BE DELETED. NO RATINGS OR STATS ARE STORED IN THE CORE EDITION.", "highlight");
@@ -262,6 +267,10 @@
             addToQueue("Session Username (max 20):", "", true);
         }
     }
+
+    // Initialize only after window load AND font load
+    window.onload = startTerminalWhenReady;
+
 </script>
 </body>
 </html>
