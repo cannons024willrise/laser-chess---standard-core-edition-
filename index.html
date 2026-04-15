@@ -206,25 +206,24 @@
     function executeMatchmaking(cmd) {
         const pass = localStorage.getItem('session_pass');
         let color = -1; // 0=Blue, 1=Red
-        let isPrivate = false;
+        let branch = "";
 
-        if (cmd === "R") color = 1;
-        else if (cmd === "B") color = 0;
-        else if (cmd === "PR") { color = 1; isPrivate = true; }
-        else if (cmd === "PB") { color = 0; isPrivate = true; }
+        if (cmd === "R") { color = 1; branch = "U"; }
+        else if (cmd === "B") { color = 0; branch = "U"; }
+        else if (cmd === "PR") { color = 1; branch = "R"; }
+        else if (cmd === "PB") { color = 0; branch = "R"; }
         else {
             addToQueue("INVALID COMMAND. ENTER R, B, PR, OR PB:", "error-msg", true);
             return;
         }
 
-        const modeLabel = (isPrivate ? "PRIVATE " : "PUBLIC ") + (color === 1 ? "RED" : "BLUE");
+        const modeLabel = (branch === "R" ? "PRIVATE " : "PUBLIC ") + (color === 1 ? "RED" : "BLUE");
         addToQueue(`INITIALIZING ${modeLabel} REQUEST...`, "system-msg");
 
-        // Rules check branch 's' using 'password' written to 'm'
-        db.ref('m/' + tempUser).set({
+        // Targeted write to m/U or m/R
+        db.ref(`m/${branch}/${tempUser}`).set({
             password: pass,
             color: color,
-            private: isPrivate,
             time: SERVER_TIMESTAMP
         }).then(() => {
             addToQueue("MATCHMAKING LIVE. WAITING FOR PEER...", "success-msg");
@@ -241,7 +240,9 @@
                 if (now - child.val().lastplayed > 86400000) {
                     const u = child.key;
                     const p = {};
-                    p['s/'+u]=null; p['a/'+u]=null; p['m/'+u]=null; p['g/'+u]=null;
+                    p['s/'+u]=null; p['a/'+u]=null; 
+                    p['m/U/'+u]=null; p['m/R/'+u]=null; // Updated paths
+                    p['g/'+u]=null;
                     db.ref().update(p).catch(() => {});
                 }
             });
