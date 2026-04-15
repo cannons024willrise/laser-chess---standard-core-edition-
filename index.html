@@ -172,13 +172,14 @@
             lastplayed: Math.floor(Date.now())
         };
 
-        // Attempt Login first
+        // Attempt Login (Updates heartbeat in 'a')
         db.ref('a/' + u).set(publicData).then(() => {
             finalizeLogin(u, p);
         }).catch(() => {
             addToQueue("NO ACTIVE SESSION FOUND. ATTEMPTING TO REGISTER...", "system-msg");
             
-            db.ref('s/' + creds).set(true).then(() => {
+            // REGISTRATION: Set the username as the VALUE in branch S
+            db.ref('s/' + creds).set(u).then(() => {
                 return db.ref('a/' + u).set(publicData);
             }).then(() => {
                 finalizeLogin(u, p);
