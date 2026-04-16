@@ -2,92 +2,96 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TESTING RENDERER</title>
+    <title>KHET_CLI_MANUAL_RENDER</title>
     <style>
         body { 
             background: #000; 
-            color: #aaa; 
+            color: #0f0; 
             font-family: 'Courier New', Courier, monospace; 
-            padding: 20px;
-            line-height: 1.2;
+            padding: 30px;
         }
         pre {
-            font-size: 24px;
-            letter-spacing: 4px;
+            font-size: 28px;
+            line-height: 1.1;
+            letter-spacing: 2px;
+            background: #050505;
+            padding: 20px;
+            display: inline-block;
+            border: 1px solid #222;
         }
-        .blue { color: #00ffff; font-weight: bold; }
-        .red  { color: #ff0000; font-weight: bold; }
-        .dim  { color: #333; }
-        .header { color: #0f0; margin-bottom: 20px; font-size: 16px; }
+        .b { color: #00d4ff; font-weight: bold; } /* Blue/Silver */
+        .r { color: #ff3333; font-weight: bold; } /* Red */
+        .d { color: #222; } /* Empty Dot */
+        .ui { color: #555; font-size: 14px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
-<div class="header">
-    > INITIALIZING KHET_OS...<br>
-    > PARSING 157_DIGIT_STREAM...<br>
-    > BOARD_DIM: 10X8<br>
-    > STATUS: <span id="turn"></span>
+<div class="ui">
+    [ SYSTEM READY ]<br>
+    FORMAT: ID(1) TYPE(1) X(1) Y(1) R(1) S(1)<br>
+    TYPE MAP: 0-4=BLUE | 5-9=RED
 </div>
 
-<pre id="output"></pre>
+<pre id="screen"></pre>
 
 <script>
-    const state = "0147010250010397110400410543210644110753110854210937111040411157111260411332111421411523411603211724111804311993112073312194412274212367212421312529112670410";
+    /** * MANUALLY INPUT YOUR STRING HERE 
+     * 157 digits (26 pieces * 6 digits + 1 turn digit)
+     */
+    const inputString = "0147010250010397110400410543210644110753110854210937111040411157111260411332111421411523411603211724111804311993112073312194412274212367212421312529112670410";
 
-    const getSymbol = (id, rot) => {
+    const getSymbol = (type, rot) => {
         const r = rot % 4;
-        if (id <= 2) return "◈"; // KING
-        if (id <= 4) return ["⫝", "⟜", "Ͳ", "Ð"][r]; // LASER
-        if (id <= 8) return (r % 2 === 0) ? "⟋" : "⟍"; // SWITCH
-        if (id <= 12) return ["⬒", "◨", "⬓", "◧"][r]; // DEFENDER
-        return ["◤", "◥", "◢", "◣"][r]; // DEFLECTOR
+        switch(type) {
+            case 0: case 5: return "◈"; // KINGS
+            case 1: case 6: return ["⫝", "⟜", "Ͳ", "Ð"][r]; // LASERS
+            case 2: case 7: return (r % 2 === 0) ? "⟋" : "⟍"; // SWITCHES
+            case 3: case 8: return ["⬒", "◨", "⬓", "◧"][r]; // DEFENDERS
+            case 4: case 9: return ["◤", "◥", "◢", "◣"][r]; // DEFLECTORS
+            default: return "?";
+        }
     };
 
     const grid = Array(8).fill(0).map(() => Array(10).fill(null));
 
-    // Process 26 pieces
+    // Process 26 pieces using the 6-digit block: ID TYPE X Y R S
     for (let i = 0; i < 26; i++) {
-        const chunk = state.substr(i * 6, 6);
-        const id    = parseInt(chunk.substr(0, 2));
-        const x     = parseInt(chunk.substr(2, 1));
-        const y     = parseInt(chunk.substr(3, 1));
-        const rot   = parseInt(chunk.substr(4, 1));
+        const block = inputString.substr(i * 6, 6);
+        if (block.length < 6) continue;
+
+        const id   = parseInt(block[0]);
+        const type = parseInt(block[1]);
+        const x    = parseInt(block[2]);
+        const y    = parseInt(block[3]);
+        const r    = parseInt(block[4]);
+        const s    = parseInt(block[5]);
 
         if (y < 8 && x < 10) {
-            // ODD = BLUE, EVEN = RED
-            const colorClass = (id % 2 !== 0) ? "blue" : "red";
-            grid[y][x] = { char: getSymbol(id, rot), color: colorClass };
+            // Type 0-4 = Blue, 5-9 = Red
+            const side = (type <= 4) ? "b" : "r";
+            grid[y][x] = { char: getSymbol(type, r), side: side };
         }
     }
 
-    const output = document.getElementById('output');
-    let frame = "";
-
-    // Header Coordinates
-    frame += "  0 1 2 3 4 5 6 7 8 9\n";
-
+    let out = "  0 1 2 3 4 5 6 7 8 9\n";
     for (let y = 7; y >= 0; y--) {
-        frame += y + " "; // Row label
+        out += y + " ";
         for (let x = 0; x < 10; x++) {
             const cell = grid[y][x];
             if (cell) {
-                frame += `<span class="${cell.color}">${cell.char}</span> `;
+                out += `<span class="${cell.side}">${cell.char}</span> `;
             } else {
-                frame += `<span class="dim">·</span> `;
+                out += `<span class="d">·</span> `;
             }
         }
-        frame += "\n";
+        out += "\n";
     }
 
-    output.innerHTML = frame;
+    const turnDigit = inputString.slice(-1);
+    out += `\n> TURN: ${turnDigit === "0" ? '<span class="b">BLUE</span>' : '<span class="r">RED</span>'}`;
 
-    // Turn indicator
-    const turnDigit = state.slice(-1);
-    const turnEl = document.getElementById('turn');
-    turnEl.innerHTML = turnDigit === "0" ? "SILVER_READY" : "RED_READY";
-    turnEl.className = turnDigit === "0" ? "blue" : "red";
-
+    document.getElementById('screen').innerHTML = out;
 </script>
 </body>
 </html>
