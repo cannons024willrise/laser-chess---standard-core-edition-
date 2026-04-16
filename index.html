@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>KHET_ULTIMATE_ASCII_RENDERER</title>
+    <title>KHET_ULTIMATE_ASCII_RENDERER_PATCHED</title>
     <style>
         @font-face {
             font-family: 'Unifont';
@@ -114,35 +114,34 @@
     const turnInfo = document.getElementById('turn-info');
 
     const getSymbol = (type, rot) => {
+        // Coerce to integer just to be absolutely safe
+        const r = parseInt(rot, 10);
+
         switch(type) {
             case 0: case 5: 
-                return "◈"; // King (Unrotatable)
+                return "◈"; // King (Unrotatable, ignores R)
             
             case 1: case 6: // Laser
-                if (rot === 1) return "⫝"; // N
-                if (rot === 2) return "⟜"; // E
-                if (rot === 3) return "Ͳ"; // S
-                if (rot === 4) return "Ð"; // W
-                return "?"; 
+                if (r === 2) return "⟜"; // E
+                if (r === 3) return "Ͳ"; // S
+                if (r === 4) return "Ð"; // W
+                return "⫝";              // N (Default fallback)
 
-            case 2: case 7: // Switches
-                if (rot === 1 || rot === 3) return "⟋"; // N / S
-                if (rot === 2 || rot === 4) return "⟍"; // E / W
-                return "?";
+            case 2: case 7: // Switches (Mirrors)
+                if (r === 2 || r === 4) return "⟍"; // E / W
+                return "⟋";                         // N / S (Default fallback)
 
             case 3: case 8: // Defenders
-                if (rot === 1) return "⬒"; // N
-                if (rot === 2) return "◨"; // E
-                if (rot === 3) return "⬓"; // S
-                if (rot === 4) return "◧"; // W
-                return "?";
+                if (r === 2) return "◨"; // E
+                if (r === 3) return "⬓"; // S
+                if (r === 4) return "◧"; // W
+                return "⬒";              // N (Default fallback)
 
             case 4: case 9: // Deflectors
-                if (rot === 1) return "◤"; // N
-                if (rot === 2) return "◥"; // E
-                if (rot === 3) return "◢"; // S
-                if (rot === 4) return "◣"; // W
-                return "?";
+                if (r === 2) return "◥"; // E
+                if (r === 3) return "◢"; // S
+                if (r === 4) return "◣"; // W
+                return "◤";              // N (Default fallback)
 
             default: return "?";
         }
@@ -165,11 +164,11 @@
         for (let i = 0; i < pieceCount; i++) {
             const block = raw.substr(i * 5, 5);
             
-            const type = parseInt(block[0]); 
-            const x    = parseInt(block[1]); 
-            const y    = parseInt(block[2]); 
-            const r    = parseInt(block[3]); 
-            const s    = parseInt(block[4]); 
+            const type = parseInt(block[0], 10); 
+            const x    = parseInt(block[1], 10); 
+            const y    = parseInt(block[2], 10); 
+            const r    = parseInt(block[3], 10); 
+            const s    = parseInt(block[4], 10); 
 
             // If state is 0 (Dead), we skip rendering it entirely
             if (s === 0) continue; 
@@ -205,7 +204,7 @@
             const turnDigit = raw.substr(-1);
             if (turnDigit === "0") {
                 turnInfo.innerHTML = 'TURN: <span class="b">BLUE</span>';
-            } else if (turnDigit === "1" || turnDigit === "5") { // Handling multiple possible Red indicators just in case
+            } else if (turnDigit === "1" || turnDigit === "5") {
                 turnInfo.innerHTML = 'TURN: <span class="r">RED</span>';
             } else {
                 turnInfo.innerHTML = `TURN: ${turnDigit}`;
@@ -217,7 +216,7 @@
         screen.innerHTML = out;
     }
     
-    // Auto-initialize with an empty board format
+    // Auto-initialize
     processInput();
 </script>
 </body>
