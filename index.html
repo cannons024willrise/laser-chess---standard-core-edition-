@@ -116,3 +116,38 @@
             const block = raw.substr(i * 6, 6);
             const type = parseInt(block[1]);
             const x    = parseInt(block[2]);
+            const y    = parseInt(block[3]);
+            const r    = parseInt(block[4]);
+
+            if (y < 8 && x < 10 && !isNaN(type)) {
+                const side = (type <= 4) ? "b" : "r";
+                grid[y][x] = { char: getSymbol(type, r), side: side };
+            }
+        }
+
+        let out = " 0123456789\n";
+        for (let y = 7; y >= 0; y--) {
+            out += y;
+            for (let x = 0; x < 10; x++) {
+                const cell = grid[y][x];
+                if (cell) {
+                    out += `<span class="${cell.side}">${cell.char}</span>`;
+                } else {
+                    out += `<span class="d">·</span>`;
+                }
+            }
+            out += "\n";
+        }
+
+        if (raw.length >= 157) {
+            const turnDigit = raw.substr(156, 1);
+            turnInfo.innerHTML = `T:${turnDigit === "0" ? '<span class="b">BLUE</span>' : '<span class="r">RED</span>'}`;
+        } else {
+            turnInfo.innerHTML = "T:--";
+        }
+        
+        screen.innerHTML = out;
+    }
+</script>
+</body>
+</html>
