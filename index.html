@@ -2,116 +2,92 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Khet 2.0 - Corrected Piece Mapping</title>
+    <title>TESTING RENDERER</title>
     <style>
         body { 
             background: #000; 
-            color: #00FF00; 
-            font-family: 'Courier New', monospace; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
+            color: #aaa; 
+            font-family: 'Courier New', Courier, monospace; 
             padding: 20px;
+            line-height: 1.2;
         }
-        .board-wrapper {
-            border: 4px solid #333;
-            padding: 10px;
-            background: #0a0a0a;
+        pre {
+            font-size: 24px;
+            letter-spacing: 4px;
         }
-        .grid { 
-            display: grid; 
-            grid-template-columns: repeat(10, 50px); 
-            grid-template-rows: repeat(8, 50px); 
-            background: #111;
-        }
-        .cell { 
-            width: 50px; 
-            height: 50px; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            font-size: 32px;
-            border: 1px solid #1a1a1a;
-        }
-        .p0 { color: #00ccff; font-weight: bold; } /* Silver */
-        .p1 { color: #ff3333; font-weight: bold; } /* Red */
-        .empty { color: #222; font-size: 20px; }
-        .status { margin-bottom: 20px; font-size: 20px; letter-spacing: 2px; }
+        .blue { color: #00ffff; font-weight: bold; }
+        .red  { color: #ff0000; font-weight: bold; }
+        .dim  { color: #333; }
+        .header { color: #0f0; margin-bottom: 20px; font-size: 16px; }
     </style>
 </head>
 <body>
 
-    <div class="status">
-        ACTIVE TURN: <span id="turn-display"></span>
-    </div>
+<div class="header">
+    > INITIALIZING KHET_OS...<br>
+    > PARSING 157_DIGIT_STREAM...<br>
+    > BOARD_DIM: 10X8<br>
+    > STATUS: <span id="turn"></span>
+</div>
 
-    <div class="board-wrapper">
-        <div id="board" class="grid"></div>
-    </div>
+<pre id="output"></pre>
 
 <script>
-    // The 157-digit state string
     const state = "0147010250010397110400410543210644110753110854210937111040411157111260411332111421411523411603211724111804311993112073312194412274212367212421312529112670410";
 
-    const getPiece = (id, rot) => {
+    const getSymbol = (id, rot) => {
         const r = rot % 4;
-        
-        // ◈ KING
-        if (id <= 2) return "◈"; 
-
-        // LASERS: 0=N, 1=E, 2=S, 3=W (Ð, ⫝, Ͳ, ⟜)
-        if (id <= 4) return ["⫝", "⟜", "Ͳ", "Ð"][r];
-
-        // SWITCHES (Scarab-style): 0=N, 1=E, 2=S, 3=W 
-        // These use ⟋ and ⟍
-        if (id <= 8) return (r % 2 === 0) ? "⟋" : "⟍";
-
-        // DEFENDERS (Anubis-style): ⬒(N), ◨(E), ⬓(S), ◧(W)
-        if (id <= 12) return ["⬒", "◨", "⬓", "◧"][r];
-
-        // DEFLECTORS (Pyramids): ◤, ◥, ◢, ◣
-        return ["◤", "◥", "◢", "◣"][r];
+        if (id <= 2) return "◈"; // KING
+        if (id <= 4) return ["⫝", "⟜", "Ͳ", "Ð"][r]; // LASER
+        if (id <= 8) return (r % 2 === 0) ? "⟋" : "⟍"; // SWITCH
+        if (id <= 12) return ["⬒", "◨", "⬓", "◧"][r]; // DEFENDER
+        return ["◤", "◥", "◢", "◣"][r]; // DEFLECTOR
     };
-
-    const boardEl = document.getElementById('board');
-    const turnEl = document.getElementById('turn-display');
-    
-    // Parse turn (last digit)
-    const turn = state.slice(-1);
-    turnEl.innerText = turn === "0" ? "SILVER" : "RED";
-    turnEl.style.color = turn === "0" ? "#00ccff" : "#ff3333";
 
     const grid = Array(8).fill(0).map(() => Array(10).fill(null));
 
-    // Parse piece positions
+    // Process 26 pieces
     for (let i = 0; i < 26; i++) {
         const chunk = state.substr(i * 6, 6);
         const id    = parseInt(chunk.substr(0, 2));
         const x     = parseInt(chunk.substr(2, 1));
         const y     = parseInt(chunk.substr(3, 1));
         const rot   = parseInt(chunk.substr(4, 1));
-        const owner = parseInt(chunk.substr(5, 1));
 
         if (y < 8 && x < 10) {
-            grid[y][x] = { symbol: getPiece(id, rot), owner };
+            // ODD = BLUE, EVEN = RED
+            const colorClass = (id % 2 !== 0) ? "blue" : "red";
+            grid[y][x] = { char: getSymbol(id, rot), color: colorClass };
         }
     }
 
-    // Render 10x8 Grid (Standard Khet orientation)
+    const output = document.getElementById('output');
+    let frame = "";
+
+    // Header Coordinates
+    frame += "  0 1 2 3 4 5 6 7 8 9\n";
+
     for (let y = 7; y >= 0; y--) {
+        frame += y + " "; // Row label
         for (let x = 0; x < 10; x++) {
-            const cellDiv = document.createElement('div');
-            cellDiv.className = 'cell';
-            const data = grid[y][x];
-
-            if (data) {
-                cellDiv.innerHTML = `<span class="p${data.owner}">${data.symbol}</span>`;
+            const cell = grid[y][x];
+            if (cell) {
+                frame += `<span class="${cell.color}">${cell.char}</span> `;
             } else {
-                cellDiv.innerHTML = `<span class="empty">·</span>`;
+                frame += `<span class="dim">·</span> `;
             }
-            boardEl.appendChild(cellDiv);
         }
+        frame += "\n";
     }
+
+    output.innerHTML = frame;
+
+    // Turn indicator
+    const turnDigit = state.slice(-1);
+    const turnEl = document.getElementById('turn');
+    turnEl.innerHTML = turnDigit === "0" ? "SILVER_READY" : "RED_READY";
+    turnEl.className = turnDigit === "0" ? "blue" : "red";
+
 </script>
 </body>
 </html>
