@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>KHET_COMPACT_V4</title>
+    <title>KHET_OS_V5_STRICT</title>
     <style>
         @font-face {
             font-family: 'Unifont';
@@ -43,22 +43,22 @@
             vertical-align: middle;
         }
 
-        .b { color: #00d4ff; }
-        .r { color: #ff3333; }
-        .d { color: #222; }
+        .b { color: #00d4ff; } /* BLUE/SILVER (0-4) */
+        .r { color: #ff3333; } /* RED (5-9) */
+        .d { color: #222; }    /* EMPTY */
         
         .input-area {
             margin-top: 15px;
             width: 100%;
-            max-width: 600px;
+            max-width: 650px;
         }
 
         input {
             width: 100%;
             background: #111;
-            border: 1px solid #333;
+            border: 1px solid #0f0;
             color: #0f0;
-            padding: 8px;
+            padding: 10px;
             font-family: 'Unifont', monospace;
             outline: none;
             font-size: 16px;
@@ -68,25 +68,26 @@
             display: flex; 
             justify-content: space-between; 
             width: 100%; 
-            max-width: 600px; 
             color: #444; 
             font-size: 14px;
             margin-top: 5px;
         }
+        #debug { color: #333; font-size: 12px; margin-top: 10px; }
     </style>
 </head>
 <body>
 
 <div id="terminal">
-    <pre id="screen">_</pre>
+    <pre id="screen">READY_FOR_DATA_STREAM...</pre>
 </div>
 
 <div class="input-area">
-    <input type="text" id="raw-input" placeholder="T-X-Y-R-S STREAM" autocomplete="off" oninput="processInput()">
+    <input type="text" id="raw-input" placeholder="PASTE: TYPE-X-Y-ROT-STAT..." autocomplete="off" oninput="processInput()">
     <div class="status-bar">
         <span id="turn-info">T:--</span>
         <span id="digit-count">L:0</span>
     </div>
+    <div id="debug"></div>
 </div>
 
 <script>
@@ -94,15 +95,16 @@
     const inputField = document.getElementById('raw-input');
     const counter = document.getElementById('digit-count');
     const turnInfo = document.getElementById('turn-info');
+    const debug = document.getElementById('debug');
 
     const getSymbol = (type, rot) => {
         const r = rot % 4;
         switch(type) {
-            case 0: case 5: return "◈"; 
-            case 1: case 6: return ["⫝", "⟜", "Ͳ", "Ð"][r]; 
-            case 2: case 7: return (r % 2 === 0) ? "⟋" : "⟍"; 
-            case 3: case 8: return ["⬒", "◨", "⬓", "◧"][r]; 
-            case 4: case 9: return ["◤", "◥", "◢", "◣"][r]; 
+            case 0: case 5: return "◈"; // King
+            case 1: case 6: return ["⫝", "⟜", "Ͳ", "Ð"][r]; // Laser
+            case 2: case 7: return (r % 2 === 0) ? "⟋" : "⟍"; // Switch
+            case 3: case 8: return ["⬒", "◨", "⬓", "◧"][r]; // Defender
+            case 4: case 9: return ["◤", "◥", "◢", "◣"][r]; // Deflector
             default: return "?";
         }
     };
@@ -111,26 +113,28 @@
         const raw = inputField.value.trim().replace(/\s/g, '');
         counter.innerText = `L:${raw.length}`;
         
-        if (raw.length === 0) {
-            screen.innerHTML = "_";
-            turnInfo.innerHTML = "T:--";
+        if (raw.length < 5) {
+            screen.innerHTML = "AWAITING_FULL_PIECE_BLOCK...";
             return;
         }
 
         const grid = Array(8).fill(0).map(() => Array(10).fill(null));
-        
-        // Piece count is now total length divided by 5 (since ID is gone)
         const pieceCount = Math.floor(raw.length / 5);
 
         for (let i = 0; i < pieceCount; i++) {
             const block = raw.substr(i * 5, 5);
-            const type = parseInt(block[0]); // Digit 1
-            const x    = parseInt(block[1]); // Digit 2
-            const y    = parseInt(block[2]); // Digit 3
-            const r    = parseInt(block[3]); // Digit 4
-            // (Digit 5 is 'S' / status, currently unused by symbol logic)
+            
+            // STRICT MAPPING: TYPE(0) X(1) Y(2) R(3) S(4)
+            const type = parseInt(block[0]); 
+            const x    = parseInt(block[1]); 
+            const y    = parseInt(block[2]); 
+            const r    = parseInt(block[3]); 
 
-            if (y < 8 && x < 10 && !isNaN(type)) {
+            if (i === 0) {
+                debug.innerText = `DEBUG PIECE 0: TYPE=${type} X=${x} Y=${y} R=${r}`;
+            }
+
+            if (!isNaN(x) && !isNaN(y) && y < 8 && x < 10) {
                 const side = (type <= 4) ? "b" : "r";
                 grid[y][x] = { char: getSymbol(type, r), side: side };
             }
@@ -153,7 +157,7 @@
             out += "\n";
         }
 
-        // Logic check for Turn digit (131st digit for a full 26-piece set)
+        // 26 pieces * 5 digits = 130 digits. Turn is digit 131.
         if (raw.length >= 131) {
             const turnDigit = raw.substr(130, 1);
             turnInfo.innerHTML = `T:${turnDigit === "0" ? '<span class="b">BLUE</span>' : '<span class="r">RED</span>'}`;
