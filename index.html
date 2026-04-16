@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>KHET_OS_V2_TERMINAL</title>
+    <title>KHET_OS_V3_DYNAMIC</title>
     <style>
         body { 
             background: #000; 
@@ -19,6 +19,7 @@
             border: 1px solid #333;
             box-shadow: 0 0 20px rgba(0, 255, 0, 0.1);
             display: inline-block;
+            min-width: 450px;
         }
         pre {
             font-size: 26px;
@@ -26,102 +27,89 @@
             letter-spacing: 2px;
             margin: 0;
         }
-        .b { color: #00d4ff; font-weight: bold; } /* Blue/Silver */
-        .r { color: #ff3333; font-weight: bold; } /* Red */
-        .d { color: #222; } /* Empty Dot */
+        .b { color: #00d4ff; font-weight: bold; }
+        .r { color: #ff3333; font-weight: bold; }
+        .d { color: #222; }
         
         .input-area {
             margin-top: 20px;
             width: 100%;
-            max-width: 600px;
+            max-width: 800px;
             display: flex;
-            gap: 10px;
+            flex-direction: column;
+            gap: 5px;
         }
         input {
-            flex-grow: 1;
             background: #111;
             border: 1px solid #0f0;
             color: #0f0;
-            padding: 10px;
+            padding: 12px;
             font-family: inherit;
             outline: none;
+            font-size: 14px;
         }
-        button {
-            background: #0f0;
-            color: #000;
-            border: none;
-            padding: 10px 20px;
-            cursor: pointer;
-            font-family: inherit;
-            font-weight: bold;
-        }
-        button:hover { background: #0c0; }
-        .ui-text { color: #555; font-size: 12px; margin-bottom: 5px; width: 100%; max-width: 600px; }
+        .ui-text { color: #555; font-size: 12px; width: 100%; max-width: 800px; }
+        .counter { color: #888; text-align: right; margin-top: 4px; }
     </style>
 </head>
 <body>
 
-<div class="ui-text">> KHET BOARD RENDERER [VERSION 2.0]</div>
-<div class="ui-text">> FORMAT: ID(1) TYPE(1) X(1) Y(1) R(1) S(1)</div>
+<div class="ui-text">> KHET DYNAMIC RENDERER [V3]</div>
+<div class="ui-text">> MODES: AUTO-RENDER | PARTIAL DATA SUPPORT | PERSISTENT INPUT</div>
 
 <div id="terminal">
-    <pre id="screen">PASTE STRING BELOW TO INITIALIZE...</pre>
+    <pre id="screen">WAITING FOR DATA...</pre>
 </div>
 
 <div class="input-area">
-    <span>></span>
-    <input type="text" id="raw-input" placeholder="PASTE 157-DIGIT STRING HERE..." autocomplete="off">
-    <button onclick="processInput()">EXECUTE</button>
+    <input type="text" id="raw-input" placeholder="PASTE STRING HERE..." autocomplete="off" oninput="processInput()">
+    <div class="counter" id="digit-count">DIGITS: 0</div>
 </div>
 
 <script>
     const screen = document.getElementById('screen');
     const inputField = document.getElementById('raw-input');
-
-    // Allow pressing "Enter" to submit
-    inputField.addEventListener("keypress", function(event) {
-        if (event.key === "Enter") {
-            processInput();
-        }
-    });
+    const counter = document.getElementById('digit-count');
 
     const getSymbol = (type, rot) => {
         const r = rot % 4;
         switch(type) {
-            case 0: case 5: return "◈"; // KING
-            case 1: case 6: return ["⫝", "⟜", "Ͳ", "Ð"][r]; // LASER
-            case 2: case 7: return (r % 2 === 0) ? "⟋" : "⟍"; // SWITCH
-            case 3: case 8: return ["⬒", "◨", "⬓", "◧"][r]; // DEFENDER
-            case 4: case 9: return ["◤", "◥", "◢", "◣"][r]; // DEFLECTOR
+            case 0: case 5: return "◈"; 
+            case 1: case 6: return ["⫝", "⟜", "Ͳ", "Ð"][r]; 
+            case 2: case 7: return (r % 2 === 0) ? "⟋" : "⟍"; 
+            case 3: case 8: return ["⬒", "◨", "⬓", "◧"][r]; 
+            case 4: case 9: return ["◤", "◥", "◢", "◣"][r]; 
             default: return "?";
         }
     };
 
     function processInput() {
-        const raw = inputField.value.trim().replace(/\s/g, ''); // Remove spaces
+        const raw = inputField.value.trim().replace(/\s/g, '');
+        counter.innerText = `DIGITS: ${raw.length}`;
         
-        if (raw.length < 157) {
-            screen.innerHTML = `<span style="color:red">ERROR: STRING TOO SHORT (${raw.length}/157)</span>`;
+        if (raw.length === 0) {
+            screen.innerHTML = "WAITING FOR DATA...";
             return;
         }
 
         const grid = Array(8).fill(0).map(() => Array(10).fill(null));
 
-        // Parse 26 pieces
-        for (let i = 0; i < 26; i++) {
+        // Calculate how many full 6-digit pieces we can render
+        const pieceCount = Math.floor(raw.length / 6);
+
+        for (let i = 0; i < pieceCount; i++) {
             const block = raw.substr(i * 6, 6);
             const type = parseInt(block[1]);
             const x    = parseInt(block[2]);
             const y    = parseInt(block[3]);
             const r    = parseInt(block[4]);
 
-            if (y < 8 && x < 10) {
+            if (y < 8 && x < 10 && !isNaN(type)) {
                 const side = (type <= 4) ? "b" : "r";
                 grid[y][x] = { char: getSymbol(type, r), side: side };
             }
         }
 
-        // Build Board Frame
         let out = "  0 1 2 3 4 5 6 7 8 9\n";
         for (let y = 7; y >= 0; y--) {
             out += y + " ";
@@ -136,11 +124,15 @@
             out += "\n";
         }
 
-        const turnDigit = raw.slice(156, 157);
-        out += `\n> ACTIVE_TURN: ${turnDigit === "0" ? '<span class="b">BLUE</span>' : '<span class="r">RED</span>'}`;
+        // Only show turn if the 157th digit exists
+        if (raw.length >= 157) {
+            const turnDigit = raw.substr(156, 1);
+            out += `\n> TURN: ${turnDigit === "0" ? '<span class="b">BLUE</span>' : '<span class="r">RED</span>'}`;
+        } else {
+            out += `\n<span style="color:#444">> AWAITING TURN DIGIT (157)...</span>`;
+        }
         
         screen.innerHTML = out;
-        inputField.value = ""; // Clear for next move
     }
 </script>
 </body>
