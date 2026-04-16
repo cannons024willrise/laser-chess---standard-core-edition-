@@ -2,355 +2,82 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Laser Chess - Standard Version (Core Edition)</title>
+    <title>Khet 2.0 - 10x8 Render</title>
     <style>
-        @font-face {
-            font-family: 'Unifont';
-            src: url('unifont-15.0.01.ttf') format('truetype');
-            font-display: block;
+        body { background: #050505; color: #eee; font-family: monospace; display: flex; flex-direction: column; align-items: center; }
+        .grid { 
+            display: grid; 
+            grid-template-columns: repeat(10, 40px); 
+            grid-template-rows: repeat(8, 40px); 
+            gap: 2px; border: 4px solid #333; padding: 5px; background: #222;
         }
-
-        body {
-            background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
-            color: #b0b0b0; 
-            font-family: 'Unifont', monospace;
-            font-size: 16px; 
-            margin: 0; 
-            padding: 30px; 
-            line-height: 1.6;
-            image-rendering: pixelated;
+        .cell { 
+            width: 40px; height: 40px; background: #111; 
+            display: flex; align-items: center; justify-content: center; font-size: 22px; 
         }
-
-        #terminal-log { display: flex; flex-direction: column; }
-        .input-wrapper { display: flex; align-items: baseline; margin-top: 5px; }
-        
-        .user-input-line {
-            background: transparent; border: none; color: #ffffff;
-            font-family: 'Unifont', monospace; font-size: 16px;
-            outline: none; flex-grow: 1; margin-left: 8px; caret-color: #ffffff;
-        }
-
-        .system-msg { color: #666; margin-bottom: 5px; }
-        .success-msg { color: #ffffff; font-weight: bold; margin-bottom: 5px; }
-        .error-msg { color: #ff5555; margin-bottom: 5px; }
-        .highlight { color: #ffffff; margin-bottom: 10px; font-weight: bold; }
-        .rules-link { color: #4444ff; text-decoration: underline; font-weight: bold; }
-        .history-line { margin-bottom: 5px; }
-
-        /* --- TEMPORARY RENDERER CSS --- */
-        #board-container {
-            margin-top: 30px;
-            display: inline-block;
-            background: #111;
-            padding: 20px;
-            border: 2px solid #333;
-            border-radius: 4px;
-        }
-        .board-grid {
-            display: grid;
-            /* 8x8 grid ensures mathematically perfect spacing in all 4 directions */
-            grid-template-columns: repeat(8, 36px);
-            grid-template-rows: repeat(8, 36px);
-            gap: 6px; 
-        }
-        .board-cell {
-            width: 36px;
-            height: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 22px;
-            font-family: 'Unifont', monospace;
-        }
-        .p0 { color: #88ccff; } /* Silver/Blue */
-        .p1 { color: #ff4444; } /* Red */
-        .empty-cell { color: #444; }
-        /* ------------------------------ */
+        .silver { color: #00d4ff; text-shadow: 0 0 8px #00d4ff; } /* Player 0 */
+        .red { color: #ff3333; text-shadow: 0 0 8px #ff3333; }    /* Player 1 */
+        .empty { color: #444; font-size: 12px; }
+        .info { margin-bottom: 10px; text-align: center; }
     </style>
 </head>
 <body>
-
-<div id="terminal-log"></div>
-<div id="board-container"></div> <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
+    <div class="info">
+        <h2>KHET 2.0 BOARD STATE</h2>
+        <p>157 Digits Processed | Grid: 10x8 | Turn: <span id="turn"></span></p>
+    </div>
+    <div id="board" class="grid"></div>
 
 <script>
-    const firebaseConfig = {
-        apiKey: "AIzaSyBuT7P1iTdXcZW-y05DX-kseuLrPGmaWSs",
-        authDomain: "laserchess-web-free.firebaseapp.com",
-        databaseURL: "https://laserchess-web-free-default-rtdb.firebaseio.com",
-        projectId: "laserchess-web-free",
-        storageBucket: "laserchess-web-free.firebasestorage.app",
-        messagingSenderId: "887464510754",
-        appId: "1:887464510754:web:aee6938681543602a4517b"
+    const state = "0147010250010397110400410543210644110753110854210937111040411157111260411332111421411523411603211724111804311993112073312194412274212367212421312529112670410";
+    
+    // Symbols based on piece ID ranges
+    const getSymbol = (id, rot) => {
+        const r = rot % 4;
+        if (id <= 2) return "♔"; // Pharaoh
+        if (id <= 4) return ["^", ">", "v", "<"][r]; // Sphinx
+        if (id <= 8) return ["⬒", "◨", "⬓", "◧"][r]; // Scarab
+        if (id <= 12) return ["▲", "▶", "▼", "◀"][r]; // Anubis
+        return ["◤", "◥", "◢", "◣"][r]; // Pyramid
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-    const SERVER_TIMESTAMP = firebase.database.ServerValue.TIMESTAMP;
+    const boardEl = document.getElementById('board');
+    const turnEl = document.getElementById('turn');
+    
+    // Last digit is the turn
+    const turnDigit = state.slice(-1);
+    turnEl.innerText = turnDigit === "0" ? "SILVER" : "RED";
+    turnEl.className = turnDigit === "0" ? "silver" : "red";
 
-    const log = document.getElementById('terminal-log');
-    let msgQueue = [];
-    let isProcessing = false;
-    let currentState = "USERNAME";
-    let tempUser = "";
+    const cells = Array(8).fill(0).map(() => Array(10).fill(null));
 
-    function addToQueue(text, className = "", isRequest = false) {
-        msgQueue.push({ text, className, isRequest });
-        if (!isProcessing) processQueue();
-    }
-
-    async function processQueue() {
-        isProcessing = true;
-        while (msgQueue.length > 0) {
-            const item = msgQueue.shift();
-            if (item.isRequest) {
-                await typeLineInline(item.text, item.className);
-            } else {
-                await typeLineSimple(item.text, item.className);
-            }
-        }
-        isProcessing = false;
-    }
-
-    function typeLineSimple(text, className) {
-        return new Promise((resolve) => {
-            const div = document.createElement('div');
-            div.className = (className || "") + " history-line";
-            log.appendChild(div);
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = text;
-            const plainText = tempDiv.textContent;
-            let i = 0;
-            const timer = setInterval(() => {
-                if (i < plainText.length) {
-                    div.textContent += plainText.charAt(i);
-                    i++;
-                } else {
-                    clearInterval(timer);
-                    div.innerHTML = text; 
-                    window.scrollTo(0, document.body.scrollHeight);
-                    resolve();
-                }
-            }, 12);
-        });
-    }
-
-    function typeLineInline(text, className) {
-        return new Promise((resolve) => {
-            const wrapper = document.createElement('div');
-            wrapper.className = "input-wrapper history-line " + (className || "");
-            const label = document.createElement('span');
-            const input = document.createElement('input');
-            input.type = "text";
-            input.className = "user-input-line";
-            input.maxLength = 20;
-            input.disabled = true;
-            wrapper.appendChild(label);
-            wrapper.appendChild(input);
-            log.appendChild(wrapper);
-            let i = 0;
-            const timer = setInterval(() => {
-                if (i < text.length) {
-                    label.textContent += text.charAt(i);
-                    i++;
-                } else {
-                    clearInterval(timer);
-                    input.disabled = false;
-                    input.focus();
-                    window.scrollTo(0, document.body.scrollHeight);
-                    const handleEnter = (e) => {
-                        if (e.key === 'Enter') {
-                            const val = input.value.trim().toUpperCase();
-                            input.disabled = true;
-                            input.removeEventListener('keydown', handleEnter);
-                            handleStateLogic(val);
-                            resolve(); 
-                        }
-                    };
-                    input.addEventListener('keydown', handleEnter);
-                }
-            }, 12); 
-        });
-    }
-
-    function handleStateLogic(val) {
-        if (currentState === "USERNAME") {
-            if (val.length === 0) {
-                addToQueue("Username required:", "error-msg", true);
-                return;
-            }
-            tempUser = val;
-            currentState = "PASSWORD";
-            addToQueue("Session Password (max 20):", "", true);
-        } else if (currentState === "PASSWORD") {
-            if (val.length === 0) {
-                addToQueue("Password required:", "error-msg", true);
-                return;
-            }
-            authenticateUser(tempUser, val);
-        } else if (currentState === "MODE_SELECT") {
-            executeMatchmaking(val);
-        }
-    }
-
-    function authenticateUser(u, p) {
-        addToQueue("VERIFYING CREDENTIALS...", "system-msg");
-        const hb = { password: p, lastplayed: SERVER_TIMESTAMP };
-
-        db.ref('a/' + u).set(hb).then(() => {
-            finalizeLogin(u, p);
-        }).catch(() => {
-            addToQueue("AUTHORIZATION FAILED. ATTEMPTING NEW REGISTRATION...", "system-msg");
-            const up = {};
-            up['s/' + u] = p;
-            up['a/' + u] = hb;
-            db.ref().update(up).then(() => finalizeLogin(u, p)).catch(() => {
-                addToQueue("ACCESS DENIED: INVALID PASSWORD OR USERNAME TAKEN.", "error-msg");
-                localStorage.clear();
-                currentState = "USERNAME";
-                addToQueue("Session Username (max 20):", "", true);
-            });
-        });
-    }
-
-    function finalizeLogin(u, p) {
-        localStorage.setItem('session_user', u);
-        localStorage.setItem('session_pass', p);
-        tempUser = u;
-        addToQueue("TEMPORARY ACCOUNT CREATED", "success-msg");
-        runJanitorSweep();
-        promptMode();
-    }
-
-    function promptMode() {
-        currentState = "MODE_SELECT";
-        addToQueue("SELECT MATCHMAKING MODE:", "highlight");
-        addToQueue("[R] PUBLIC RED / [B] PUBLIC BLUE", "system-msg");
-        addToQueue("[PR] PRIVATE RED / [PB] PRIVATE BLUE", "system-msg");
-        addToQueue("Choose:", "", true);
-    }
-
-    function executeMatchmaking(cmd) {
-        const pass = localStorage.getItem('session_pass');
-        let color = -1; // 0=Blue, 1=Red
-        let branch = "";
-
-        if (cmd === "R") { color = 1; branch = "U"; }
-        else if (cmd === "B") { color = 0; branch = "U"; }
-        else if (cmd === "PR") { color = 1; branch = "R"; }
-        else if (cmd === "PB") { color = 0; branch = "R"; }
-        else {
-            addToQueue("INVALID COMMAND. ENTER R, B, PR, OR PB:", "error-msg", true);
-            return;
-        }
-
-        const modeLabel = (branch === "R" ? "PRIVATE " : "PUBLIC ") + (color === 1 ? "RED" : "BLUE");
-        addToQueue(`INITIALIZING ${modeLabel} REQUEST...`, "system-msg");
-
-        // Targeted write to m/U or m/R
-        db.ref(`m/${branch}/${tempUser}`).set({
-            password: pass,
-            color: color,
-            time: SERVER_TIMESTAMP
-        }).then(() => {
-            addToQueue("MATCHMAKING LIVE. WAITING FOR PEER...", "success-msg");
-        }).catch(err => {
-            addToQueue("DATABASE REJECTED REQUEST. CHECK PERMISSIONS.", "error-msg");
-            promptMode();
-        });
-    }
-
-    function runJanitorSweep() {
-        db.ref('a').once('value', snapshot => {
-            const now = Date.now();
-            snapshot.forEach(child => {
-                if (now - child.val().lastplayed > 86400000) {
-                    const u = child.key;
-                    const p = {};
-                    p['s/'+u]=null; p['a/'+u]=null; 
-                    p['m/U/'+u]=null; p['m/R/'+u]=null;
-                    p['g/'+u]=null;
-                    db.ref().update(p).catch(() => {});
-                }
-            });
-        });
-    }
-
-    // --- TEMPORARY RENDERER LOGIC --- //
-    const SYMBOLS = {
-        KING: "◈",
-        LASER: { 0: "^|", 1: "->", 2: "|v", 3: "<-" },
-        SWITCH: { 0: "⬒", 1: "◨", 2: "⬓", 3: "◧" },
-        DEFENDER: { 0: "Ð", 1: "⫝", 2: "Ͳ", 3: "⟜" },
-        DEFLECTOR: { 0: "◤", 1: "◥", 2: "◢", 3: "◣" }
-    };
-
-    function getPieceChar(id, rot) {
-        if (id <= 2) return SYMBOLS.KING;
-        if (id <= 4) return SYMBOLS.LASER[rot];
-        if (id <= 8) return SYMBOLS.SWITCH[rot];
-        if (id <= 12) return SYMBOLS.DEFENDER[rot];
-        return SYMBOLS.DEFLECTOR[rot];
-    }
-
-    function renderBoard(gameState) {
-        const container = document.getElementById('board-container');
-        container.innerHTML = ''; 
-        const gridEl = document.createElement('div');
-        gridEl.className = 'board-grid';
-
-        const grid = Array(8).fill(null).map(() => Array(8).fill(null));
-
-        // Parse string
-        for (let i = 0; i < 26; i++) {
-            const chunk = gameState.substr(i * 7, 7);
-            const id = parseInt(chunk.substr(0, 2));
-            const x = parseInt(chunk.substr(2, 1));
-            const y = parseInt(chunk.substr(3, 1));
-            const rot = parseInt(chunk.substr(4, 1)) % 4;
-            const owner = parseInt(chunk.substr(5, 1));
-            const active = parseInt(chunk.substr(6, 1));
-
-            if (active === 1 && x < 8 && y < 8) {
-                grid[y][x] = { char: getPieceChar(id, rot), owner };
-            }
-        }
-
-        // Render Y from 7 down to 0
-        for (let y = 7; y >= 0; y--) {
-            for (let x = 0; x < 8; x++) {
-                const cell = document.createElement('div');
-                cell.className = 'board-cell';
-                const piece = grid[y][x];
-                
-                if (piece) {
-                    cell.innerHTML = `<span class="p${piece.owner}">${piece.char}</span>`;
-                } else {
-                    cell.innerHTML = `<span class="empty-cell">·</span>`;
-                }
-                gridEl.appendChild(cell);
-            }
-        }
-        container.appendChild(gridEl);
-    }
-    // -------------------------------- //
-
-    async function startTerminalWhenReady() {
-        if (document.fonts) {
-            try {
-                await document.fonts.load('16px Unifont');
-                await document.fonts.ready;
-            } catch (e) {}
-        }
-        initTerminalSequence();
+    // Parse pieces (26 pieces, 6 digits each)
+    for (let i = 0; i < 26; i++) {
+        const p = state.substr(i * 6, 6);
+        const id = parseInt(p.substr(0, 2));
+        const x = parseInt(p.substr(2, 1));
+        const y = parseInt(p.substr(3, 1));
+        const rot = parseInt(p.substr(4, 1));
+        const owner = parseInt(p.substr(5, 1));
         
-        // Temporarily render the ACE string
-        renderBoard('01470102500103971104004105432106441107531108542109371110404111571112604113321114211411523411603211724111804311993120733121944227422367212421312529112670410');
+        if (y < 8 && x < 10) {
+            cells[y][x] = { symbol: getSymbol(id, rot), owner };
+        }
     }
 
-    window.onload = startTerminalWhenReady;
+    // Render (Rows 7 down to 0)
+    for (let y = 7; y >= 0; y--) {
+        for (let x = 0; x < 10; x++) {
+            const div = document.createElement('div');
+            div.className = 'cell';
+            if (cells[y][x]) {
+                div.innerHTML = `<span class="${cells[y][x].owner === 0 ? 'silver' : 'red'}">${cells[y][x].symbol}</span>`;
+            } else {
+                div.innerHTML = `<span class="empty">·</span>`;
+            }
+            boardEl.appendChild(div);
+        }
+    }
 </script>
 </body>
 </html>
