@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>KHET_MIN_OS</title>
+    <title>KHET_SQUARE_GRID_OS</title>
     <style>
         @font-face {
             font-family: 'Unifont';
@@ -14,7 +14,7 @@
             background: #000; 
             color: #0f0; 
             font-family: 'Unifont', monospace; 
-            padding: 10px;
+            padding: 15px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -23,16 +23,26 @@
         #terminal {
             background: #050505;
             padding: 10px;
-            border: 1px solid #222;
+            border: 1px solid #333;
             display: inline-block;
         }
 
+        /* The Grid Container */
         pre {
-            font-size: 24px; /* Slightly smaller for compactness */
-            line-height: 0.9; /* Tight vertical spacing */
-            letter-spacing: -1px; /* Minimal horizontal spacing */
+            font-size: 24px;
+            line-height: 1;
             margin: 0;
             font-family: 'Unifont', monospace;
+        }
+
+        /* Force every unit into a perfect square */
+        .u {
+            display: inline-block;
+            width: 24px;  /* Equal to font-size */
+            height: 24px; /* Equal to font-size */
+            text-align: center;
+            line-height: 24px;
+            vertical-align: middle;
         }
 
         .b { color: #00d4ff; }
@@ -62,7 +72,7 @@
             width: 100%; 
             max-width: 600px; 
             color: #444; 
-            font-size: 12px;
+            font-size: 14px;
             margin-top: 5px;
         }
     </style>
@@ -74,7 +84,7 @@
 </div>
 
 <div class="input-area">
-    <input type="text" id="raw-input" placeholder="INPUT_STR" autocomplete="off" oninput="processInput()">
+    <input type="text" id="raw-input" placeholder="INPUT_DATA" autocomplete="off" oninput="processInput()">
     <div class="status-bar">
         <span id="turn-info">T:--</span>
         <span id="digit-count">L:0</span>
@@ -125,15 +135,18 @@
             }
         }
 
-        let out = " 0123456789\n";
+        let out = "<span class='u'> </span>"; // Corner spacer
+        for(let i=0; i<10; i++) out += `<span class='u'>${i}</span>`;
+        out += "\n";
+
         for (let y = 7; y >= 0; y--) {
-            out += y;
+            out += `<span class='u'>${y}</span>`; // Y label
             for (let x = 0; x < 10; x++) {
                 const cell = grid[y][x];
                 if (cell) {
-                    out += `<span class="${cell.side}">${cell.char}</span>`;
+                    out += `<span class="u ${cell.side}">${cell.char}</span>`;
                 } else {
-                    out += `<span class="d">·</span>`;
+                    out += `<span class="u d">·</span>`;
                 }
             }
             out += "\n";
