@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Khet 2.0 ASCII Renderer</title>
+    <title>Khet 2.0 - Corrected Piece Mapping</title>
     <style>
         body { 
             background: #000; 
@@ -14,37 +14,35 @@
             padding: 20px;
         }
         .board-wrapper {
-            border: 2px solid #555;
+            border: 4px solid #333;
             padding: 10px;
-            background: #050505;
+            background: #0a0a0a;
         }
         .grid { 
             display: grid; 
-            grid-template-columns: repeat(10, 45px); 
-            grid-template-rows: repeat(8, 45px); 
+            grid-template-columns: repeat(10, 50px); 
+            grid-template-rows: repeat(8, 50px); 
             background: #111;
         }
         .cell { 
-            width: 45px; 
-            height: 45px; 
+            width: 50px; 
+            height: 50px; 
             display: flex; 
             align-items: center; 
             justify-content: center; 
-            font-size: 28px;
-            border: 0.5px solid #222;
+            font-size: 32px;
+            border: 1px solid #1a1a1a;
         }
-        /* Player Colors */
-        .p0 { color: #00ccff; } /* Silver/Blue */
-        .p1 { color: #ff4444; } /* Red */
-        .empty { color: #333; font-size: 18px; }
-        
-        .status { margin-bottom: 15px; font-size: 18px; text-transform: uppercase; }
+        .p0 { color: #00ccff; font-weight: bold; } /* Silver */
+        .p1 { color: #ff3333; font-weight: bold; } /* Red */
+        .empty { color: #222; font-size: 20px; }
+        .status { margin-bottom: 20px; font-size: 20px; letter-spacing: 2px; }
     </style>
 </head>
 <body>
 
     <div class="status">
-        TURN: <span id="turn-display"></span>
+        ACTIVE TURN: <span id="turn-display"></span>
     </div>
 
     <div class="board-wrapper">
@@ -52,38 +50,40 @@
     </div>
 
 <script>
+    // The 157-digit state string
     const state = "0147010250010397110400410543210644110753110854210937111040411157111260411332111421411523411603211724111804311993112073312194412274212367212421312529112670410";
 
     const getPiece = (id, rot) => {
         const r = rot % 4;
         
-        // KING
+        // ◈ KING
         if (id <= 2) return "◈"; 
 
-        // LASERS: 0=N, 1=E, 2=S, 3=W (using your custom symbols)
+        // LASERS: 0=N, 1=E, 2=S, 3=W (Ð, ⫝, Ͳ, ⟜)
         if (id <= 4) return ["⫝", "⟜", "Ͳ", "Ð"][r];
 
-        // DEFENDERS: 0=N, 1=E, 2=S, 3=W
-        if (id <= 8) return ["⬒", "◨", "⬓", "◧"][r];
+        // SWITCHES (Scarab-style): 0=N, 1=E, 2=S, 3=W 
+        // These use ⟋ and ⟍
+        if (id <= 8) return (r % 2 === 0) ? "⟋" : "⟍";
 
-        // SWITCHES (Based on orientation)
-        if (id <= 12) return (r % 2 === 0) ? "⟋" : "⟍";
+        // DEFENDERS (Anubis-style): ⬒(N), ◨(E), ⬓(S), ◧(W)
+        if (id <= 12) return ["⬒", "◨", "⬓", "◧"][r];
 
-        // DEFLECTORS (Pyramids)
+        // DEFLECTORS (Pyramids): ◤, ◥, ◢, ◣
         return ["◤", "◥", "◢", "◣"][r];
     };
 
     const boardEl = document.getElementById('board');
     const turnEl = document.getElementById('turn-display');
     
-    // Parse turn (157th digit)
+    // Parse turn (last digit)
     const turn = state.slice(-1);
-    turnEl.innerText = turn === "0" ? "SILVER (BLUE)" : "RED";
-    turnEl.style.color = turn === "0" ? "#00ccff" : "#ff4444";
+    turnEl.innerText = turn === "0" ? "SILVER" : "RED";
+    turnEl.style.color = turn === "0" ? "#00ccff" : "#ff3333";
 
     const grid = Array(8).fill(0).map(() => Array(10).fill(null));
 
-    // Parse the 26 pieces (156 digits)
+    // Parse piece positions
     for (let i = 0; i < 26; i++) {
         const chunk = state.substr(i * 6, 6);
         const id    = parseInt(chunk.substr(0, 2));
@@ -97,7 +97,7 @@
         }
     }
 
-    // Render Grid (Y-axis 7 down to 0)
+    // Render 10x8 Grid (Standard Khet orientation)
     for (let y = 7; y >= 0; y--) {
         for (let x = 0; x < 10; x++) {
             const cellDiv = document.createElement('div');
