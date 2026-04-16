@@ -2,34 +2,45 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>KHET_OS_V3_DYNAMIC</title>
+    <title>KHET_UNIFONT_TERMINAL</title>
     <style>
+        @font-face {
+            font-family: 'Unifont';
+            /* Loading from the local folder as requested */
+            src: url('unifont-15.0.01.ttf') format('truetype');
+            font-display: block;
+        }
+
         body { 
             background: #000; 
             color: #0f0; 
-            font-family: 'Courier New', Courier, monospace; 
+            font-family: 'Unifont', monospace; 
             padding: 20px;
             display: flex;
             flex-direction: column;
             align-items: center;
         }
+
         #terminal {
             background: #050505;
             padding: 20px;
             border: 1px solid #333;
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.1);
             display: inline-block;
-            min-width: 450px;
+            min-width: 480px;
         }
+
         pre {
-            font-size: 26px;
-            line-height: 1.1;
-            letter-spacing: 2px;
+            /* Unifont is designed for 16px multiples */
+            font-size: 32px; 
+            line-height: 1.0;
+            letter-spacing: 0px;
             margin: 0;
+            font-family: 'Unifont', monospace;
         }
-        .b { color: #00d4ff; font-weight: bold; }
-        .r { color: #ff3333; font-weight: bold; }
-        .d { color: #222; }
+
+        .b { color: #00d4ff; } /* Blue/Silver */
+        .r { color: #ff3333; } /* Red */
+        .d { color: #222; }    /* Empty Dot */
         
         .input-area {
             margin-top: 20px;
@@ -39,31 +50,33 @@
             flex-direction: column;
             gap: 5px;
         }
+
         input {
             background: #111;
             border: 1px solid #0f0;
             color: #0f0;
             padding: 12px;
-            font-family: inherit;
+            font-family: 'Unifont', monospace;
             outline: none;
-            font-size: 14px;
+            font-size: 18px;
         }
-        .ui-text { color: #555; font-size: 12px; width: 100%; max-width: 800px; }
-        .counter { color: #888; text-align: right; margin-top: 4px; }
+
+        .ui-text { color: #444; font-size: 14px; width: 100%; max-width: 800px; }
+        .counter { color: #666; text-align: right; margin-top: 4px; font-size: 12px; }
     </style>
 </head>
 <body>
 
-<div class="ui-text">> KHET DYNAMIC RENDERER [V3]</div>
-<div class="ui-text">> MODES: AUTO-RENDER | PARTIAL DATA SUPPORT | PERSISTENT INPUT</div>
+<div class="ui-text">> KHET_OS [UNIFONT_ENABLED]</div>
+<div class="ui-text">> PIECE_MAP: ID TYPE X Y ROT SIDE</div>
 
 <div id="terminal">
-    <pre id="screen">WAITING FOR DATA...</pre>
+    <pre id="screen">AWAITING_DATA_STREAM...</pre>
 </div>
 
 <div class="input-area">
-    <input type="text" id="raw-input" placeholder="PASTE STRING HERE..." autocomplete="off" oninput="processInput()">
-    <div class="counter" id="digit-count">DIGITS: 0</div>
+    <input type="text" id="raw-input" placeholder="PASTE_STRING_HERE" autocomplete="off" oninput="processInput()">
+    <div class="counter" id="digit-count">LEN: 0</div>
 </div>
 
 <script>
@@ -74,27 +87,25 @@
     const getSymbol = (type, rot) => {
         const r = rot % 4;
         switch(type) {
-            case 0: case 5: return "◈"; 
-            case 1: case 6: return ["⫝", "⟜", "Ͳ", "Ð"][r]; 
-            case 2: case 7: return (r % 2 === 0) ? "⟋" : "⟍"; 
-            case 3: case 8: return ["⬒", "◨", "⬓", "◧"][r]; 
-            case 4: case 9: return ["◤", "◥", "◢", "◣"][r]; 
+            case 0: case 5: return "◈"; // KING
+            case 1: case 6: return ["⫝", "⟜", "Ͳ", "Ð"][r]; // LASER
+            case 2: case 7: return (r % 2 === 0) ? "⟋" : "⟍"; // SWITCH
+            case 3: case 8: return ["⬒", "◨", "⬓", "◧"][r]; // DEFENDER
+            case 4: case 9: return ["◤", "◥", "◢", "◣"][r]; // DEFLECTOR
             default: return "?";
         }
     };
 
     function processInput() {
         const raw = inputField.value.trim().replace(/\s/g, '');
-        counter.innerText = `DIGITS: ${raw.length}`;
+        counter.innerText = `LEN: ${raw.length}`;
         
         if (raw.length === 0) {
-            screen.innerHTML = "WAITING FOR DATA...";
+            screen.innerHTML = "AWAITING_DATA_STREAM...";
             return;
         }
 
         const grid = Array(8).fill(0).map(() => Array(10).fill(null));
-
-        // Calculate how many full 6-digit pieces we can render
         const pieceCount = Math.floor(raw.length / 6);
 
         for (let i = 0; i < pieceCount; i++) {
@@ -110,26 +121,23 @@
             }
         }
 
-        let out = "  0 1 2 3 4 5 6 7 8 9\n";
+        let out = "  0123456789\n";
         for (let y = 7; y >= 0; y--) {
             out += y + " ";
             for (let x = 0; x < 10; x++) {
                 const cell = grid[y][x];
                 if (cell) {
-                    out += `<span class="${cell.side}">${cell.char}</span> `;
+                    out += `<span class="${cell.side}">${cell.char}</span>`;
                 } else {
-                    out += `<span class="d">·</span> `;
+                    out += `<span class="d">·</span>`;
                 }
             }
             out += "\n";
         }
 
-        // Only show turn if the 157th digit exists
         if (raw.length >= 157) {
             const turnDigit = raw.substr(156, 1);
-            out += `\n> TURN: ${turnDigit === "0" ? '<span class="b">BLUE</span>' : '<span class="r">RED</span>'}`;
-        } else {
-            out += `\n<span style="color:#444">> AWAITING TURN DIGIT (157)...</span>`;
+            out += `\nTURN: ${turnDigit === "0" ? '<span class="b">BLUE</span>' : '<span class="r">RED</span>'}`;
         }
         
         screen.innerHTML = out;
