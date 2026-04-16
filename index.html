@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>KHET_OS_V5_STRICT</title>
+    <title>KHET_OS_V6_ROTATION_FIX</title>
     <style>
         @font-face {
             font-family: 'Unifont';
@@ -72,22 +72,20 @@
             font-size: 14px;
             margin-top: 5px;
         }
-        #debug { color: #333; font-size: 12px; margin-top: 10px; }
     </style>
 </head>
 <body>
 
 <div id="terminal">
-    <pre id="screen">READY_FOR_DATA_STREAM...</pre>
+    <pre id="screen">_</pre>
 </div>
 
 <div class="input-area">
-    <input type="text" id="raw-input" placeholder="PASTE: TYPE-X-Y-ROT-STAT..." autocomplete="off" oninput="processInput()">
+    <input type="text" id="raw-input" placeholder="PASTE: T-X-Y-R-S..." autocomplete="off" oninput="processInput()">
     <div class="status-bar">
         <span id="turn-info">T:--</span>
         <span id="digit-count">L:0</span>
     </div>
-    <div id="debug"></div>
 </div>
 
 <script>
@@ -95,16 +93,39 @@
     const inputField = document.getElementById('raw-input');
     const counter = document.getElementById('digit-count');
     const turnInfo = document.getElementById('turn-info');
-    const debug = document.getElementById('debug');
 
     const getSymbol = (type, rot) => {
-        const r = rot % 4;
+        // Logic: 0=Fixed, 1=N, 2=E, 3=S, 4=W
         switch(type) {
             case 0: case 5: return "◈"; // King
-            case 1: case 6: return ["⫝", "⟜", "Ͳ", "Ð"][r]; // Laser
-            case 2: case 7: return (r % 2 === 0) ? "⟋" : "⟍"; // Switch
-            case 3: case 8: return ["⬒", "◨", "⬓", "◧"][r]; // Defender
-            case 4: case 9: return ["◤", "◥", "◢", "◣"][r]; // Deflector
+            
+            case 1: case 6: // Laser
+                if (rot === 1) return "⫝";
+                if (rot === 2) return "⟜";
+                if (rot === 3) return "Ͳ";
+                if (rot === 4) return "Ð";
+                return "!"; 
+
+            case 2: case 7: // Switches (Mirrors)
+                // 1/3 = North/South orientation, 2/4 = East/West
+                if (rot === 1 || rot === 3) return "⟋";
+                if (rot === 2 || rot === 4) return "⟍";
+                return "⟋";
+
+            case 3: case 8: // Defenders
+                if (rot === 1) return "⬒";
+                if (rot === 2) return "◨";
+                if (rot === 3) return "⬓";
+                if (rot === 4) return "◧";
+                return "!";
+
+            case 4: case 9: // Deflectors (Pyramids)
+                if (rot === 1) return "◤";
+                if (rot === 2) return "◥";
+                if (rot === 3) return "◢";
+                if (rot === 4) return "◣";
+                return "!";
+
             default: return "?";
         }
     };
@@ -114,7 +135,7 @@
         counter.innerText = `L:${raw.length}`;
         
         if (raw.length < 5) {
-            screen.innerHTML = "AWAITING_FULL_PIECE_BLOCK...";
+            screen.innerHTML = "_";
             return;
         }
 
@@ -124,15 +145,10 @@
         for (let i = 0; i < pieceCount; i++) {
             const block = raw.substr(i * 5, 5);
             
-            // STRICT MAPPING: TYPE(0) X(1) Y(2) R(3) S(4)
             const type = parseInt(block[0]); 
             const x    = parseInt(block[1]); 
             const y    = parseInt(block[2]); 
             const r    = parseInt(block[3]); 
-
-            if (i === 0) {
-                debug.innerText = `DEBUG PIECE 0: TYPE=${type} X=${x} Y=${y} R=${r}`;
-            }
 
             if (!isNaN(x) && !isNaN(y) && y < 8 && x < 10) {
                 const side = (type <= 4) ? "b" : "r";
@@ -157,7 +173,6 @@
             out += "\n";
         }
 
-        // 26 pieces * 5 digits = 130 digits. Turn is digit 131.
         if (raw.length >= 131) {
             const turnDigit = raw.substr(130, 1);
             turnInfo.innerHTML = `T:${turnDigit === "0" ? '<span class="b">BLUE</span>' : '<span class="r">RED</span>'}`;
