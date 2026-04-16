@@ -37,13 +37,42 @@
         .highlight { color: #ffffff; margin-bottom: 10px; font-weight: bold; }
         .rules-link { color: #4444ff; text-decoration: underline; font-weight: bold; }
         .history-line { margin-bottom: 5px; }
+
+        /* --- TEMPORARY RENDERER CSS --- */
+        #board-container {
+            margin-top: 30px;
+            display: inline-block;
+            background: #111;
+            padding: 20px;
+            border: 2px solid #333;
+            border-radius: 4px;
+        }
+        .board-grid {
+            display: grid;
+            /* 8x8 grid ensures mathematically perfect spacing in all 4 directions */
+            grid-template-columns: repeat(8, 36px);
+            grid-template-rows: repeat(8, 36px);
+            gap: 6px; 
+        }
+        .board-cell {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-family: 'Unifont', monospace;
+        }
+        .p0 { color: #88ccff; } /* Silver/Blue */
+        .p1 { color: #ff4444; } /* Red */
+        .empty-cell { color: #444; }
+        /* ------------------------------ */
     </style>
 </head>
 <body>
 
 <div id="terminal-log"></div>
-
-<script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-app-compat.js"></script>
+<div id="board-container"></div> <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
 
 <script>
@@ -241,13 +270,72 @@
                     const u = child.key;
                     const p = {};
                     p['s/'+u]=null; p['a/'+u]=null; 
-                    p['m/U/'+u]=null; p['m/R/'+u]=null; // Updated paths
+                    p['m/U/'+u]=null; p['m/R/'+u]=null;
                     p['g/'+u]=null;
                     db.ref().update(p).catch(() => {});
                 }
             });
         });
     }
+
+    // --- TEMPORARY RENDERER LOGIC --- //
+    const SYMBOLS = {
+        KING: "◈",
+        LASER: { 0: "^|", 1: "->", 2: "|v", 3: "<-" },
+        SWITCH: { 0: "⬒", 1: "◨", 2: "⬓", 3: "◧" },
+        DEFENDER: { 0: "Ð", 1: "⫝", 2: "Ͳ", 3: "⟜" },
+        DEFLECTOR: { 0: "◤", 1: "◥", 2: "◢", 3: "◣" }
+    };
+
+    function getPieceChar(id, rot) {
+        if (id <= 2) return SYMBOLS.KING;
+        if (id <= 4) return SYMBOLS.LASER[rot];
+        if (id <= 8) return SYMBOLS.SWITCH[rot];
+        if (id <= 12) return SYMBOLS.DEFENDER[rot];
+        return SYMBOLS.DEFLECTOR[rot];
+    }
+
+    function renderBoard(gameState) {
+        const container = document.getElementById('board-container');
+        container.innerHTML = ''; 
+        const gridEl = document.createElement('div');
+        gridEl.className = 'board-grid';
+
+        const grid = Array(8).fill(null).map(() => Array(8).fill(null));
+
+        // Parse string
+        for (let i = 0; i < 26; i++) {
+            const chunk = gameState.substr(i * 7, 7);
+            const id = parseInt(chunk.substr(0, 2));
+            const x = parseInt(chunk.substr(2, 1));
+            const y = parseInt(chunk.substr(3, 1));
+            const rot = parseInt(chunk.substr(4, 1)) % 4;
+            const owner = parseInt(chunk.substr(5, 1));
+            const active = parseInt(chunk.substr(6, 1));
+
+            if (active === 1 && x < 8 && y < 8) {
+                grid[y][x] = { char: getPieceChar(id, rot), owner };
+            }
+        }
+
+        // Render Y from 7 down to 0
+        for (let y = 7; y >= 0; y--) {
+            for (let x = 0; x < 8; x++) {
+                const cell = document.createElement('div');
+                cell.className = 'board-cell';
+                const piece = grid[y][x];
+                
+                if (piece) {
+                    cell.innerHTML = `<span class="p${piece.owner}">${piece.char}</span>`;
+                } else {
+                    cell.innerHTML = `<span class="empty-cell">·</span>`;
+                }
+                gridEl.appendChild(cell);
+            }
+        }
+        container.appendChild(gridEl);
+    }
+    // -------------------------------- //
 
     async function startTerminalWhenReady() {
         if (document.fonts) {
@@ -257,29 +345,9 @@
             } catch (e) {}
         }
         initTerminalSequence();
-    }
-
-    function initTerminalSequence() {
-        addToQueue("Laser Chess - Standard Version (Core Edition)", "highlight");
-        addToQueue('Site for Laser Chess. <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">Rules</a>.', "system-msg");
-        addToQueue("IDENTITY NOTICE: ANY ACCOUNT WHICH PLAYED IT'S LAST MOVE 24 HOURS AGO WILL BE DELETED.", "highlight");
-
-        const savedUser = localStorage.getItem('session_user');
-        const savedPass = localStorage.getItem('session_pass');
-
-        if (savedUser && savedPass) {
-            addToQueue("LOCAL SESSION FOUND. VERIFYING...", "system-msg");
-            db.ref('a/' + savedUser).set({ password: savedPass, lastplayed: SERVER_TIMESTAMP }).then(() => {
-                addToQueue("VERIFICATION SUCCESSFUL. Welcome, " + savedUser + ".", "success-msg");
-                finalizeLogin(savedUser, savedPass);
-            }).catch(err => {
-                localStorage.clear();
-                currentState = "USERNAME";
-                addToQueue("Session Username (max 20):", "", true);
-            });
-        } else {
-            addToQueue("Session Username (max 20):", "", true);
-        }
+        
+        // Temporarily render the ACE string
+        renderBoard('01470102500103971104004105432106441107531108542109371110404111571112604113321114211411523411603211724111804311993120733121944227422367212421312529112670410');
     }
 
     window.onload = startTerminalWhenReady;
