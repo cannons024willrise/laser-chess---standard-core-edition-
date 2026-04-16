@@ -2,11 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>KHET_UNIFONT_TERMINAL</title>
+    <title>KHET_MIN_OS</title>
     <style>
         @font-face {
             font-family: 'Unifont';
-            /* Loading from the local folder as requested */
             src: url('unifont-15.0.01.ttf') format('truetype');
             font-display: block;
         }
@@ -15,7 +14,7 @@
             background: #000; 
             color: #0f0; 
             font-family: 'Unifont', monospace; 
-            padding: 20px;
+            padding: 10px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -23,85 +22,90 @@
 
         #terminal {
             background: #050505;
-            padding: 20px;
-            border: 1px solid #333;
+            padding: 10px;
+            border: 1px solid #222;
             display: inline-block;
-            min-width: 480px;
         }
 
         pre {
-            /* Unifont is designed for 16px multiples */
-            font-size: 32px; 
-            line-height: 1.0;
-            letter-spacing: 0px;
+            font-size: 24px; /* Slightly smaller for compactness */
+            line-height: 0.9; /* Tight vertical spacing */
+            letter-spacing: -1px; /* Minimal horizontal spacing */
             margin: 0;
             font-family: 'Unifont', monospace;
         }
 
-        .b { color: #00d4ff; } /* Blue/Silver */
-        .r { color: #ff3333; } /* Red */
-        .d { color: #222; }    /* Empty Dot */
+        .b { color: #00d4ff; }
+        .r { color: #ff3333; }
+        .d { color: #222; }
         
         .input-area {
-            margin-top: 20px;
+            margin-top: 15px;
             width: 100%;
-            max-width: 800px;
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
+            max-width: 600px;
         }
 
         input {
+            width: 100%;
             background: #111;
-            border: 1px solid #0f0;
+            border: 1px solid #333;
             color: #0f0;
-            padding: 12px;
+            padding: 8px;
             font-family: 'Unifont', monospace;
             outline: none;
-            font-size: 18px;
+            font-size: 16px;
         }
 
-        .ui-text { color: #444; font-size: 14px; width: 100%; max-width: 800px; }
-        .counter { color: #666; text-align: right; margin-top: 4px; font-size: 12px; }
+        .status-bar { 
+            display: flex; 
+            justify-content: space-between; 
+            width: 100%; 
+            max-width: 600px; 
+            color: #444; 
+            font-size: 12px;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
 
-<div class="ui-text">> KHET_OS [UNIFONT_ENABLED]</div>
-<div class="ui-text">> PIECE_MAP: ID TYPE X Y ROT SIDE</div>
-
 <div id="terminal">
-    <pre id="screen">AWAITING_DATA_STREAM...</pre>
+    <pre id="screen">_</pre>
 </div>
 
 <div class="input-area">
-    <input type="text" id="raw-input" placeholder="PASTE_STRING_HERE" autocomplete="off" oninput="processInput()">
-    <div class="counter" id="digit-count">LEN: 0</div>
+    <input type="text" id="raw-input" placeholder="INPUT_STR" autocomplete="off" oninput="processInput()">
+    <div class="status-bar">
+        <span id="turn-info">T:--</span>
+        <span id="digit-count">L:0</span>
+    </div>
 </div>
 
 <script>
     const screen = document.getElementById('screen');
     const inputField = document.getElementById('raw-input');
     const counter = document.getElementById('digit-count');
+    const turnInfo = document.getElementById('turn-info');
 
     const getSymbol = (type, rot) => {
         const r = rot % 4;
         switch(type) {
-            case 0: case 5: return "◈"; // KING
-            case 1: case 6: return ["⫝", "⟜", "Ͳ", "Ð"][r]; // LASER
-            case 2: case 7: return (r % 2 === 0) ? "⟋" : "⟍"; // SWITCH
-            case 3: case 8: return ["⬒", "◨", "⬓", "◧"][r]; // DEFENDER
-            case 4: case 9: return ["◤", "◥", "◢", "◣"][r]; // DEFLECTOR
+            case 0: case 5: return "◈"; 
+            case 1: case 6: return ["⫝", "⟜", "Ͳ", "Ð"][r]; 
+            case 2: case 7: return (r % 2 === 0) ? "⟋" : "⟍"; 
+            case 3: case 8: return ["⬒", "◨", "⬓", "◧"][r]; 
+            case 4: case 9: return ["◤", "◥", "◢", "◣"][r]; 
             default: return "?";
         }
     };
 
     function processInput() {
         const raw = inputField.value.trim().replace(/\s/g, '');
-        counter.innerText = `LEN: ${raw.length}`;
+        counter.innerText = `L:${raw.length}`;
         
         if (raw.length === 0) {
-            screen.innerHTML = "AWAITING_DATA_STREAM...";
+            screen.innerHTML = "_";
+            turnInfo.innerHTML = "T:--";
             return;
         }
 
@@ -112,36 +116,3 @@
             const block = raw.substr(i * 6, 6);
             const type = parseInt(block[1]);
             const x    = parseInt(block[2]);
-            const y    = parseInt(block[3]);
-            const r    = parseInt(block[4]);
-
-            if (y < 8 && x < 10 && !isNaN(type)) {
-                const side = (type <= 4) ? "b" : "r";
-                grid[y][x] = { char: getSymbol(type, r), side: side };
-            }
-        }
-
-        let out = "  0123456789\n";
-        for (let y = 7; y >= 0; y--) {
-            out += y + " ";
-            for (let x = 0; x < 10; x++) {
-                const cell = grid[y][x];
-                if (cell) {
-                    out += `<span class="${cell.side}">${cell.char}</span>`;
-                } else {
-                    out += `<span class="d">·</span>`;
-                }
-            }
-            out += "\n";
-        }
-
-        if (raw.length >= 157) {
-            const turnDigit = raw.substr(156, 1);
-            out += `\nTURN: ${turnDigit === "0" ? '<span class="b">BLUE</span>' : '<span class="r">RED</span>'}`;
-        }
-        
-        screen.innerHTML = out;
-    }
-</script>
-</body>
-</html>
