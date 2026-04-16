@@ -2,80 +2,114 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Khet 2.0 - 10x8 Render</title>
+    <title>Khet 2.0 ASCII Renderer</title>
     <style>
-        body { background: #050505; color: #eee; font-family: monospace; display: flex; flex-direction: column; align-items: center; }
+        body { 
+            background: #000; 
+            color: #00FF00; 
+            font-family: 'Courier New', monospace; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 20px;
+        }
+        .board-wrapper {
+            border: 2px solid #555;
+            padding: 10px;
+            background: #050505;
+        }
         .grid { 
             display: grid; 
-            grid-template-columns: repeat(10, 40px); 
-            grid-template-rows: repeat(8, 40px); 
-            gap: 2px; border: 4px solid #333; padding: 5px; background: #222;
+            grid-template-columns: repeat(10, 45px); 
+            grid-template-rows: repeat(8, 45px); 
+            background: #111;
         }
         .cell { 
-            width: 40px; height: 40px; background: #111; 
-            display: flex; align-items: center; justify-content: center; font-size: 22px; 
+            width: 45px; 
+            height: 45px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 28px;
+            border: 0.5px solid #222;
         }
-        .silver { color: #00d4ff; text-shadow: 0 0 8px #00d4ff; } /* Player 0 */
-        .red { color: #ff3333; text-shadow: 0 0 8px #ff3333; }    /* Player 1 */
-        .empty { color: #444; font-size: 12px; }
-        .info { margin-bottom: 10px; text-align: center; }
+        /* Player Colors */
+        .p0 { color: #00ccff; } /* Silver/Blue */
+        .p1 { color: #ff4444; } /* Red */
+        .empty { color: #333; font-size: 18px; }
+        
+        .status { margin-bottom: 15px; font-size: 18px; text-transform: uppercase; }
     </style>
 </head>
 <body>
-    <div class="info">
-        <h2>KHET 2.0 BOARD STATE</h2>
-        <p>157 Digits Processed | Grid: 10x8 | Turn: <span id="turn"></span></p>
+
+    <div class="status">
+        TURN: <span id="turn-display"></span>
     </div>
-    <div id="board" class="grid"></div>
+
+    <div class="board-wrapper">
+        <div id="board" class="grid"></div>
+    </div>
 
 <script>
     const state = "0147010250010397110400410543210644110753110854210937111040411157111260411332111421411523411603211724111804311993112073312194412274212367212421312529112670410";
-    
-    // Symbols based on piece ID ranges
-    const getSymbol = (id, rot) => {
+
+    const getPiece = (id, rot) => {
         const r = rot % 4;
-        if (id <= 2) return "♔"; // Pharaoh
-        if (id <= 4) return ["^", ">", "v", "<"][r]; // Sphinx
-        if (id <= 8) return ["⬒", "◨", "⬓", "◧"][r]; // Scarab
-        if (id <= 12) return ["▲", "▶", "▼", "◀"][r]; // Anubis
-        return ["◤", "◥", "◢", "◣"][r]; // Pyramid
+        
+        // KING
+        if (id <= 2) return "◈"; 
+
+        // LASERS: 0=N, 1=E, 2=S, 3=W (using your custom symbols)
+        if (id <= 4) return ["⫝", "⟜", "Ͳ", "Ð"][r];
+
+        // DEFENDERS: 0=N, 1=E, 2=S, 3=W
+        if (id <= 8) return ["⬒", "◨", "⬓", "◧"][r];
+
+        // SWITCHES (Based on orientation)
+        if (id <= 12) return (r % 2 === 0) ? "⟋" : "⟍";
+
+        // DEFLECTORS (Pyramids)
+        return ["◤", "◥", "◢", "◣"][r];
     };
 
     const boardEl = document.getElementById('board');
-    const turnEl = document.getElementById('turn');
+    const turnEl = document.getElementById('turn-display');
     
-    // Last digit is the turn
-    const turnDigit = state.slice(-1);
-    turnEl.innerText = turnDigit === "0" ? "SILVER" : "RED";
-    turnEl.className = turnDigit === "0" ? "silver" : "red";
+    // Parse turn (157th digit)
+    const turn = state.slice(-1);
+    turnEl.innerText = turn === "0" ? "SILVER (BLUE)" : "RED";
+    turnEl.style.color = turn === "0" ? "#00ccff" : "#ff4444";
 
-    const cells = Array(8).fill(0).map(() => Array(10).fill(null));
+    const grid = Array(8).fill(0).map(() => Array(10).fill(null));
 
-    // Parse pieces (26 pieces, 6 digits each)
+    // Parse the 26 pieces (156 digits)
     for (let i = 0; i < 26; i++) {
-        const p = state.substr(i * 6, 6);
-        const id = parseInt(p.substr(0, 2));
-        const x = parseInt(p.substr(2, 1));
-        const y = parseInt(p.substr(3, 1));
-        const rot = parseInt(p.substr(4, 1));
-        const owner = parseInt(p.substr(5, 1));
-        
+        const chunk = state.substr(i * 6, 6);
+        const id    = parseInt(chunk.substr(0, 2));
+        const x     = parseInt(chunk.substr(2, 1));
+        const y     = parseInt(chunk.substr(3, 1));
+        const rot   = parseInt(chunk.substr(4, 1));
+        const owner = parseInt(chunk.substr(5, 1));
+
         if (y < 8 && x < 10) {
-            cells[y][x] = { symbol: getSymbol(id, rot), owner };
+            grid[y][x] = { symbol: getPiece(id, rot), owner };
         }
     }
 
-    // Render (Rows 7 down to 0)
+    // Render Grid (Y-axis 7 down to 0)
     for (let y = 7; y >= 0; y--) {
         for (let x = 0; x < 10; x++) {
-            const div = document.createElement('div');
-            div.className = 'cell';
-            if (cells[y][x]) {
-                div.innerHTML = `<span class="${cells[y][x].owner === 0 ? 'silver' : 'red'}">${cells[y][x].symbol}</span>`;
+            const cellDiv = document.createElement('div');
+            cellDiv.className = 'cell';
+            const data = grid[y][x];
+
+            if (data) {
+                cellDiv.innerHTML = `<span class="p${data.owner}">${data.symbol}</span>`;
             } else {
-                div.innerHTML = `<span class="empty">·</span>`;
+                cellDiv.innerHTML = `<span class="empty">·</span>`;
             }
-            boardEl.appendChild(div);
+            boardEl.appendChild(cellDiv);
         }
     }
 </script>
