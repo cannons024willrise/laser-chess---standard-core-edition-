@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>KHET_CLI_LOOP</title>
+    <style>
+        /* GLOBAL NATURE CSS */
+        * { background: #000; color: #0c0; font-family: 'Courier New', monospace; box-sizing: border-box; }
+        
+        body { 
+            padding: 40px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: flex-start; 
+        }
+
+        #log { width: 100%; }
+
+        /* RAW BOARD OUTPUT */
+        pre { 
+            line-height: 1.2; 
+            letter-spacing: 2px; 
+            font-size: 18px; 
+            color: #222; /* Dot Matrix */
+            margin: 20px 0;
+            padding-left: 10px;
+            border-left: 2px solid #111;
+        }
+
+        /* PIECE COLORS */
+        .b { color: #00d4ff; }
+        .r { color: #ff3333; }
+        .l { color: #444; } /* Axis */
+
+        /* CLI PROMPT */
+        .prompt-line { display: flex; width: 100%; align-items: center; }
+        .symbol { margin-right: 10px; color: #0f0; font-weight: bold; }
+        
+        input { 
+            flex: 1;
+            border: none; 
+            background: transparent;
+            color: #0c0; 
+            outline: none;
+            font-size: 18px;
+        }
+
+        .header { color: #444; margin-bottom: 20px; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div class="header">KHET_OS v14.0.0 // ENTER STRING TO RENDER</div>
+<div id="log"></div>
+
+<div class="prompt-line">
+    <span class="symbol">></span>
+    <input type="text" id="cli-input" autofocus autocomplete="off" placeholder="PASTE STRING AND PRESS ENTER">
+</div>
+
+<script>
+    const log = document.getElementById('log');
+    const input = document.getElementById('cli-input');
+
+    const symbols = {
+        king: "◈",
+        laser: ["⫝", "⟜", "Ͳ", "Ð"],
+        switch: ["⟋", "⟍"],
+        defender: ["⬒", "◨", "⬓", "◧"],
+        deflector: ["◤", "◥", "◢", "◣"]
+    };
+
+    function getChar(t, r) {
+        if (t == 0 || t == 5) return symbols.king;
+        if (t == 1 || t == 6) return symbols.laser[r-1];
+        if (t == 2 || t == 7) return (r == 1 || r == 3) ? symbols.switch[0] : symbols.switch[1];
+        if (t == 3 || t == 8) return symbols.defender[r-1];
+        if (t == 4 || t == 9) return symbols.deflector[r-1];
+        return "?";
+    }
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const val = input.value.replace(/\s/g, '');
+            if (val) {
+                renderBoard(val);
+                input.value = ''; // Clear for next string
+                window.scrollTo(0, document.body.scrollHeight);
+            }
+        }
+    });
+
+    function renderBoard(raw) {
+        const grid = Array(8).fill(null).map(() => Array(10).fill(null));
+        const pieceCount = Math.floor(raw.length / 5);
+
+        for (let i = 0; i < pieceCount; i++) {
+            const b = raw.substr(i * 5, 5);
+            const t = parseInt(b[0]), x = parseInt(b[1]), y = parseInt(b[2]), r = parseInt(b[3]), s = parseInt(b[4]);
+            if (s === 1 && y < 8 && x < 10) {
+                grid[y][x] = { char: getChar(t, r), side: t <= 4 ? 'b' : 'r' };
+            }
+        }
+
+        let out = `<span class="l">  0 1 2 3 4 5 6 7 8 9</span>\n`;
+        for (let y = 7; y >= 0; y--) {
+            out += `<span class="l">${y}</span> `;
+            for (let x = 0; x < 10; x++) {
+                const p = grid[y][x];
+                out += p ? `<span class="${p.side}">${p.char}</span> ` : `· `;
+            }
+            out += "\n";
+        }
+
+        // Add Turn Info
+        if (raw.length % 5 === 1) {
+            const t = raw.slice(-1);
+            out += `\n<span class="l">STATUS:</span> <span class="${t==='0'?'b':'r'}">${t==='0'?'BLUE':'RED'}_TO_MOVE</span>\n`;
+        }
+
+        const entry = document.createElement('pre');
+        entry.innerHTML = out;
+        log.appendChild(entry);
+    }
+</script>
+</body>
+</html>
