@@ -2,65 +2,66 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>KHET_NATURAL_ASCII</title>
+    <title>KHET_CLI_LOOP</title>
     <style>
         /* GLOBAL NATURE CSS */
-        body {
-            background: #000;
-            color: #0c0;
-            font-family: 'Unifont', monospace;
-            text-align: center;
-            padding: 50px;
-        }
-
-        /* The Board Buffer */
-        pre {
-            display: inline-block;
-            text-align: left;
-            line-height: 1.2;
-            letter-spacing: 4px; /* Space between "dots" */
-            font-size: 20px;
-            color: #222; /* Default color for dots */
-            margin: 0;
-        }
-
-        /* Piece & Label Selectors */
-        b { color: #00d4ff; font-weight: normal; } /* Blue */
-        i { color: #ff3333; font-style: normal; }  /* Red */
-        u { color: #444; text-decoration: none; }  /* Labels */
+        * { background: #000; color: #0c0; font-family: 'Courier New', monospace; box-sizing: border-box; }
         
-        /* Input Styling */
-        section { margin-top: 30px; }
-        input {
-            background: transparent;
-            border: none;
-            border-bottom: 1px solid #0c0;
-            color: #0c0;
-            font-family: inherit;
-            font-size: 18px;
-            width: 80%;
-            outline: none;
-            text-align: center;
+        body { 
+            padding: 40px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: flex-start; 
         }
 
-        small { color: #333; display: block; margin-top: 10px; }
+        #log { width: 100%; }
+
+        /* RAW BOARD OUTPUT */
+        pre { 
+            line-height: 1.2; 
+            letter-spacing: 2px; 
+            font-size: 18px; 
+            color: #222; /* Dot Matrix */
+            margin: 20px 0;
+            padding-left: 10px;
+            border-left: 2px solid #111;
+        }
+
+        /* PIECE COLORS */
+        .b { color: #00d4ff; }
+        .r { color: #ff3333; }
+        .l { color: #444; } /* Axis */
+
+        /* CLI PROMPT */
+        .prompt-line { display: flex; width: 100%; align-items: center; }
+        .symbol { margin-right: 10px; color: #0f0; font-weight: bold; }
+        
+        input { 
+            flex: 1;
+            border: none; 
+            background: transparent;
+            color: #0c0; 
+            outline: none;
+            font-size: 18px;
+        }
+
+        .header { color: #444; margin-bottom: 20px; font-size: 12px; }
     </style>
 </head>
 <body>
 
-<pre id="matrix">_</pre>
+<div class="header">KHET_OS v14.0.0 // ENTER STRING TO RENDER</div>
+<div id="log"></div>
 
-<section>
-    <input type="text" id="raw-input" value="04001 55701 19011 60731 24311 25321 74421 75411 84711 86711 33031 35031 92621 47141 43531 96211 42421 42331 90441 90311 97411 97341 49431 49321 0" oninput="update()">
-    <small id="status">INITIATING READOUT...</small>
-</section>
+<div class="prompt-line">
+    <span class="symbol">></span>
+    <input type="text" id="cli-input" autofocus autocomplete="off" placeholder="PASTE STRING AND PRESS ENTER">
+</div>
 
 <script>
-    const matrix = document.getElementById('matrix');
-    const input = document.getElementById('raw-input');
-    const status = document.getElementById('status');
+    const log = document.getElementById('log');
+    const input = document.getElementById('cli-input');
 
-    // YOUR MANDATORY ASCII SET
     const symbols = {
         king: "◈",
         laser: ["⫝", "⟜", "Ͳ", "Ð"],
@@ -78,42 +79,49 @@
         return "?";
     }
 
-    function update() {
-        const raw = input.value.replace(/\s/g, '');
-        const grid = Array(8).fill(null).map(() => Array(10).fill(null));
-        const pieces = Math.floor(raw.length / 5);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const val = input.value.replace(/\s/g, '');
+            if (val) {
+                renderBoard(val);
+                input.value = ''; // Clear for next string
+                window.scrollTo(0, document.body.scrollHeight);
+            }
+        }
+    });
 
-        for (let i = 0; i < pieces; i++) {
+    function renderBoard(raw) {
+        const grid = Array(8).fill(null).map(() => Array(10).fill(null));
+        const pieceCount = Math.floor(raw.length / 5);
+
+        for (let i = 0; i < pieceCount; i++) {
             const b = raw.substr(i * 5, 5);
             const t = parseInt(b[0]), x = parseInt(b[1]), y = parseInt(b[2]), r = parseInt(b[3]), s = parseInt(b[4]);
             if (s === 1 && y < 8 && x < 10) {
-                grid[y][x] = { char: getChar(t, r), side: t <= 4 ? 'b' : 'i' };
+                grid[y][x] = { char: getChar(t, r), side: t <= 4 ? 'b' : 'r' };
             }
         }
 
-        let out = "<u>  0 1 2 3 4 5 6 7 8 9</u>\n";
+        let out = `<span class="l">  0 1 2 3 4 5 6 7 8 9</span>\n`;
         for (let y = 7; y >= 0; y--) {
-            out += `<u>${y}</u> `;
+            out += `<span class="l">${y}</span> `;
             for (let x = 0; x < 10; x++) {
                 const p = grid[y][x];
-                if (p) {
-                    out += `<${p.side}>${p.char}</${p.side}> `;
-                } else {
-                    out += `· `;
-                }
+                out += p ? `<span class="${p.side}">${p.char}</span> ` : `· `;
             }
             out += "\n";
         }
 
-        matrix.innerHTML = out;
-
+        // Add Turn Info
         if (raw.length % 5 === 1) {
-            const turn = raw.slice(-1);
-            status.innerText = `LATEST_SCAN: ${turn === '0' ? 'BLUE' : 'RED'}_SIGNAL_DETECTED`;
+            const t = raw.slice(-1);
+            out += `\n<span class="l">STATUS:</span> <span class="${t==='0'?'b':'r'}">${t==='0'?'BLUE':'RED'}_TO_MOVE</span>\n`;
         }
-    }
 
-    update();
+        const entry = document.createElement('pre');
+        entry.innerHTML = out;
+        log.appendChild(entry);
+    }
 </script>
 </body>
 </html>
