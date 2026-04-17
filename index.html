@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>KHET_NORMALIZED_RENDERER</title>
+    <title>KHET_CLI_RAW_V11</title>
     <style>
         @font-face {
             font-family: 'Unifont';
@@ -12,9 +12,9 @@
 
         body { 
             background: #000; 
-            color: #0f0; 
+            color: #0c0; /* Terminal Green */
             font-family: 'Unifont', monospace; 
-            padding: 20px;
+            padding: 30px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -22,17 +22,16 @@
         }
 
         #terminal {
-            background: #050505;
-            padding: 20px;
-            border: 2px solid #333;
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.15);
+            background: #000;
+            padding: 10px;
+            border: 1px solid #222; /* Dim border */
             display: inline-block;
         }
 
-        /* FLEXBOX GRID FOR PERFECT CENTERING */
+        /* STRICT DOT MATRIX GRID */
         .grid-row {
             display: flex;
-            height: 32px; /* Slightly larger cells to accommodate scaling */
+            height: 32px;
         }
 
         .u {
@@ -41,28 +40,26 @@
             justify-content: center;
             width: 32px;
             height: 32px;
-            overflow: hidden; /* Prevents oversized glyphs from breaking the grid */
+            overflow: hidden;
+            font-size: 24px;
         }
 
-        /* TIERED COLOR MAPPING */
-        .b { color: #00d4ff; text-shadow: 0 0 6px rgba(0,212,255,0.4); } 
-        .r { color: #ff3333; text-shadow: 0 0 6px rgba(255,51,51,0.4); } 
-        .d { color: #333; font-size: 24px; }    
-        .label { color: #555; font-size: 20px; } 
+        /* PIECE COLORS - RAW */
+        .b { color: #00d4ff; } 
+        .r { color: #ff3333; } 
+        .d { color: #222; } /* Empty Cell Dots */
+        .label { color: #444; font-size: 18px; } 
         
-        /* GLYPH NORMALIZATION CLASSES (Forces equal visual sizes) */
-        .type-king { font-size: 26px; }
-        .type-laser { font-size: 24px; font-family: sans-serif; font-weight: bold; transform: scale(1.2); }
-        .type-switch { font-size: 28px; font-weight: bold; transform: scale(1.3); }
-        .type-defender { font-size: 26px; transform: scale(1.05); }
-        .type-deflector { font-size: 26px; transform: scale(1.1); }
+        /* Scaling Normalization (Kept to prevent visual jitter) */
+        .type-laser { font-family: sans-serif; font-weight: bold; transform: scale(1.1); }
+        .type-switch { font-weight: bold; transform: scale(1.2); }
+        .type-defender { transform: scale(1.05); }
+        .type-deflector { transform: scale(1.1); }
         
         .err { 
             color: #000; 
-            background: #ffeb3b; 
+            background: #0c0; /* Inverted terminal color for errors */
             font-weight: bold; 
-            box-shadow: 0 0 8px #ffeb3b; 
-            border-radius: 4px;
         }
 
         .input-area {
@@ -73,25 +70,22 @@
 
         input {
             width: 100%;
-            background: #0a0a0a;
-            border: 1px solid #0f0;
-            color: #0f0;
-            padding: 14px;
+            background: #000;
+            border: 1px solid #0c0;
+            color: #0c0;
+            padding: 12px;
             font-family: 'Unifont', monospace;
             outline: none;
             font-size: 18px;
             box-sizing: border-box;
-            letter-spacing: 2px;
         }
-
-        input:focus { border-color: #00d4ff; }
 
         .status-bar { 
             display: flex; 
             justify-content: space-between; 
             width: 100%; 
-            color: #888; 
-            font-size: 16px;
+            color: #444; 
+            font-size: 14px;
             margin-top: 10px;
             text-transform: uppercase;
         }
@@ -104,9 +98,9 @@
 </div>
 
 <div class="input-area">
-    <input type="text" id="raw-input" placeholder="PASTE: T(0-9) X(0-9) Y(0-7) R(0-4) S(0-1)..." autocomplete="off" oninput="processInput()">
+    <input type="text" id="raw-input" value="04001 55701 19011 60731 24311 25321 74421 75411 84711 86711 33031 35031 92621 47141 43531 96211 42421 42331 90441 90311 97411 97341 49431 49321 0" autocomplete="off" oninput="processInput()">
     <div class="status-bar">
-        <span id="turn-info">TURN: --</span>
+        <span id="turn-info">SYSTEM: IDLE</span>
         <span id="digit-count">LEN: 0</span>
     </div>
 </div>
@@ -117,39 +111,32 @@
     const counter = document.getElementById('digit-count');
     const turnInfo = document.getElementById('turn-info');
 
-    // STRICT SYMBOL PARSER WITH NORMALIZATION CLASSES
+    // UNCHANGED ASCII SET AS REQUESTED
     const getSymbolData = (type, r) => {
         switch(type) {
-            case 0: case 5: // KINGS
-                if (r !== 0) return { char: "!", class: "err" };
-                return { char: "◈", class: "type-king" }; 
-            
-            case 1: case 6: // LASER
-                if (r === 1) return { char: "⫝", class: "type-laser" }; // N
-                if (r === 2) return { char: "⟜", class: "type-laser" }; // E
-                if (r === 3) return { char: "Ͳ", class: "type-laser" }; // S
-                if (r === 4) return { char: "Ð", class: "type-laser" }; // W
+            case 0: case 5: return { char: "◈", class: "type-king" }; 
+            case 1: case 6: 
+                if (r === 1) return { char: "⫝", class: "type-laser" };
+                if (r === 2) return { char: "⟜", class: "type-laser" };
+                if (r === 3) return { char: "Ͳ", class: "type-laser" };
+                if (r === 4) return { char: "Ð", class: "type-laser" };
                 return { char: "!", class: "err" };
-
-            case 2: case 7: // SWITCHES
-                if (r === 1 || r === 3) return { char: "⟋", class: "type-switch" }; // N / S
-                if (r === 2 || r === 4) return { char: "⟍", class: "type-switch" }; // E / W
+            case 2: case 7: 
+                if (r === 1 || r === 3) return { char: "⟋", class: "type-switch" };
+                if (r === 2 || r === 4) return { char: "⟍", class: "type-switch" };
                 return { char: "!", class: "err" };
-
-            case 3: case 8: // DEFENDERS
-                if (r === 1) return { char: "⬒", class: "type-defender" }; // N
-                if (r === 2) return { char: "◨", class: "type-defender" }; // E
-                if (r === 3) return { char: "⬓", class: "type-defender" }; // S
-                if (r === 4) return { char: "◧", class: "type-defender" }; // W
+            case 3: case 8: 
+                if (r === 1) return { char: "⬒", class: "type-defender" };
+                if (r === 2) return { char: "◨", class: "type-defender" };
+                if (r === 3) return { char: "⬓", class: "type-defender" };
+                if (r === 4) return { char: "◧", class: "type-defender" };
                 return { char: "!", class: "err" };
-
-            case 4: case 9: // DEFLECTORS
-                if (r === 1) return { char: "◤", class: "type-deflector" }; // N
-                if (r === 2) return { char: "◥", class: "type-deflector" }; // E
-                if (r === 3) return { char: "◢", class: "type-deflector" }; // S
-                if (r === 4) return { char: "◣", class: "type-deflector" }; // W
+            case 4: case 9: 
+                if (r === 1) return { char: "◤", class: "type-deflector" };
+                if (r === 2) return { char: "◥", class: "type-deflector" };
+                if (r === 3) return { char: "◢", class: "type-deflector" };
+                if (r === 4) return { char: "◣", class: "type-deflector" };
                 return { char: "!", class: "err" };
-
             default: return { char: "?", class: "err" }; 
         }
     };
@@ -158,83 +145,41 @@
         const raw = inputField.value.trim().replace(/\s/g, '');
         counter.innerText = `LEN: ${raw.length}`;
         
-        if (raw.length === 0) {
-            screen.innerHTML = "_";
-            turnInfo.innerHTML = "TURN: --";
-            return;
-        }
-
         const grid = Array(8).fill(0).map(() => Array(10).fill(null));
-        const pieceCount = Math.floor(raw.length / 5);
+        const pieces = Math.floor(raw.length / 5);
 
-        for (let i = 0; i < pieceCount; i++) {
-            if (i >= 26) break;
-
-            const block = raw.substr(i * 5, 5);
-            const type = parseInt(block[0], 10); 
-            const x    = parseInt(block[1], 10); 
-            const y    = parseInt(block[2], 10); 
-            const r    = parseInt(block[3], 10); 
-            const s    = parseInt(block[4], 10); 
-
-            if (s !== 1) continue; 
-
-            if (!isNaN(type) && !isNaN(x) && !isNaN(y) && y >= 0 && y < 8 && x >= 0 && x < 10) {
-                let side = "err";
-                if (type >= 0 && type <= 4) side = "b";
-                if (type >= 5 && type <= 9) side = "r";
-
-                const symbolData = getSymbolData(type, r);
-                
-                if (symbolData.class === "err") side = "err";
-
-                if (grid[y][x] !== null) {
-                    grid[y][x] = { char: "X", class: "err", side: "err" };
-                } else {
-                    grid[y][x] = { char: symbolData.char, class: symbolData.class, side: side };
-                }
+        for (let i = 0; i < pieces; i++) {
+            const b = raw.substr(i * 5, 5);
+            const t = parseInt(b[0], 10), x = parseInt(b[1], 10), y = parseInt(b[2], 10), r = parseInt(b[3], 10), s = parseInt(b[4], 10);
+            if (s === 1 && y < 8 && x < 10) {
+                const sym = getSymbolData(t, r);
+                const side = t <= 4 ? "b" : "r";
+                if (grid[y][x]) grid[y][x] = { char: "X", class: "err", side: "err" };
+                else grid[y][x] = { ...sym, side };
             }
         }
 
-        // --- RENDER ENGINE USING FLEX ROWS ---
-        let out = "";
+        let html = '<div class="grid-row"><span class="u label"> </span>';
+        for(let i=0; i<10; i++) html += `<span class="u label">${i}</span>`;
+        html += '</div>';
 
-        // Top X-Axis
-        out += `<div class="grid-row"><span class="u label"> </span>`;
-        for(let i=0; i<10; i++) out += `<span class="u label">${i}</span>`;
-        out += `</div>`;
-
-        // Y-Axis & Grid
         for (let y = 7; y >= 0; y--) {
-            out += `<div class="grid-row"><span class="u label">${y}</span>`;
-            
+            html += `<div class="grid-row"><span class="u label">${y}</span>`;
             for (let x = 0; x < 10; x++) {
-                const cell = grid[y][x];
-                if (cell) {
-                    out += `<span class="u ${cell.side} ${cell.class}">${cell.char}</span>`;
-                } else {
-                    out += `<span class="u d">·</span>`;
-                }
+                const c = grid[y][x];
+                if (c) html += `<span class="u ${c.side} ${c.class}">${c.char}</span>`;
+                else html += `<span class="u d">·</span>`;
             }
-            out += `</div>`;
+            html += '</div>';
         }
 
-        if (raw.length > 0 && raw.length % 5 === 1) {
-            const turnDigit = raw.charAt(raw.length - 1);
-            if (turnDigit === "0") {
-                turnInfo.innerHTML = 'TURN: <span class="b">BLUE</span>';
-            } else if (turnDigit === "1" || turnDigit === "5") { 
-                turnInfo.innerHTML = 'TURN: <span class="r">RED</span>';
-            } else {
-                turnInfo.innerHTML = `TURN: <span class="err">?(${turnDigit})</span>`;
-            }
-        } else {
-            turnInfo.innerHTML = "TURN: --";
-        }
+        if (raw.length % 5 === 1) {
+            const turn = raw.slice(-1);
+            turnInfo.innerHTML = `STATUS: <span class="${turn==='0'?'b':'r'}">${turn==='0'?'BLUE':'RED'}_READY</span>`;
+        } else { turnInfo.innerHTML = "STATUS: IDLE"; }
         
-        screen.innerHTML = out;
+        screen.innerHTML = html;
     }
-    
     processInput();
 </script>
 </body>
