@@ -2,126 +2,287 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>KHET_CLI_LOOP</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laser Chess - Standard Version (Core Edition)</title>
     <style>
-        /* GLOBAL NATURE CSS */
-        * { background: #000; color: #0c0; font-family: 'Courier New', monospace; box-sizing: border-box; }
+        @font-face {
+            font-family: 'Unifont';
+            src: url('unifont-15.0.01.ttf') format('truetype');
+            font-display: block;
+        }
+
+        body {
+            background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
+            color: #b0b0b0; 
+            font-family: 'Unifont', monospace;
+            font-size: 16px; 
+            margin: 0; 
+            padding: 30px; 
+            line-height: 1.6;
+            image-rendering: pixelated;
+        }
+
+        #terminal-log { display: flex; flex-direction: column; }
+        .input-wrapper { display: flex; align-items: baseline; margin-top: 5px; }
         
-        body { 
-            padding: 40px; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: flex-start; 
+        .user-input-line {
+            background: transparent; border: none; color: #ffffff;
+            font-family: 'Unifont', monospace; font-size: 16px;
+            outline: none; flex-grow: 1; margin-left: 8px; caret-color: #ffffff;
         }
 
-        #log { width: 100%; }
-
-        /* RAW BOARD OUTPUT */
-        pre { 
-            line-height: 1.2; 
-            letter-spacing: 2px; 
-            font-size: 18px; 
-            color: #222; /* Dot Matrix */
-            margin: 20px 0;
-            padding-left: 10px;
-            border-left: 2px solid #111;
-        }
-
-        /* PIECE COLORS */
-        .b { color: #00d4ff; }
-        .r { color: #ff3333; }
-        .l { color: #444; } /* Axis */
-
-        /* CLI PROMPT */
-        .prompt-line { display: flex; width: 100%; align-items: center; }
-        .symbol { margin-right: 10px; color: #0f0; font-weight: bold; }
-        
-        input { 
-            flex: 1;
-            border: none; 
-            background: transparent;
-            color: #0c0; 
-            outline: none;
-            font-size: 18px;
-        }
-
-        .header { color: #444; margin-bottom: 20px; font-size: 12px; }
+        .system-msg { color: #666; margin-bottom: 5px; }
+        .success-msg { color: #ffffff; font-weight: bold; margin-bottom: 5px; }
+        .error-msg { color: #ff5555; margin-bottom: 5px; }
+        .highlight { color: #ffffff; margin-bottom: 10px; font-weight: bold; }
+        .rules-link { color: #4444ff; text-decoration: underline; font-weight: bold; }
+        .history-line { margin-bottom: 5px; }
     </style>
 </head>
 <body>
 
-<div class="header">KHET_OS v14.0.0 // ENTER STRING TO RENDER</div>
-<div id="log"></div>
+<div id="terminal-log"></div>
 
-<div class="prompt-line">
-    <span class="symbol">></span>
-    <input type="text" id="cli-input" autofocus autocomplete="off" placeholder="PASTE STRING AND PRESS ENTER">
-</div>
+<script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
 
 <script>
-    const log = document.getElementById('log');
-    const input = document.getElementById('cli-input');
-
-    const symbols = {
-        king: "◈",
-        laser: ["⫝", "⟜", "Ͳ", "Ð"],
-        switch: ["⟋", "⟍"],
-        defender: ["⬒", "◨", "⬓", "◧"],
-        deflector: ["◤", "◥", "◢", "◣"]
+    const firebaseConfig = {
+        apiKey: "AIzaSyBuT7P1iTdXcZW-y05DX-kseuLrPGmaWSs",
+        authDomain: "laserchess-web-free.firebaseapp.com",
+        databaseURL: "https://laserchess-web-free-default-rtdb.firebaseio.com",
+        projectId: "laserchess-web-free",
+        storageBucket: "laserchess-web-free.firebasestorage.app",
+        messagingSenderId: "887464510754",
+        appId: "1:887464510754:web:aee6938681543602a4517b"
     };
 
-    function getChar(t, r) {
-        if (t == 0 || t == 5) return symbols.king;
-        if (t == 1 || t == 6) return symbols.laser[r-1];
-        if (t == 2 || t == 7) return (r == 1 || r == 3) ? symbols.switch[0] : symbols.switch[1];
-        if (t == 3 || t == 8) return symbols.defender[r-1];
-        if (t == 4 || t == 9) return symbols.deflector[r-1];
-        return "?";
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const SERVER_TIMESTAMP = firebase.database.ServerValue.TIMESTAMP;
+
+    const log = document.getElementById('terminal-log');
+    let msgQueue = [];
+    let isProcessing = false;
+    let currentState = "USERNAME";
+    let tempUser = "";
+
+    function addToQueue(text, className = "", isRequest = false) {
+        msgQueue.push({ text, className, isRequest });
+        if (!isProcessing) processQueue();
     }
 
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            const val = input.value.replace(/\s/g, '');
-            if (val) {
-                renderBoard(val);
-                input.value = ''; // Clear for next string
-                window.scrollTo(0, document.body.scrollHeight);
+    async function processQueue() {
+        isProcessing = true;
+        while (msgQueue.length > 0) {
+            const item = msgQueue.shift();
+            if (item.isRequest) {
+                await typeLineInline(item.text, item.className);
+            } else {
+                await typeLineSimple(item.text, item.className);
             }
         }
-    });
-
-    function renderBoard(raw) {
-        const grid = Array(8).fill(null).map(() => Array(10).fill(null));
-        const pieceCount = Math.floor(raw.length / 5);
-
-        for (let i = 0; i < pieceCount; i++) {
-            const b = raw.substr(i * 5, 5);
-            const t = parseInt(b[0]), x = parseInt(b[1]), y = parseInt(b[2]), r = parseInt(b[3]), s = parseInt(b[4]);
-            if (s === 1 && y < 8 && x < 10) {
-                grid[y][x] = { char: getChar(t, r), side: t <= 4 ? 'b' : 'r' };
-            }
-        }
-
-        let out = `<span class="l">  0 1 2 3 4 5 6 7 8 9</span>\n`;
-        for (let y = 7; y >= 0; y--) {
-            out += `<span class="l">${y}</span> `;
-            for (let x = 0; x < 10; x++) {
-                const p = grid[y][x];
-                out += p ? `<span class="${p.side}">${p.char}</span> ` : `· `;
-            }
-            out += "\n";
-        }
-
-        // Add Turn Info
-        if (raw.length % 5 === 1) {
-            const t = raw.slice(-1);
-            out += `\n<span class="l">STATUS:</span> <span class="${t==='0'?'b':'r'}">${t==='0'?'BLUE':'RED'}_TO_MOVE</span>\n`;
-        }
-
-        const entry = document.createElement('pre');
-        entry.innerHTML = out;
-        log.appendChild(entry);
+        isProcessing = false;
     }
+
+    function typeLineSimple(text, className) {
+        return new Promise((resolve) => {
+            const div = document.createElement('div');
+            div.className = (className || "") + " history-line";
+            log.appendChild(div);
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = text;
+            const plainText = tempDiv.textContent;
+            let i = 0;
+            const timer = setInterval(() => {
+                if (i < plainText.length) {
+                    div.textContent += plainText.charAt(i);
+                    i++;
+                } else {
+                    clearInterval(timer);
+                    div.innerHTML = text; 
+                    window.scrollTo(0, document.body.scrollHeight);
+                    resolve();
+                }
+            }, 12);
+        });
+    }
+
+    function typeLineInline(text, className) {
+        return new Promise((resolve) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = "input-wrapper history-line " + (className || "");
+            const label = document.createElement('span');
+            const input = document.createElement('input');
+            input.type = "text";
+            input.className = "user-input-line";
+            input.maxLength = 20;
+            input.disabled = true;
+            wrapper.appendChild(label);
+            wrapper.appendChild(input);
+            log.appendChild(wrapper);
+            let i = 0;
+            const timer = setInterval(() => {
+                if (i < text.length) {
+                    label.textContent += text.charAt(i);
+                    i++;
+                } else {
+                    clearInterval(timer);
+                    input.disabled = false;
+                    input.focus();
+                    window.scrollTo(0, document.body.scrollHeight);
+                    const handleEnter = (e) => {
+                        if (e.key === 'Enter') {
+                            const val = input.value.trim().toUpperCase();
+                            input.disabled = true;
+                            input.removeEventListener('keydown', handleEnter);
+                            handleStateLogic(val);
+                            resolve(); 
+                        }
+                    };
+                    input.addEventListener('keydown', handleEnter);
+                }
+            }, 12); 
+        });
+    }
+
+    function handleStateLogic(val) {
+        if (currentState === "USERNAME") {
+            if (val.length === 0) {
+                addToQueue("Username required:", "error-msg", true);
+                return;
+            }
+            tempUser = val;
+            currentState = "PASSWORD";
+            addToQueue("Session Password (max 20):", "", true);
+        } else if (currentState === "PASSWORD") {
+            if (val.length === 0) {
+                addToQueue("Password required:", "error-msg", true);
+                return;
+            }
+            authenticateUser(tempUser, val);
+        } else if (currentState === "MODE_SELECT") {
+            executeMatchmaking(val);
+        }
+    }
+
+    function authenticateUser(u, p) {
+        addToQueue("VERIFYING CREDENTIALS...", "system-msg");
+        const hb = { password: p, lastplayed: SERVER_TIMESTAMP };
+
+        db.ref('a/' + u).set(hb).then(() => {
+            finalizeLogin(u, p);
+        }).catch(() => {
+            addToQueue("AUTHORIZATION FAILED. ATTEMPTING NEW REGISTRATION...", "system-msg");
+            const up = {};
+            up['s/' + u] = p;
+            up['a/' + u] = hb;
+            db.ref().update(up).then(() => finalizeLogin(u, p)).catch(() => {
+                addToQueue("ACCESS DENIED: INVALID PASSWORD OR USERNAME TAKEN.", "error-msg");
+                localStorage.clear();
+                currentState = "USERNAME";
+                addToQueue("Session Username (max 20):", "", true);
+            });
+        });
+    }
+
+    function finalizeLogin(u, p) {
+        localStorage.setItem('session_user', u);
+        localStorage.setItem('session_pass', p);
+        tempUser = u;
+        addToQueue("TEMPORARY ACCOUNT CREATED", "success-msg");
+        runJanitorSweep();
+        promptMode();
+    }
+
+    function promptMode() {
+        currentState = "MODE_SELECT";
+        addToQueue("SELECT MATCHMAKING MODE:", "highlight");
+        addToQueue("[R] PUBLIC RED / [B] PUBLIC BLUE", "system-msg");
+        addToQueue("[PR] PRIVATE RED / [PB] PRIVATE BLUE", "system-msg");
+        addToQueue("Choose:", "", true);
+    }
+
+    function executeMatchmaking(cmd) {
+        const pass = localStorage.getItem('session_pass');
+        let color = -1; // 0=Blue, 1=Red
+        let branch = "";
+
+        if (cmd === "R") { color = 1; branch = "U"; }
+        else if (cmd === "B") { color = 0; branch = "U"; }
+        else if (cmd === "PR") { color = 1; branch = "R"; }
+        else if (cmd === "PB") { color = 0; branch = "R"; }
+        else {
+            addToQueue("INVALID COMMAND. ENTER R, B, PR, OR PB:", "error-msg", true);
+            return;
+        }
+
+        const modeLabel = (branch === "R" ? "PRIVATE " : "PUBLIC ") + (color === 1 ? "RED" : "BLUE");
+        addToQueue(`INITIALIZING ${modeLabel} REQUEST...`, "system-msg");
+
+        // Targeted write to m/U or m/R
+        db.ref(`m/${branch}/${tempUser}`).set({
+            password: pass,
+            color: color,
+            time: SERVER_TIMESTAMP
+        }).then(() => {
+            addToQueue("MATCHMAKING LIVE. WAITING FOR PEER...", "success-msg");
+        }).catch(err => {
+            addToQueue("DATABASE REJECTED REQUEST. CHECK PERMISSIONS.", "error-msg");
+            promptMode();
+        });
+    }
+
+    function runJanitorSweep() {
+        db.ref('a').once('value', snapshot => {
+            const now = Date.now();
+            snapshot.forEach(child => {
+                if (now - child.val().lastplayed > 86400000) {
+                    const u = child.key;
+                    const p = {};
+                    p['s/'+u]=null; p['a/'+u]=null; 
+                    p['m/U/'+u]=null; p['m/R/'+u]=null; // Updated paths
+                    p['g/'+u]=null;
+                    db.ref().update(p).catch(() => {});
+                }
+            });
+        });
+    }
+
+    async function startTerminalWhenReady() {
+        if (document.fonts) {
+            try {
+                await document.fonts.load('16px Unifont');
+                await document.fonts.ready;
+            } catch (e) {}
+        }
+        initTerminalSequence();
+    }
+
+    function initTerminalSequence() {
+        addToQueue("Laser Chess - Standard Version (Core Edition)", "highlight");
+        addToQueue('Site for Laser Chess. <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">Rules</a>.', "system-msg");
+        addToQueue("IDENTITY NOTICE: ANY ACCOUNT WHICH PLAYED IT'S LAST MOVE 24 HOURS AGO WILL BE DELETED.", "highlight");
+
+        const savedUser = localStorage.getItem('session_user');
+        const savedPass = localStorage.getItem('session_pass');
+
+        if (savedUser && savedPass) {
+            addToQueue("LOCAL SESSION FOUND. VERIFYING...", "system-msg");
+            db.ref('a/' + savedUser).set({ password: savedPass, lastplayed: SERVER_TIMESTAMP }).then(() => {
+                addToQueue("VERIFICATION SUCCESSFUL. Welcome, " + savedUser + ".", "success-msg");
+                finalizeLogin(savedUser, savedPass);
+            }).catch(err => {
+                localStorage.clear();
+                currentState = "USERNAME";
+                addToQueue("Session Username (max 20):", "", true);
+            });
+        } else {
+            addToQueue("Session Username (max 20):", "", true);
+        }
+    }
+
+    window.onload = startTerminalWhenReady;
 </script>
 </body>
 </html>
