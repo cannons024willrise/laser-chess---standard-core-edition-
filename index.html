@@ -2,185 +2,118 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>KHET_CLI_RAW_V11</title>
+    <title>KHET_NATURAL_ASCII</title>
     <style>
-        @font-face {
-            font-family: 'Unifont';
-            src: url('unifont-15.0.01.ttf') format('truetype');
-            font-display: block;
-        }
-
-        body { 
-            background: #000; 
-            color: #0c0; /* Terminal Green */
-            font-family: 'Unifont', monospace; 
-            padding: 30px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            user-select: none;
-        }
-
-        #terminal {
+        /* GLOBAL NATURE CSS */
+        body {
             background: #000;
-            padding: 10px;
-            border: 1px solid #222; /* Dim border */
-            display: inline-block;
-        }
-
-        /* STRICT DOT MATRIX GRID */
-        .grid-row {
-            display: flex;
-            height: 32px;
-        }
-
-        .u {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 32px;
-            height: 32px;
-            overflow: hidden;
-            font-size: 24px;
-        }
-
-        /* PIECE COLORS - RAW */
-        .b { color: #00d4ff; } 
-        .r { color: #ff3333; } 
-        .d { color: #222; } /* Empty Cell Dots */
-        .label { color: #444; font-size: 18px; } 
-        
-        /* Scaling Normalization (Kept to prevent visual jitter) */
-        .type-laser { font-family: sans-serif; font-weight: bold; transform: scale(1.1); }
-        .type-switch { font-weight: bold; transform: scale(1.2); }
-        .type-defender { transform: scale(1.05); }
-        .type-deflector { transform: scale(1.1); }
-        
-        .err { 
-            color: #000; 
-            background: #0c0; /* Inverted terminal color for errors */
-            font-weight: bold; 
-        }
-
-        .input-area {
-            margin-top: 25px;
-            width: 100%;
-            max-width: 800px;
-        }
-
-        input {
-            width: 100%;
-            background: #000;
-            border: 1px solid #0c0;
             color: #0c0;
-            padding: 12px;
             font-family: 'Unifont', monospace;
-            outline: none;
-            font-size: 18px;
-            box-sizing: border-box;
+            text-align: center;
+            padding: 50px;
         }
 
-        .status-bar { 
-            display: flex; 
-            justify-content: space-between; 
-            width: 100%; 
-            color: #444; 
-            font-size: 14px;
-            margin-top: 10px;
-            text-transform: uppercase;
+        /* The Board Buffer */
+        pre {
+            display: inline-block;
+            text-align: left;
+            line-height: 1.2;
+            letter-spacing: 4px; /* Space between "dots" */
+            font-size: 20px;
+            color: #222; /* Default color for dots */
+            margin: 0;
         }
+
+        /* Piece & Label Selectors */
+        b { color: #00d4ff; font-weight: normal; } /* Blue */
+        i { color: #ff3333; font-style: normal; }  /* Red */
+        u { color: #444; text-decoration: none; }  /* Labels */
+        
+        /* Input Styling */
+        section { margin-top: 30px; }
+        input {
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid #0c0;
+            color: #0c0;
+            font-family: inherit;
+            font-size: 18px;
+            width: 80%;
+            outline: none;
+            text-align: center;
+        }
+
+        small { color: #333; display: block; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-<div id="terminal">
-    <div id="screen">_</div>
-</div>
+<pre id="matrix">_</pre>
 
-<div class="input-area">
-    <input type="text" id="raw-input" value="04001 55701 19011 60731 24311 25321 74421 75411 84711 86711 33031 35031 92621 47141 43531 96211 42421 42331 90441 90311 97411 97341 49431 49321 0" autocomplete="off" oninput="processInput()">
-    <div class="status-bar">
-        <span id="turn-info">SYSTEM: IDLE</span>
-        <span id="digit-count">LEN: 0</span>
-    </div>
-</div>
+<section>
+    <input type="text" id="raw-input" value="04001 55701 19011 60731 24311 25321 74421 75411 84711 86711 33031 35031 92621 47141 43531 96211 42421 42331 90441 90311 97411 97341 49431 49321 0" oninput="update()">
+    <small id="status">INITIATING READOUT...</small>
+</section>
 
 <script>
-    const screen = document.getElementById('screen');
-    const inputField = document.getElementById('raw-input');
-    const counter = document.getElementById('digit-count');
-    const turnInfo = document.getElementById('turn-info');
+    const matrix = document.getElementById('matrix');
+    const input = document.getElementById('raw-input');
+    const status = document.getElementById('status');
 
-    // UNCHANGED ASCII SET AS REQUESTED
-    const getSymbolData = (type, r) => {
-        switch(type) {
-            case 0: case 5: return { char: "◈", class: "type-king" }; 
-            case 1: case 6: 
-                if (r === 1) return { char: "⫝", class: "type-laser" };
-                if (r === 2) return { char: "⟜", class: "type-laser" };
-                if (r === 3) return { char: "Ͳ", class: "type-laser" };
-                if (r === 4) return { char: "Ð", class: "type-laser" };
-                return { char: "!", class: "err" };
-            case 2: case 7: 
-                if (r === 1 || r === 3) return { char: "⟋", class: "type-switch" };
-                if (r === 2 || r === 4) return { char: "⟍", class: "type-switch" };
-                return { char: "!", class: "err" };
-            case 3: case 8: 
-                if (r === 1) return { char: "⬒", class: "type-defender" };
-                if (r === 2) return { char: "◨", class: "type-defender" };
-                if (r === 3) return { char: "⬓", class: "type-defender" };
-                if (r === 4) return { char: "◧", class: "type-defender" };
-                return { char: "!", class: "err" };
-            case 4: case 9: 
-                if (r === 1) return { char: "◤", class: "type-deflector" };
-                if (r === 2) return { char: "◥", class: "type-deflector" };
-                if (r === 3) return { char: "◢", class: "type-deflector" };
-                if (r === 4) return { char: "◣", class: "type-deflector" };
-                return { char: "!", class: "err" };
-            default: return { char: "?", class: "err" }; 
-        }
+    // YOUR MANDATORY ASCII SET
+    const symbols = {
+        king: "◈",
+        laser: ["⫝", "⟜", "Ͳ", "Ð"],
+        switch: ["⟋", "⟍"],
+        defender: ["⬒", "◨", "⬓", "◧"],
+        deflector: ["◤", "◥", "◢", "◣"]
     };
 
-    function processInput() {
-        const raw = inputField.value.trim().replace(/\s/g, '');
-        counter.innerText = `LEN: ${raw.length}`;
-        
-        const grid = Array(8).fill(0).map(() => Array(10).fill(null));
+    function getChar(t, r) {
+        if (t == 0 || t == 5) return symbols.king;
+        if (t == 1 || t == 6) return symbols.laser[r-1];
+        if (t == 2 || t == 7) return (r == 1 || r == 3) ? symbols.switch[0] : symbols.switch[1];
+        if (t == 3 || t == 8) return symbols.defender[r-1];
+        if (t == 4 || t == 9) return symbols.deflector[r-1];
+        return "?";
+    }
+
+    function update() {
+        const raw = input.value.replace(/\s/g, '');
+        const grid = Array(8).fill(null).map(() => Array(10).fill(null));
         const pieces = Math.floor(raw.length / 5);
 
         for (let i = 0; i < pieces; i++) {
             const b = raw.substr(i * 5, 5);
-            const t = parseInt(b[0], 10), x = parseInt(b[1], 10), y = parseInt(b[2], 10), r = parseInt(b[3], 10), s = parseInt(b[4], 10);
+            const t = parseInt(b[0]), x = parseInt(b[1]), y = parseInt(b[2]), r = parseInt(b[3]), s = parseInt(b[4]);
             if (s === 1 && y < 8 && x < 10) {
-                const sym = getSymbolData(t, r);
-                const side = t <= 4 ? "b" : "r";
-                if (grid[y][x]) grid[y][x] = { char: "X", class: "err", side: "err" };
-                else grid[y][x] = { ...sym, side };
+                grid[y][x] = { char: getChar(t, r), side: t <= 4 ? 'b' : 'i' };
             }
         }
 
-        let html = '<div class="grid-row"><span class="u label"> </span>';
-        for(let i=0; i<10; i++) html += `<span class="u label">${i}</span>`;
-        html += '</div>';
-
+        let out = "<u>  0 1 2 3 4 5 6 7 8 9</u>\n";
         for (let y = 7; y >= 0; y--) {
-            html += `<div class="grid-row"><span class="u label">${y}</span>`;
+            out += `<u>${y}</u> `;
             for (let x = 0; x < 10; x++) {
-                const c = grid[y][x];
-                if (c) html += `<span class="u ${c.side} ${c.class}">${c.char}</span>`;
-                else html += `<span class="u d">·</span>`;
+                const p = grid[y][x];
+                if (p) {
+                    out += `<${p.side}>${p.char}</${p.side}> `;
+                } else {
+                    out += `· `;
+                }
             }
-            html += '</div>';
+            out += "\n";
         }
+
+        matrix.innerHTML = out;
 
         if (raw.length % 5 === 1) {
             const turn = raw.slice(-1);
-            turnInfo.innerHTML = `STATUS: <span class="${turn==='0'?'b':'r'}">${turn==='0'?'BLUE':'RED'}_READY</span>`;
-        } else { turnInfo.innerHTML = "STATUS: IDLE"; }
-        
-        screen.innerHTML = html;
+            status.innerText = `LATEST_SCAN: ${turn === '0' ? 'BLUE' : 'RED'}_SIGNAL_DETECTED`;
+        }
     }
-    processInput();
+
+    update();
 </script>
 </body>
 </html>
