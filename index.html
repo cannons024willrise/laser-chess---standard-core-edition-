@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>KHET_PERFECT_RENDERER</title>
+    <title>KHET_NORMALIZED_RENDERER</title>
     <style>
         @font-face {
             font-family: 'Unifont';
@@ -29,35 +29,40 @@
             display: inline-block;
         }
 
-        pre {
-            font-size: 24px;
-            line-height: 1;
-            margin: 0;
-            font-family: 'Unifont', monospace;
-            white-space: pre-wrap;
+        /* FLEXBOX GRID FOR PERFECT CENTERING */
+        .grid-row {
+            display: flex;
+            height: 32px; /* Slightly larger cells to accommodate scaling */
         }
 
         .u {
-            display: inline-block;
-            width: 24px;
-            height: 24px;
-            text-align: center;
-            line-height: 24px;
-            vertical-align: middle;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            overflow: hidden; /* Prevents oversized glyphs from breaking the grid */
         }
 
         /* TIERED COLOR MAPPING */
-        .b { color: #00d4ff; font-weight: bold; text-shadow: 0 0 5px rgba(0,212,255,0.3); } 
-        .r { color: #ff3333; font-weight: bold; text-shadow: 0 0 5px rgba(255,51,51,0.3); } 
-        .d { color: #222; }    
-        .label { color: #555; } 
+        .b { color: #00d4ff; text-shadow: 0 0 6px rgba(0,212,255,0.4); } 
+        .r { color: #ff3333; text-shadow: 0 0 6px rgba(255,51,51,0.4); } 
+        .d { color: #333; font-size: 24px; }    
+        .label { color: #555; font-size: 20px; } 
         
-        /* ERROR/DEBUG CSS */
+        /* GLYPH NORMALIZATION CLASSES (Forces equal visual sizes) */
+        .type-king { font-size: 26px; }
+        .type-laser { font-size: 24px; font-family: sans-serif; font-weight: bold; transform: scale(1.2); }
+        .type-switch { font-size: 28px; font-weight: bold; transform: scale(1.3); }
+        .type-defender { font-size: 26px; transform: scale(1.05); }
+        .type-deflector { font-size: 26px; transform: scale(1.1); }
+        
         .err { 
             color: #000; 
             background: #ffeb3b; 
             font-weight: bold; 
             box-shadow: 0 0 8px #ffeb3b; 
+            border-radius: 4px;
         }
 
         .input-area {
@@ -76,6 +81,7 @@
             outline: none;
             font-size: 18px;
             box-sizing: border-box;
+            letter-spacing: 2px;
         }
 
         input:focus { border-color: #00d4ff; }
@@ -89,27 +95,12 @@
             margin-top: 10px;
             text-transform: uppercase;
         }
-        
-        .rules {
-            margin-top: 25px;
-            color: #666;
-            font-size: 14px;
-            width: 100%;
-            max-width: 800px;
-            line-height: 1.5;
-            background: #0a0a0a;
-            padding: 15px;
-            border: 1px dashed #333;
-            box-sizing: border-box;
-        }
-        
-        .hl { color: #aaa; }
     </style>
 </head>
 <body>
 
 <div id="terminal">
-    <pre id="screen">_</pre>
+    <div id="screen">_</div>
 </div>
 
 <div class="input-area">
@@ -120,59 +111,50 @@
     </div>
 </div>
 
-<div class="rules">
-    <span class="hl">> ENGINE STATUS: STRICT MODE ACTIVE</span><br><br>
-    > <span class="hl">0/5</span>=KING(◈) | <span class="hl">1/6</span>=LASER(⫝⟜ͲÐ) | <span class="hl">2/7</span>=SWITCH(⟋⟍) | <span class="hl">3/8</span>=DEFENDER(⬒◨⬓◧) | <span class="hl">4/9</span>=DEFLECTOR(◤◥◢◣)<br>
-    > <span class="hl">ROTATION:</span> 0=FIXED(Kings Only), 1=N, 2=E, 3=S, 4=W<br>
-    > <span class="hl">STATE:</span> 1=ALIVE. Any other digit = DEAD.<br>
-    > <span class="hl">ERRORS:</span> [!] = Invalid Rotation | [?] = Unknown Type | [X] = Board Collision
-</div>
-
 <script>
     const screen = document.getElementById('screen');
     const inputField = document.getElementById('raw-input');
     const counter = document.getElementById('digit-count');
     const turnInfo = document.getElementById('turn-info');
 
-    // STRICT SYMBOL PARSER
-    const getSymbol = (type, r) => {
+    // STRICT SYMBOL PARSER WITH NORMALIZATION CLASSES
+    const getSymbolData = (type, r) => {
         switch(type) {
             case 0: case 5: // KINGS
-                if (r !== 0) return "!"; // ERRROR: Kings cannot rotate
-                return "◈"; 
+                if (r !== 0) return { char: "!", class: "err" };
+                return { char: "◈", class: "type-king" }; 
             
             case 1: case 6: // LASER
-                if (r === 1) return "⫝"; // N
-                if (r === 2) return "⟜"; // E
-                if (r === 3) return "Ͳ"; // S
-                if (r === 4) return "Ð"; // W
-                return "!"; // ERROR: Invalid Laser Rotation
+                if (r === 1) return { char: "⫝", class: "type-laser" }; // N
+                if (r === 2) return { char: "⟜", class: "type-laser" }; // E
+                if (r === 3) return { char: "Ͳ", class: "type-laser" }; // S
+                if (r === 4) return { char: "Ð", class: "type-laser" }; // W
+                return { char: "!", class: "err" };
 
             case 2: case 7: // SWITCHES
-                if (r === 1 || r === 3) return "⟋"; // N / S
-                if (r === 2 || r === 4) return "⟍"; // E / W
-                return "!"; // ERROR
+                if (r === 1 || r === 3) return { char: "⟋", class: "type-switch" }; // N / S
+                if (r === 2 || r === 4) return { char: "⟍", class: "type-switch" }; // E / W
+                return { char: "!", class: "err" };
 
             case 3: case 8: // DEFENDERS
-                if (r === 1) return "⬒"; // N
-                if (r === 2) return "◨"; // E
-                if (r === 3) return "⬓"; // S
-                if (r === 4) return "◧"; // W
-                return "!"; // ERROR
+                if (r === 1) return { char: "⬒", class: "type-defender" }; // N
+                if (r === 2) return { char: "◨", class: "type-defender" }; // E
+                if (r === 3) return { char: "⬓", class: "type-defender" }; // S
+                if (r === 4) return { char: "◧", class: "type-defender" }; // W
+                return { char: "!", class: "err" };
 
             case 4: case 9: // DEFLECTORS
-                if (r === 1) return "◤"; // N
-                if (r === 2) return "◥"; // E
-                if (r === 3) return "◢"; // S
-                if (r === 4) return "◣"; // W
-                return "!"; // ERROR
+                if (r === 1) return { char: "◤", class: "type-deflector" }; // N
+                if (r === 2) return { char: "◥", class: "type-deflector" }; // E
+                if (r === 3) return { char: "◢", class: "type-deflector" }; // S
+                if (r === 4) return { char: "◣", class: "type-deflector" }; // W
+                return { char: "!", class: "err" };
 
-            default: return "?"; // ERROR: Type out of bounds
+            default: return { char: "?", class: "err" }; 
         }
     };
 
     function processInput() {
-        // Strip all whitespace, newlines, tabs
         const raw = inputField.value.trim().replace(/\s/g, '');
         counter.innerText = `LEN: ${raw.length}`;
         
@@ -182,73 +164,61 @@
             return;
         }
 
-        // Initialize 10x8 pure empty grid
         const grid = Array(8).fill(0).map(() => Array(10).fill(null));
-        
-        // Calculate max parseable full pieces (5 digits each)
         const pieceCount = Math.floor(raw.length / 5);
 
         for (let i = 0; i < pieceCount; i++) {
-            // Cap at 26 pieces. Anything beyond is physically impossible in Khet.
             if (i >= 26) break;
 
             const block = raw.substr(i * 5, 5);
-            
             const type = parseInt(block[0], 10); 
             const x    = parseInt(block[1], 10); 
             const y    = parseInt(block[2], 10); 
             const r    = parseInt(block[3], 10); 
             const s    = parseInt(block[4], 10); 
 
-            // STRICT STATE CHECK: Only exactly '1' renders. 
             if (s !== 1) continue; 
 
-            // STRICT BOUNDARY CHECK
             if (!isNaN(type) && !isNaN(x) && !isNaN(y) && y >= 0 && y < 8 && x >= 0 && x < 10) {
-                // Color Mapping
                 let side = "err";
                 if (type >= 0 && type <= 4) side = "b";
                 if (type >= 5 && type <= 9) side = "r";
 
-                const char = getSymbol(type, r);
+                const symbolData = getSymbolData(type, r);
                 
-                // If getSymbol returns an error character, flag the CSS
-                if (char === "!" || char === "?") side = "err";
+                if (symbolData.class === "err") side = "err";
 
-                // COLLISION DETECTION: If a piece is already here, mark as X
                 if (grid[y][x] !== null) {
-                    grid[y][x] = { char: "X", side: "err" };
+                    grid[y][x] = { char: "X", class: "err", side: "err" };
                 } else {
-                    grid[y][x] = { char: char, side: side };
+                    grid[y][x] = { char: symbolData.char, class: symbolData.class, side: side };
                 }
             }
         }
 
-        // --- RENDER ENGINE ---
+        // --- RENDER ENGINE USING FLEX ROWS ---
+        let out = "";
 
-        // Render Top X-Axis
-        let out = "<span class='u label'> </span>";
-        for(let i=0; i<10; i++) out += `<span class='u label'>${i}</span>`;
-        out += "\n";
+        // Top X-Axis
+        out += `<div class="grid-row"><span class="u label"> </span>`;
+        for(let i=0; i<10; i++) out += `<span class="u label">${i}</span>`;
+        out += `</div>`;
 
-        // Render Y-Axis & Grid (Top down: 7 to 0)
+        // Y-Axis & Grid
         for (let y = 7; y >= 0; y--) {
-            out += `<span class='u label'>${y}</span>`; // Y-Axis
+            out += `<div class="grid-row"><span class="u label">${y}</span>`;
             
             for (let x = 0; x < 10; x++) {
                 const cell = grid[y][x];
                 if (cell) {
-                    out += `<span class="u ${cell.side}">${cell.char}</span>`;
+                    out += `<span class="u ${cell.side} ${cell.class}">${cell.char}</span>`;
                 } else {
                     out += `<span class="u d">·</span>`;
                 }
             }
-            out += "\n";
+            out += `</div>`;
         }
 
-        // STRICT TURN LOGIC
-        // Modulo 1 means there is exactly 1 dangling digit after dividing by 5.
-        // E.g., 6 (1 piece + turn), 131 (26 pieces + turn).
         if (raw.length > 0 && raw.length % 5 === 1) {
             const turnDigit = raw.charAt(raw.length - 1);
             if (turnDigit === "0") {
@@ -265,7 +235,6 @@
         screen.innerHTML = out;
     }
     
-    // Auto-fire to draw empty grid on load
     processInput();
 </script>
 </body>
