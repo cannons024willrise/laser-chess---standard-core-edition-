@@ -61,7 +61,6 @@
     const db = firebase.database();
     const SERVER_TIMESTAMP = firebase.database.ServerValue.TIMESTAMP;
     
-    // Programmatic Zero-Indexed Initial State (0=N, 1=E, 2=S, 3=W)
     const INIT_STATE = "0400155701190016072124301253117441175401847018670133021350219261147131435219620142411423219043190301974019733149421493110";
 
     const log = document.getElementById('terminal-log');
@@ -145,30 +144,16 @@
             addToQueue("Session Password:", "", true);
         } else if (currentState === "PASSWORD") {
             if (!val) { addToQueue("Password required:", "error-msg", true); return; }
-            authenticateUser(tempUser, val);
+            finalizeLogin(tempUser, val);
         } else if (currentState === "MODE_SELECT") {
             executeMatchmaking(val);
         }
     }
 
-    function authenticateUser(u, p) {
-        addToQueue("VERIFYING CREDENTIALS...", "system-msg");
-        const hb = { password: p, lastplayed: SERVER_TIMESTAMP };
-        db.ref('a/' + u).set(hb).then(() => {
-            finalizeLogin(u, p);
-        }).catch(() => {
-            const up = {}; up['s/' + u] = p; up['a/' + u] = hb;
-            db.ref().update(up).then(() => finalizeLogin(u, p)).catch(() => {
-                addToQueue("ACCESS DENIED: USERNAME TAKEN OR WRONG PASSWORD.", "error-msg");
-                currentState = "USERNAME"; addToQueue("Session Username:", "", true);
-            });
-        });
-    }
-
     function finalizeLogin(u, p) {
         localStorage.setItem('session_user', u);
         localStorage.setItem('session_pass', p);
-        addToQueue("IDENTITY CONFIRMED.", "success-msg");
+        addToQueue("IDENTITY SET LOCALLY.", "success-msg");
         runJanitorSweep();
         promptMode();
     }
@@ -181,7 +166,8 @@
     }
 
     function executeMatchmaking(cmd) {
-        const pass = localStorage.getItem('session_pass');
+        const u = localStorage.getItem('session_user');
+        const p = localStorage.getItem('session_pass');
         let color = (cmd === "R") ? 1 : (cmd === "B") ? 0 : -1;
 
         if (color === -1) {
@@ -189,68 +175,74 @@
             return;
         }
 
-        addToQueue("SCANNING FOR OPEN SESSIONS...", "system-msg");
+        addToQueue("SCANNING FOR VAULTS...", "system-msg");
 
-        // STEP 3: Read first object in 'g' (numerical timestamp)
+        // STEP 1: Blind Scan. Check limitToFirst(1) to get the Entry Token (et)
         db.ref('g').orderByKey().limitToFirst(1).once('value', snapshot => {
-            let foundMatch = null;
+            let lobbyGameId = null;
+            let lobbyToken = null;
+            let targetSlot = color === 1 ? 'rn' : 'bn';
+
             snapshot.forEach(child => {
+                lobbyGameId = child.key;
                 const data = child.val();
-                // Check if the opposite slot is open
-                if (color === 1 && data.bn && !data.rn) foundMatch = child.key;
-                else if (color === 0 && data.rn && !data.bn) foundMatch = child.key;
+                lobbyToken = data.et;
+                
+                // Signal detection: If the slot isn't in the data, it's blocked/exists.
+                const isSlotEmpty = data.hasOwnProperty(targetSlot);
+
+                if (isSlotEmpty) {
+                    joinExistingMatch(lobbyGameId, color, u, p, lobbyToken);
+                } else {
+                    createNewMatch(color, u, p);
+                }
             });
 
-            if (foundMatch) joinExistingMatch(foundMatch, color, pass);
-            else createNewMatch(color, pass);
+            if (!lobbyGameId) createNewMatch(color, u, p);
         });
     }
 
-    function createNewMatch(color, pass) {
-        const tsKey = Date.now().toString(); // 13-digit Numerical Key
-        const payload = { time: SERVER_TIMESTAMP, state: INIT_STATE };
+    function createNewMatch(color, u, p) {
+        const gameId = Date.now().toString();
+        const newToken = Math.floor(1000000000 + Math.random() * 9000000000); 
         
-        if (color === 1) { payload.rn = tempUser; payload.rp = pass; }
-        else { payload.bn = tempUser; payload.bp = pass; }
+        const payload = { 
+            time: SERVER_TIMESTAMP, 
+            state: INIT_STATE,
+            et: newToken
+        };
+        
+        if (color === 1) { payload.rn = u; payload.rp = p; }
+        else { payload.bn = u; payload.bp = p; }
 
-        addToQueue("INITIALIZING NEW SESSION " + tsKey + "...", "system-msg");
-        db.ref('g/' + tsKey).set(payload).then(() => {
-            addToQueue("WAITING FOR OPPONENT...", "success-msg");
-            // Placeholder for game listener
+        addToQueue("INITIALIZING NEW VAULT " + gameId + "...", "system-msg");
+        db.ref('g/' + gameId).set(payload).then(() => {
+            addToQueue("VAULT SECURED. WAITING FOR OPPONENT...", "success-msg");
+            // Start Listener here
         }).catch(() => {
-            addToQueue("MATCHMAKING ERROR. TRY AGAIN.", "error-msg");
+            addToQueue("VAULT CREATION REJECTED.", "error-msg");
             promptMode();
         });
     }
 
-    function joinExistingMatch(id, color, pass) {
-        const update = {};
-        if (color === 1) { update.rn = tempUser; update.rp = pass; }
-        else { update.bn = tempUser; update.bp = pass; }
+    function joinExistingMatch(id, color, u, p, token) {
+        const update = { et: token }; // Must send et back to pass rule validation
+        if (color === 1) { update.rn = u; update.rp = p; }
+        else { update.bn = u; update.bp = p; }
 
-        addToQueue("OPPONENT FOUND. SYNCING...", "system-msg");
+        addToQueue("HANDSHAKE INITIATED...", "system-msg");
         db.ref('g/' + id).update(update).then(() => {
-            addToQueue("CONNECTED. STARTING GAME...", "success-msg");
-            // Placeholder for game start
+            addToQueue("HANDSHAKE SUCCESS. SYNCING BOARD...", "success-msg");
+            // Start Listener here
         }).catch(() => {
-            addToQueue("SESSION COLLISION. RETRYING...", "error-msg");
+            // This is the 403 signal - someone else got the seat or token expired
+            addToQueue("SIGNAL LOST. RE-ROUTING...", "error-msg");
             executeMatchmaking(color === 1 ? "R" : "B");
         });
     }
 
     function runJanitorSweep() {
-        // Clean old accounts
-        db.ref('a').once('value', snapshot => {
-            const now = Date.now();
-            snapshot.forEach(child => {
-                if (now - child.val().lastplayed > 86400000) {
-                    const u = child.key;
-                    db.ref('s/' + u).remove();
-                    db.ref('a/' + u).remove();
-                }
-            });
-        });
-        // Clean old games in 'g' (24 hour expiration)
+        // Only clean 'g' branch now as a and s are deleted
         db.ref('g').once('value', snapshot => {
             const now = Date.now();
             snapshot.forEach(child => {
@@ -270,14 +262,14 @@
     function initTerminalSequence() {
         addToQueue("Laser Chess - Standard Version (Core Edition)", "highlight");
         addToQueue('Site for Laser Chess. <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">Rules</a>.', "system-msg");
-        addToQueue("NOTICE: INACTIVE DATA PURGED EVERY 24 HOURS.", "highlight");
+        addToQueue("NOTICE: VAULTS EXPIRE AFTER 24 HOURS.", "highlight");
 
         const savedUser = localStorage.getItem('session_user');
         const savedPass = localStorage.getItem('session_pass');
 
         if (savedUser && savedPass) {
-            addToQueue("RESTORING SESSION...", "system-msg");
-            authenticateUser(savedUser, savedPass);
+            addToQueue("RESTORING LOCAL IDENTITY: " + savedUser, "system-msg");
+            finalizeLogin(savedUser, savedPass);
         } else {
             addToQueue("Session Username:", "", true);
         }
