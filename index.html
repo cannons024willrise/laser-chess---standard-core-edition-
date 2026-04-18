@@ -60,6 +60,9 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const SERVER_TIMESTAMP = firebase.database.ServerValue.TIMESTAMP;
+    
+    // Programmatic Zero-Indexed Initial State (0=N, 1=E, 2=S, 3=W)
+    const INIT_STATE = "0400155701190016072124301253117441175401847018670133021350219261147131435219620142411423219043190301974019733149421493110";
 
     const log = document.getElementById('terminal-log');
     let msgQueue = [];
@@ -76,11 +79,8 @@
         isProcessing = true;
         while (msgQueue.length > 0) {
             const item = msgQueue.shift();
-            if (item.isRequest) {
-                await typeLineInline(item.text, item.className);
-            } else {
-                await typeLineSimple(item.text, item.className);
-            }
+            if (item.isRequest) await typeLineInline(item.text, item.className);
+            else await typeLineSimple(item.text, item.className);
         }
         isProcessing = false;
     }
@@ -95,10 +95,8 @@
             const plainText = tempDiv.textContent;
             let i = 0;
             const timer = setInterval(() => {
-                if (i < plainText.length) {
-                    div.textContent += plainText.charAt(i);
-                    i++;
-                } else {
+                if (i < plainText.length) { div.textContent += plainText.charAt(i); i++; }
+                else {
                     clearInterval(timer);
                     div.innerHTML = text; 
                     window.scrollTo(0, document.body.scrollHeight);
@@ -114,22 +112,16 @@
             wrapper.className = "input-wrapper history-line " + (className || "");
             const label = document.createElement('span');
             const input = document.createElement('input');
-            input.type = "text";
-            input.className = "user-input-line";
-            input.maxLength = 20;
-            input.disabled = true;
-            wrapper.appendChild(label);
-            wrapper.appendChild(input);
+            input.type = "text"; input.className = "user-input-line";
+            input.maxLength = 20; input.disabled = true;
+            wrapper.appendChild(label); wrapper.appendChild(input);
             log.appendChild(wrapper);
             let i = 0;
             const timer = setInterval(() => {
-                if (i < text.length) {
-                    label.textContent += text.charAt(i);
-                    i++;
-                } else {
+                if (i < text.length) { label.textContent += text.charAt(i); i++; }
+                else {
                     clearInterval(timer);
-                    input.disabled = false;
-                    input.focus();
+                    input.disabled = false; input.focus();
                     window.scrollTo(0, document.body.scrollHeight);
                     const handleEnter = (e) => {
                         if (e.key === 'Enter') {
@@ -148,18 +140,11 @@
 
     function handleStateLogic(val) {
         if (currentState === "USERNAME") {
-            if (val.length === 0) {
-                addToQueue("Username required:", "error-msg", true);
-                return;
-            }
-            tempUser = val;
-            currentState = "PASSWORD";
-            addToQueue("Session Password (max 20):", "", true);
+            if (!val) { addToQueue("Username required:", "error-msg", true); return; }
+            tempUser = val; currentState = "PASSWORD";
+            addToQueue("Session Password:", "", true);
         } else if (currentState === "PASSWORD") {
-            if (val.length === 0) {
-                addToQueue("Password required:", "error-msg", true);
-                return;
-            }
+            if (!val) { addToQueue("Password required:", "error-msg", true); return; }
             authenticateUser(tempUser, val);
         } else if (currentState === "MODE_SELECT") {
             executeMatchmaking(val);
@@ -169,19 +154,13 @@
     function authenticateUser(u, p) {
         addToQueue("VERIFYING CREDENTIALS...", "system-msg");
         const hb = { password: p, lastplayed: SERVER_TIMESTAMP };
-
         db.ref('a/' + u).set(hb).then(() => {
             finalizeLogin(u, p);
         }).catch(() => {
-            addToQueue("AUTHORIZATION FAILED. ATTEMPTING NEW REGISTRATION...", "system-msg");
-            const up = {};
-            up['s/' + u] = p;
-            up['a/' + u] = hb;
+            const up = {}; up['s/' + u] = p; up['a/' + u] = hb;
             db.ref().update(up).then(() => finalizeLogin(u, p)).catch(() => {
-                addToQueue("ACCESS DENIED: INVALID PASSWORD OR USERNAME TAKEN.", "error-msg");
-                localStorage.clear();
-                currentState = "USERNAME";
-                addToQueue("Session Username (max 20):", "", true);
+                addToQueue("ACCESS DENIED: USERNAME TAKEN OR WRONG PASSWORD.", "error-msg");
+                currentState = "USERNAME"; addToQueue("Session Username:", "", true);
             });
         });
     }
@@ -189,72 +168,101 @@
     function finalizeLogin(u, p) {
         localStorage.setItem('session_user', u);
         localStorage.setItem('session_pass', p);
-        tempUser = u;
-        addToQueue("TEMPORARY ACCOUNT CREATED", "success-msg");
+        addToQueue("IDENTITY CONFIRMED.", "success-msg");
         runJanitorSweep();
         promptMode();
     }
 
     function promptMode() {
         currentState = "MODE_SELECT";
-        addToQueue("SELECT MATCHMAKING MODE:", "highlight");
-        addToQueue("[R] PUBLIC RED / [B] PUBLIC BLUE", "system-msg");
-        addToQueue("[PR] PRIVATE RED / [PB] PRIVATE BLUE", "system-msg");
+        addToQueue("SELECT SIDE:", "highlight");
+        addToQueue("[R] RED / [B] BLUE", "system-msg");
         addToQueue("Choose:", "", true);
     }
 
     function executeMatchmaking(cmd) {
         const pass = localStorage.getItem('session_pass');
-        let color = -1; // 0=Blue, 1=Red
-        let branch = "";
+        let color = (cmd === "R") ? 1 : (cmd === "B") ? 0 : -1;
 
-        if (cmd === "R") { color = 1; branch = "U"; }
-        else if (cmd === "B") { color = 0; branch = "U"; }
-        else if (cmd === "PR") { color = 1; branch = "R"; }
-        else if (cmd === "PB") { color = 0; branch = "R"; }
-        else {
-            addToQueue("INVALID COMMAND. ENTER R, B, PR, OR PB:", "error-msg", true);
+        if (color === -1) {
+            addToQueue("INVALID COMMAND. ENTER R OR B:", "error-msg", true);
             return;
         }
 
-        const modeLabel = (branch === "R" ? "PRIVATE " : "PUBLIC ") + (color === 1 ? "RED" : "BLUE");
-        addToQueue(`INITIALIZING ${modeLabel} REQUEST...`, "system-msg");
+        addToQueue("SCANNING FOR OPEN SESSIONS...", "system-msg");
 
-        // Targeted write to m/U or m/R
-        db.ref(`m/${branch}/${tempUser}`).set({
-            password: pass,
-            color: color,
-            time: SERVER_TIMESTAMP
-        }).then(() => {
-            addToQueue("MATCHMAKING LIVE. WAITING FOR PEER...", "success-msg");
-        }).catch(err => {
-            addToQueue("DATABASE REJECTED REQUEST. CHECK PERMISSIONS.", "error-msg");
+        // STEP 3: Read first object in 'g' (numerical timestamp)
+        db.ref('g').orderByKey().limitToFirst(1).once('value', snapshot => {
+            let foundMatch = null;
+            snapshot.forEach(child => {
+                const data = child.val();
+                // Check if the opposite slot is open
+                if (color === 1 && data.bn && !data.rn) foundMatch = child.key;
+                else if (color === 0 && data.rn && !data.bn) foundMatch = child.key;
+            });
+
+            if (foundMatch) joinExistingMatch(foundMatch, color, pass);
+            else createNewMatch(color, pass);
+        });
+    }
+
+    function createNewMatch(color, pass) {
+        const tsKey = Date.now().toString(); // 13-digit Numerical Key
+        const payload = { time: SERVER_TIMESTAMP, state: INIT_STATE };
+        
+        if (color === 1) { payload.rn = tempUser; payload.rp = pass; }
+        else { payload.bn = tempUser; payload.bp = pass; }
+
+        addToQueue("INITIALIZING NEW SESSION " + tsKey + "...", "system-msg");
+        db.ref('g/' + tsKey).set(payload).then(() => {
+            addToQueue("WAITING FOR OPPONENT...", "success-msg");
+            // Placeholder for game listener
+        }).catch(() => {
+            addToQueue("MATCHMAKING ERROR. TRY AGAIN.", "error-msg");
             promptMode();
         });
     }
 
+    function joinExistingMatch(id, color, pass) {
+        const update = {};
+        if (color === 1) { update.rn = tempUser; update.rp = pass; }
+        else { update.bn = tempUser; update.bp = pass; }
+
+        addToQueue("OPPONENT FOUND. SYNCING...", "system-msg");
+        db.ref('g/' + id).update(update).then(() => {
+            addToQueue("CONNECTED. STARTING GAME...", "success-msg");
+            // Placeholder for game start
+        }).catch(() => {
+            addToQueue("SESSION COLLISION. RETRYING...", "error-msg");
+            executeMatchmaking(color === 1 ? "R" : "B");
+        });
+    }
+
     function runJanitorSweep() {
+        // Clean old accounts
         db.ref('a').once('value', snapshot => {
             const now = Date.now();
             snapshot.forEach(child => {
                 if (now - child.val().lastplayed > 86400000) {
                     const u = child.key;
-                    const p = {};
-                    p['s/'+u]=null; p['a/'+u]=null; 
-                    p['m/U/'+u]=null; p['m/R/'+u]=null; // Updated paths
-                    p['g/'+u]=null;
-                    db.ref().update(p).catch(() => {});
+                    db.ref('s/' + u).remove();
+                    db.ref('a/' + u).remove();
                 }
+            });
+        });
+        // Clean old games in 'g' (24 hour expiration)
+        db.ref('g').once('value', snapshot => {
+            const now = Date.now();
+            snapshot.forEach(child => {
+                const data = child.val();
+                if (data.time && (now - data.time > 86400000)) child.ref.remove();
             });
         });
     }
 
     async function startTerminalWhenReady() {
         if (document.fonts) {
-            try {
-                await document.fonts.load('16px Unifont');
-                await document.fonts.ready;
-            } catch (e) {}
+            try { await document.fonts.load('16px Unifont'); await document.fonts.ready; } catch (e) {}
         }
         initTerminalSequence();
     }
@@ -262,23 +270,16 @@
     function initTerminalSequence() {
         addToQueue("Laser Chess - Standard Version (Core Edition)", "highlight");
         addToQueue('Site for Laser Chess. <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">Rules</a>.', "system-msg");
-        addToQueue("IDENTITY NOTICE: ANY ACCOUNT WHICH PLAYED IT'S LAST MOVE 24 HOURS AGO WILL BE DELETED.", "highlight");
+        addToQueue("NOTICE: INACTIVE DATA PURGED EVERY 24 HOURS.", "highlight");
 
         const savedUser = localStorage.getItem('session_user');
         const savedPass = localStorage.getItem('session_pass');
 
         if (savedUser && savedPass) {
-            addToQueue("LOCAL SESSION FOUND. VERIFYING...", "system-msg");
-            db.ref('a/' + savedUser).set({ password: savedPass, lastplayed: SERVER_TIMESTAMP }).then(() => {
-                addToQueue("VERIFICATION SUCCESSFUL. Welcome, " + savedUser + ".", "success-msg");
-                finalizeLogin(savedUser, savedPass);
-            }).catch(err => {
-                localStorage.clear();
-                currentState = "USERNAME";
-                addToQueue("Session Username (max 20):", "", true);
-            });
+            addToQueue("RESTORING SESSION...", "system-msg");
+            authenticateUser(savedUser, savedPass);
         } else {
-            addToQueue("Session Username (max 20):", "", true);
+            addToQueue("Session Username:", "", true);
         }
     }
 
