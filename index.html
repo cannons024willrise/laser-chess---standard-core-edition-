@@ -61,7 +61,6 @@
     const db = firebase.database();
     const SERVER_TIMESTAMP = firebase.database.ServerValue.TIMESTAMP;
     
-    // Updated 121-character initial state
     const INIT_STATE = "0400155701190116073124311253217442175411847118671133031350319262147141435319621142421423319044190311974119734149431493210";
 
     const log = document.getElementById('terminal-log');
@@ -151,12 +150,34 @@
         }
     }
 
-    function finalizeLogin(u, p) {
-        localStorage.setItem('session_user', u);
-        localStorage.setItem('session_pass', p);
-        addToQueue("IDENTITY SET LOCALLY.", "success-msg");
-        runJanitorSweep();
-        promptMode();
+    async function finalizeLogin(u, p) {
+        addToQueue("VALIDATING IDENTITY...", "system-msg");
+        
+        // Scan current games to ensure username is unique
+        const isTaken = await checkUsernameGlobal(u);
+        
+        if (isTaken) {
+            addToQueue("ERROR: USERNAME ALREADY ACTIVE IN A MATCH.", "error-msg");
+            localStorage.clear();
+            currentState = "USERNAME";
+            addToQueue("Session Username:", "", true);
+        } else {
+            localStorage.setItem('session_user', u);
+            localStorage.setItem('session_pass', p);
+            addToQueue("IDENTITY VERIFIED.", "success-msg");
+            runJanitorSweep();
+            promptMode();
+        }
+    }
+
+    async function checkUsernameGlobal(u) {
+        const snapshot = await db.ref('g').limitToLast(10).once('value');
+        let taken = false;
+        snapshot.forEach(child => {
+            const data = child.val();
+            if (data.rn === u || data.bn === u) taken = true;
+        });
+        return taken;
     }
 
     function promptMode() {
@@ -176,74 +197,60 @@
             return;
         }
 
-        addToQueue("PROBING LOBBY...", "system-msg");
+        addToQueue("CONNECTING...", "system-msg");
 
-        // STEP 1: Blind Scan the "Lobby" (First game in g/)
         db.ref('g').orderByKey().limitToFirst(1).once('value', snapshot => {
             if (!snapshot.exists()) {
-                createNewVault(color, u, p);
+                createNewMatch(color, u, p);
                 return;
             }
 
-            let lobbyGameId = null;
-            let lobbyToken = null;
-            let lobbyData = null;
-
+            let gameId, lobbyData;
             snapshot.forEach(child => {
-                lobbyGameId = child.key;
+                gameId = child.key;
                 lobbyData = child.val();
-                lobbyToken = lobbyData.et;
             });
 
             const targetSlot = color === 1 ? 'rn' : 'bn';
             
-            // STEP 2: Logic Signal check. If slot is missing, it is occupied (403/Null).
+            // Check if slot is available (if missing, it's occupied)
             if (lobbyData.hasOwnProperty(targetSlot)) {
-                joinExistingMatch(lobbyGameId, color, u, p, lobbyToken);
+                joinExistingMatch(gameId, color, u, p, lobbyData.et);
             } else {
-                addToQueue("LOBBY OCCUPIED. OPENING NEW VAULT...", "system-msg");
-                createNewVault(color, u, p);
+                createNewMatch(color, u, p);
             }
         });
     }
 
     function createNewMatch(color, u, p) {
         const gameId = Date.now().toString();
-        // Generate a 10-digit number for rule validation (range 10^9 to 10^10-1)
-        const newToken = Math.floor(1000000000 + Math.random() * 9000000000); 
+        const token = Math.floor(1000000000 + Math.random() * 9000000000); 
         
         const payload = { 
             time: SERVER_TIMESTAMP, 
             state: INIT_STATE,
-            et: newToken
+            et: token
         };
         
         if (color === 1) { payload.rn = u; payload.rp = p; }
         else { payload.bn = u; payload.bp = p; }
 
-        addToQueue("INITIALIZING VAULT " + gameId + "...", "system-msg");
         db.ref('g/' + gameId).set(payload).then(() => {
-            addToQueue("VAULT SECURED. WAITING FOR HANDSHAKE...", "success-msg");
-            // Placeholder: Game listener would start here
+            addToQueue("MATCH " + gameId + " CREATED. WAITING...", "success-msg");
         }).catch(() => {
-            addToQueue("VAULT REJECTED BY DATABASE RULES.", "error-msg");
+            addToQueue("CONNECTION REJECTED.", "error-msg");
             promptMode();
         });
     }
 
     function joinExistingMatch(id, color, u, p, token) {
-        // Payload Auth Pattern: Must include the 'et' field exactly as it exists
         const update = { et: token }; 
         if (color === 1) { update.rn = u; update.rp = p; }
         else { update.bn = u; update.bp = p; }
 
-        addToQueue("INITIATING HANDSHAKE...", "system-msg");
         db.ref('g/' + id).update(update).then(() => {
-            addToQueue("HANDSHAKE SUCCESS. SYNCING...", "success-msg");
-            // Placeholder: Game listener would start here
+            addToQueue("CONNECTION ESTABLISHED.", "success-msg");
         }).catch(() => {
-            // Signal check: 403 means the slot was taken or token changed
-            addToQueue("SIGNAL LOST. RE-PROBING...", "error-msg");
             executeMatchmaking(color === 1 ? "R" : "B");
         });
     }
@@ -268,13 +275,12 @@
     function initTerminalSequence() {
         addToQueue("Laser Chess - Standard Version (Core Edition)", "highlight");
         addToQueue('Site for Laser Chess. <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=53s" class="rules-link" target="_blank">Rules</a>.', "system-msg");
-        addToQueue("NOTICE: INACTIVE VAULTS PURGED EVERY 24H.", "highlight");
 
         const savedUser = localStorage.getItem('session_user');
         const savedPass = localStorage.getItem('session_pass');
 
         if (savedUser && savedPass) {
-            addToQueue("RESTORING LOCAL IDENTITY: " + savedUser, "system-msg");
+            addToQueue("RESTORING IDENTITY: " + savedUser, "system-msg");
             finalizeLogin(savedUser, savedPass);
         } else {
             addToQueue("Session Username:", "", true);
