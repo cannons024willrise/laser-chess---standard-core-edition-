@@ -1,195 +1,136 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Laser Chess - Core Edition</title>
+    <title>Laser Chess Core</title>
     <style>
-        body {
-            background: #0a0a0a;
-            color: #b0b0b0; 
-            font-family: 'Courier New', monospace; /* Fallback to prevent blank screen */
-            font-size: 16px; 
-            margin: 0; padding: 20px; 
-            line-height: 1.4;
-        }
-
-        #terminal-log { display: flex; flex-direction: column; }
-        .input-wrapper { display: flex; align-items: baseline; margin-top: 5px; }
-        
-        .user-input-line {
-            background: transparent; border: none; color: #ffffff;
-            font-family: inherit; font-size: 16px;
-            outline: none; flex-grow: 1; margin-left: 8px;
-        }
-
-        .system-msg { color: #666; }
-        .success-msg { color: #00ff00; font-weight: bold; }
-        .error-msg { color: #ff5555; }
-        .highlight { color: #ffffff; font-weight: bold; margin-bottom: 5px; }
+        body { background: #000; color: #0f0; font-family: monospace; padding: 20px; }
+        .input-line { display: flex; }
+        input { background: transparent; border: none; color: #fff; outline: none; flex: 1; font-family: monospace; }
+        .err { color: #f55; }
+        .ok { color: #fff; font-weight: bold; }
     </style>
 </head>
 <body>
-
-<div id="terminal-log"></div>
-
-<script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
+    <div id="log"></div>
+    <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
 
 <script>
-    const firebaseConfig = {
+    // Verification log
+    console.log("Terminal Initializing...");
+
+    const config = {
         apiKey: "AIzaSyBuT7P1iTdXcZW-y05DX-kseuLrPGmaWSs",
         authDomain: "laserchess-web-free.firebaseapp.com",
         databaseURL: "https://laserchess-web-free-default-rtdb.firebaseio.com",
-        projectId: "laserchess-web-free",
-        storageBucket: "laserchess-web-free.firebasestorage.app",
-        messagingSenderId: "887464510754",
-        appId: "1:887464510754:web:aee6938681543602a4517b"
+        projectId: "laserchess-web-free"
     };
 
-    firebase.initializeApp(firebaseConfig);
+    firebase.initializeApp(config);
     const db = firebase.database();
-    const SERVER_TIMESTAMP = firebase.database.ServerValue.TIMESTAMP;
-    const INIT_STATE = "0400155701190116073124311253217442175411847118671133031350319262147141435319621142421423319044190311974119734149431493210";
+    const logEl = document.getElementById('log');
+    
+    let user = localStorage.getItem('ls_user');
+    let pass = localStorage.getItem('ls_pass');
+    let activeMatch = null;
 
-    const log = document.getElementById('terminal-log');
-    let currentState = "USERNAME";
-    let activeQueueMatch = null;
-
-    function print(text, className = "") {
-        const div = document.createElement('div');
-        div.className = className;
-        div.innerHTML = text;
-        log.appendChild(div);
+    function out(txt, cls = "") {
+        const d = document.createElement('div');
+        d.className = cls;
+        d.innerHTML = txt;
+        logEl.appendChild(d);
         window.scrollTo(0, document.body.scrollHeight);
     }
 
-    function ask(text, callback) {
-        const wrapper = document.createElement('div');
-        wrapper.className = "input-wrapper";
-        wrapper.innerHTML = `<span>${text}</span><input type="text" class="user-input-line">`;
-        log.appendChild(wrapper);
-        const input = wrapper.querySelector('input');
-        input.focus();
-        window.scrollTo(0, document.body.scrollHeight);
-
-        input.addEventListener('keydown', (e) => {
+    function ask(txt, cb) {
+        const w = document.createElement('div');
+        w.className = "input-line";
+        w.innerHTML = `<span>${txt}&nbsp;</span><input type="text">`;
+        logEl.appendChild(w);
+        const i = w.querySelector('input');
+        i.focus();
+        i.onkeydown = (e) => {
             if (e.key === 'Enter') {
-                const val = input.value.trim().toUpperCase();
-                input.disabled = true;
-                callback(val);
+                const val = i.value.trim().toUpperCase();
+                i.disabled = true;
+                cb(val);
             }
-        });
+        };
     }
 
-    function handleInput(val) {
-        if (currentState === "USERNAME") {
-            if (!val) { print("Username required.", "error-msg"); startFlow(); return; }
-            localStorage.setItem('session_user', val);
-            currentState = "PASSWORD";
-            startFlow();
-        } else if (currentState === "PASSWORD") {
-            if (!val) { print("Password required.", "error-msg"); startFlow(); return; }
-            localStorage.setItem('session_pass', val);
-            startLobbySync();
-        } else if (currentState === "MODE_SELECT") {
-            processAction(val);
-        }
-    }
-
-    function startLobbySync() {
-        currentState = "MODE_SELECT";
+    function initSync() {
+        out("--- CONNECTED TO LOBBY ---", "ok");
         db.ref('fifo_enforcer').orderByKey().limitToFirst(1).on('value', snap => {
             if (snap.exists()) {
                 let mId, et;
                 snap.forEach(c => { mId = c.key; et = c.val().et; });
                 db.ref(`matches/${mId}/public_data`).once('value', pSnap => {
-                    activeQueueMatch = { id: mId, et: et, data: pSnap.val() };
-                    renderMenu();
+                    activeMatch = { id: mId, et: et, data: pSnap.val() };
+                    showMenu();
                 });
             } else {
-                activeQueueMatch = null;
-                renderMenu();
+                activeMatch = null;
+                showMenu();
             }
         });
     }
 
-    function renderMenu() {
-        print("--- LOBBY STATUS ---", "system-msg");
-        if (activeQueueMatch) {
-            const side = activeQueueMatch.data.rn ? "RED" : "BLUE";
-            print(`PENDING: ${activeQueueMatch.id} [${side}]`, "highlight");
-            print("[A] JOIN OPPOSITE | [R] CREATE RED | [B] CREATE BLUE", "system-msg");
+    function showMenu() {
+        if (activeMatch) {
+            const side = activeMatch.data.rn ? "RED" : "BLUE";
+            out(`QUEUE TOP: ${activeMatch.id} [Occupied: ${side}]`, "ok");
+            out("[A] JOIN OPPOSITE | [R] NEW RED | [B] NEW BLUE");
         } else {
-            print("QUEUE EMPTY.", "system-msg");
-            print("[R] CREATE RED | [B] CREATE BLUE", "system-msg");
+            out("QUEUE EMPTY. [R] NEW RED | [B] NEW BLUE");
         }
-        ask("CMD> ", handleInput);
+        ask("COMMAND>", handleCmd);
     }
 
-    function processAction(cmd) {
-        const u = localStorage.getItem('session_user');
-        const p = localStorage.getItem('session_pass');
-
-        if (cmd === "A" && activeQueueMatch) {
-            const joinColor = activeQueueMatch.data.rn ? 0 : 1;
-            join(activeQueueMatch.id, joinColor, u, p, activeQueueMatch.et);
-        } else if (cmd === "R") {
-            if (activeQueueMatch && activeQueueMatch.data.rn) {
-                print("ERROR: RED PENDING. USE [A] TO JOIN AS BLUE.", "error-msg");
-                renderMenu();
-            } else {
-                create(1, u, p);
-            }
-        } else if (cmd === "B") {
-            if (activeQueueMatch && activeQueueMatch.data.bn) {
-                print("ERROR: BLUE PENDING. USE [A] TO JOIN AS RED.", "error-msg");
-                renderMenu();
-            } else {
-                create(0, u, p);
-            }
+    function handleCmd(val) {
+        if (val === "R") {
+            if (activeMatch?.data?.rn) return out("RED EXISTS. USE [A]", "err"), showMenu();
+            createMatch(1);
+        } else if (val === "B") {
+            if (activeMatch?.data?.bn) return out("BLUE EXISTS. USE [A]", "err"), showMenu();
+            createMatch(0);
+        } else if (val === "A" && activeMatch) {
+            joinMatch(activeMatch.data.rn ? 0 : 1);
         } else {
-            print("INVALID COMMAND.", "error-msg");
-            renderMenu();
+            out("INVALID", "err");
+            showMenu();
         }
     }
 
-    function create(color, u, p) {
+    function createMatch(col) {
         const id = Date.now().toString();
-        const et = Math.random().toString(36).substr(2, 9);
+        const et = Math.random().toString(36).substring(7);
         const upd = {};
         upd[`fifo_enforcer/${id}/et`] = et;
-        upd[`matches/${id}/public_data/gamestate`] = INIT_STATE;
-        upd[`matches/${id}/public_data/${color === 1 ? 'rn' : 'bn'}`] = u;
+        upd[`matches/${id}/public_data/${col ? 'rn' : 'bn'}`] = user;
         upd[`matches/${id}/private_tokens/et`] = et;
-        upd[`matches/${id}/private_tokens/${color === 1 ? 'redpassword' : 'bluepassword'}`] = p;
-
-        db.ref().update(upd).then(() => print(`MATCH ${id} CREATED.`, "success-msg"));
+        upd[`matches/${id}/private_tokens/${col ? 'redpassword' : 'bluepassword'}`] = pass;
+        db.ref().update(upd).then(() => out("MATCH CREATED", "ok"));
     }
 
-    function join(id, color, u, p, et) {
+    function joinMatch(col) {
         const upd = {};
-        upd[`fifo_enforcer/${id}`] = null;
-        upd[`matches/${id}/public_data/${color === 1 ? 'rn' : 'bn'}`] = u;
-        upd[`matches/${id}/private_tokens/et`] = et;
-        upd[`matches/${id}/private_tokens/${color === 1 ? 'redpassword' : 'bluepassword'}`] = p;
-
-        db.ref().update(upd).then(() => print(`JOINED ${id}.`, "success-msg"))
-          .catch(() => print("HANDSHAKE FAILED.", "error-msg"));
+        upd[`fifo_enforcer/${activeMatch.id}`] = null;
+        upd[`matches/${activeMatch.id}/public_data/${col ? 'rn' : 'bn'}`] = user;
+        upd[`matches/${activeMatch.id}/private_tokens/et`] = activeMatch.et;
+        upd[`matches/${activeMatch.id}/private_tokens/${col ? 'redpassword' : 'bluepassword'}`] = pass;
+        db.ref().update(upd).then(() => out("JOINED SUCCESS", "ok")).catch(e => out("FAIL", "err"));
     }
 
-    function startFlow() {
-        const u = localStorage.getItem('session_user');
-        const p = localStorage.getItem('session_pass');
-        if (!u) ask("USERNAME: ", handleInput);
-        else if (!p) ask("PASSWORD: ", handleInput);
-        else startLobbySync();
+    // Startup
+    out("LASER CHESS v1.0.5");
+    if (!user) {
+        ask("USER:", (v) => { user = v; localStorage.setItem('ls_user', v); location.reload(); });
+    } else if (!pass) {
+        ask("PASS:", (v) => { pass = v; localStorage.setItem('ls_pass', v); location.reload(); });
+    } else {
+        initSync();
     }
-
-    window.onload = () => {
-        print("LASER CHESS CORE v1.0.4", "highlight");
-        startFlow();
-    };
 </script>
 </body>
 </html>
