@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Laser Chess - Standard Version (Core Edition)</title>
+    <title>Laser Chess - Core Edition</title>
     <style>
         @font-face {
             font-family: 'Unifont';
-            src: url('unifont-15.0.01.ttf') format('truetype');
+            src: url('https://db.onlinewebfonts.com/t/0e1948959902641077759b48c1e217d8.ttf') format('truetype');
             font-display: block;
         }
 
@@ -16,8 +16,7 @@
             color: #b0b0b0; 
             font-family: 'Unifont', monospace;
             font-size: 16px; 
-            margin: 0; 
-            padding: 30px; 
+            margin: 0; padding: 30px; 
             line-height: 1.6;
             image-rendering: pixelated;
         }
@@ -69,8 +68,6 @@
 
     let activeQueueMatch = null;
     let currentMatchId = null;
-    let fifoListener = null;
-    let matchListener = null;
 
     function addToQueue(text, className = "", isRequest = false) {
         msgQueue.push({ text, className, isRequest });
@@ -92,19 +89,9 @@
             const div = document.createElement('div');
             div.className = (className || "") + " history-line";
             log.appendChild(div);
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = text;
-            const plainText = tempDiv.textContent;
-            let i = 0;
-            const timer = setInterval(() => {
-                if (i < plainText.length) { div.textContent += plainText.charAt(i); i++; }
-                else {
-                    clearInterval(timer);
-                    div.innerHTML = text; 
-                    window.scrollTo(0, document.body.scrollHeight);
-                    resolve();
-                }
-            }, 8);
+            div.innerHTML = text; 
+            window.scrollTo(0, document.body.scrollHeight);
+            setTimeout(resolve, 50); 
         });
     }
 
@@ -113,18 +100,158 @@
             const wrapper = document.createElement('div');
             wrapper.className = "input-wrapper history-line " + (className || "");
             const label = document.createElement('span');
+            label.textContent = text;
             const input = document.createElement('input');
             input.type = "text"; input.className = "user-input-line";
-            input.maxLength = 20; input.disabled = true;
+            input.maxLength = 20;
             wrapper.appendChild(label); wrapper.appendChild(input);
             log.appendChild(wrapper);
-            let i = 0;
-            const timer = setInterval(() => {
-                if (i < text.length) { label.textContent += text.charAt(i); i++; }
-                else {
-                    clearInterval(timer);
-                    input.disabled = false; input.focus();
-                    window.scrollTo(0, document.body.scrollHeight);
-                    const handleEnter = (e) => {
-                        if (e.key === 'Enter') {
-                            const val = input.
+            input.focus();
+            window.scrollTo(0, document.body.scrollHeight);
+
+            const handleEnter = (e) => {
+                if (e.key === 'Enter') {
+                    const val = input.value.trim().toUpperCase();
+                    input.disabled = true;
+                    input.removeEventListener('keydown', handleEnter);
+                    handleStateLogic(val);
+                    resolve(); 
+                }
+            };
+            input.addEventListener('keydown', handleEnter);
+        });
+    }
+
+    function handleStateLogic(val) {
+        if (currentState === "USERNAME") {
+            if (!val) { addToQueue("Username required:", "error-msg", true); return; }
+            tempUser = val; currentState = "PASSWORD";
+            addToQueue("Session Password:", "", true);
+        } else if (currentState === "PASSWORD") {
+            if (!val) { addToQueue("Password required:", "error-msg", true); return; }
+            finalizeLogin(tempUser, val);
+        } else if (currentState === "MODE_SELECT") {
+            executeMatchmaking(val);
+        }
+    }
+
+    function finalizeLogin(u, p) {
+        localStorage.setItem('session_user', u);
+        localStorage.setItem('session_pass', p);
+        startLobbySync();
+    }
+
+    function startLobbySync() {
+        currentState = "MODE_SELECT";
+        // Listen to the top of the FIFO queue
+        db.ref('fifo_enforcer').orderByKey().limitToFirst(1).on('value', snapshot => {
+            if (snapshot.exists()) {
+                snapshot.forEach(child => {
+                    const mId = child.key;
+                    const et = child.val().et;
+                    // Fetch public data once for this match
+                    db.ref(`matches/${mId}/public_data`).once('value', pubSnap => {
+                        const data = pubSnap.val();
+                        if (data) {
+                            activeQueueMatch = { id: mId, et: et, data: data };
+                            renderLobbyStatus();
+                        }
+                    });
+                });
+            } else {
+                activeQueueMatch = null;
+                renderLobbyStatus();
+            }
+        });
+    }
+
+    function renderLobbyStatus() {
+        if (isProcessing) return; // Don't interrupt typing
+        
+        if (activeQueueMatch) {
+            const side = activeQueueMatch.data.rn ? "RED" : "BLUE";
+            const opp = activeQueueMatch.data.rn || activeQueueMatch.data.bn;
+            addToQueue(`LOBBY: ${activeQueueMatch.id} | WAITING: ${opp} (${side})`, "highlight");
+            addToQueue("[A] QUICK JOIN | [R] CREATE RED | [B] CREATE BLUE", "system-msg");
+        } else {
+            addToQueue("QUEUE EMPTY. [R] CREATE RED | [B] CREATE BLUE", "system-msg");
+        }
+        addToQueue("Command:", "", true);
+    }
+
+    function executeMatchmaking(cmd) {
+        const u = localStorage.getItem('session_user');
+        const p = localStorage.getItem('session_pass');
+
+        if (cmd === "A" && activeQueueMatch) {
+            const color = activeQueueMatch.data.rn ? 0 : 1; 
+            joinExistingMatch(activeQueueMatch.id, color, u, p, activeQueueMatch.et);
+        } else if (cmd === "R") {
+            if (activeQueueMatch && activeQueueMatch.data.rn) {
+                addToQueue("ERROR: RED ALREADY PENDING. JOIN AS BLUE [A].", "error-msg");
+                renderLobbyStatus();
+            } else {
+                createNewMatch(1, u, p);
+            }
+        } else if (cmd === "B") {
+            if (activeQueueMatch && activeQueueMatch.data.bn) {
+                addToQueue("ERROR: BLUE ALREADY PENDING. JOIN AS RED [A].", "error-msg");
+                renderLobbyStatus();
+            } else {
+                createNewMatch(0, u, p);
+            }
+        } else {
+            addToQueue("INVALID COMMAND.", "error-msg");
+            renderLobbyStatus();
+        }
+    }
+
+    function createNewMatch(color, u, p) {
+        const matchId = Date.now().toString();
+        const token = Math.floor(1000000000 + Math.random() * 9000000000).toString(); 
+        const upd = {};
+
+        upd[`fifo_enforcer/${matchId}/et`] = token;
+        upd[`matches/${matchId}/public_data/timestamp`] = SERVER_TIMESTAMP;
+        upd[`matches/${matchId}/public_data/gamestate`] = INIT_STATE;
+        if (color === 1) upd[`matches/${matchId}/public_data/rn`] = u;
+        else upd[`matches/${matchId}/public_data/bn`] = u;
+
+        upd[`matches/${matchId}/private_tokens/et`] = token;
+        if (color === 1) upd[`matches/${matchId}/private_tokens/redpassword`] = p;
+        else upd[`matches/${matchId}/private_tokens/bluepassword`] = p;
+
+        db.ref().update(upd).then(() => {
+            addToQueue(`SUCCESS: MATCH ${matchId} DEPLOYED.`, "success-msg");
+        }).catch(() => addToQueue("DATABASE REJECTED WRITE.", "error-msg"));
+    }
+
+    function joinExistingMatch(matchId, color, u, p, token) {
+        const upd = {};
+        upd[`fifo_enforcer/${matchId}`] = null; // Clear from queue
+
+        if (color === 1) upd[`matches/${matchId}/public_data/rn`] = u;
+        else upd[`matches/${matchId}/public_data/bn`] = u;
+
+        upd[`matches/${matchId}/private_tokens/et`] = token; 
+        if (color === 1) upd[`matches/${matchId}/private_tokens/redpassword`] = p;
+        else upd[`matches/${matchId}/private_tokens/bluepassword`] = p;
+
+        db.ref().update(upd).then(() => {
+            addToQueue(`SUCCESS: CONNECTED TO ${matchId}.`, "success-msg");
+        }).catch(() => {
+            addToQueue("HANDSHAKE FAILED. REFRESHING...", "error-msg");
+            renderLobbyStatus();
+        });
+    }
+
+    window.onload = () => {
+        addToQueue("Laser Chess - Core Edition", "highlight");
+        const u = localStorage.getItem('session_user');
+        const p = localStorage.getItem('session_pass');
+        if (u && p) finalizeLogin(u, p);
+        else addToQueue("Session Username:", "", true);
+    };
+</script>
+</body>
+</html>
