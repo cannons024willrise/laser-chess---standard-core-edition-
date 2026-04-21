@@ -5,20 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Laser Chess - Core Edition</title>
     <style>
-        @font-face {
-            font-family: 'Unifont';
-            src: url('https://db.onlinewebfonts.com/t/0e1948959902641077759b48c1e217d8.ttf') format('truetype');
-            font-display: block;
-        }
-
         body {
-            background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
+            background: #0a0a0a;
             color: #b0b0b0; 
-            font-family: 'Unifont', monospace;
+            font-family: 'Courier New', monospace; /* Fallback to prevent blank screen */
             font-size: 16px; 
-            margin: 0; padding: 30px; 
-            line-height: 1.6;
-            image-rendering: pixelated;
+            margin: 0; padding: 20px; 
+            line-height: 1.4;
         }
 
         #terminal-log { display: flex; flex-direction: column; }
@@ -26,15 +19,14 @@
         
         .user-input-line {
             background: transparent; border: none; color: #ffffff;
-            font-family: 'Unifont', monospace; font-size: 16px;
-            outline: none; flex-grow: 1; margin-left: 8px; caret-color: #ffffff;
+            font-family: inherit; font-size: 16px;
+            outline: none; flex-grow: 1; margin-left: 8px;
         }
 
-        .system-msg { color: #666; margin-bottom: 5px; }
-        .success-msg { color: #ffffff; font-weight: bold; margin-bottom: 5px; }
-        .error-msg { color: #ff5555; margin-bottom: 5px; }
-        .highlight { color: #ffffff; margin-bottom: 10px; font-weight: bold; }
-        .history-line { margin-bottom: 5px; }
+        .system-msg { color: #666; }
+        .success-msg { color: #00ff00; font-weight: bold; }
+        .error-msg { color: #ff5555; }
+        .highlight { color: #ffffff; font-weight: bold; margin-bottom: 5px; }
     </style>
 </head>
 <body>
@@ -61,196 +53,142 @@
     const INIT_STATE = "0400155701190116073124311253217442175411847118671133031350319262147141435319621142421423319044190311974119734149431493210";
 
     const log = document.getElementById('terminal-log');
-    let msgQueue = [];
-    let isProcessing = false;
     let currentState = "USERNAME";
-    let tempUser = "";
-
     let activeQueueMatch = null;
-    let currentMatchId = null;
 
-    function addToQueue(text, className = "", isRequest = false) {
-        msgQueue.push({ text, className, isRequest });
-        if (!isProcessing) processQueue();
+    function print(text, className = "") {
+        const div = document.createElement('div');
+        div.className = className;
+        div.innerHTML = text;
+        log.appendChild(div);
+        window.scrollTo(0, document.body.scrollHeight);
     }
 
-    async function processQueue() {
-        isProcessing = true;
-        while (msgQueue.length > 0) {
-            const item = msgQueue.shift();
-            if (item.isRequest) await typeLineInline(item.text, item.className);
-            else await typeLineSimple(item.text, item.className);
-        }
-        isProcessing = false;
-    }
+    function ask(text, callback) {
+        const wrapper = document.createElement('div');
+        wrapper.className = "input-wrapper";
+        wrapper.innerHTML = `<span>${text}</span><input type="text" class="user-input-line">`;
+        log.appendChild(wrapper);
+        const input = wrapper.querySelector('input');
+        input.focus();
+        window.scrollTo(0, document.body.scrollHeight);
 
-    function typeLineSimple(text, className) {
-        return new Promise((resolve) => {
-            const div = document.createElement('div');
-            div.className = (className || "") + " history-line";
-            log.appendChild(div);
-            div.innerHTML = text; 
-            window.scrollTo(0, document.body.scrollHeight);
-            setTimeout(resolve, 50); 
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const val = input.value.trim().toUpperCase();
+                input.disabled = true;
+                callback(val);
+            }
         });
     }
 
-    function typeLineInline(text, className) {
-        return new Promise((resolve) => {
-            const wrapper = document.createElement('div');
-            wrapper.className = "input-wrapper history-line " + (className || "");
-            const label = document.createElement('span');
-            label.textContent = text;
-            const input = document.createElement('input');
-            input.type = "text"; input.className = "user-input-line";
-            input.maxLength = 20;
-            wrapper.appendChild(label); wrapper.appendChild(input);
-            log.appendChild(wrapper);
-            input.focus();
-            window.scrollTo(0, document.body.scrollHeight);
-
-            const handleEnter = (e) => {
-                if (e.key === 'Enter') {
-                    const val = input.value.trim().toUpperCase();
-                    input.disabled = true;
-                    input.removeEventListener('keydown', handleEnter);
-                    handleStateLogic(val);
-                    resolve(); 
-                }
-            };
-            input.addEventListener('keydown', handleEnter);
-        });
-    }
-
-    function handleStateLogic(val) {
+    function handleInput(val) {
         if (currentState === "USERNAME") {
-            if (!val) { addToQueue("Username required:", "error-msg", true); return; }
-            tempUser = val; currentState = "PASSWORD";
-            addToQueue("Session Password:", "", true);
+            if (!val) { print("Username required.", "error-msg"); startFlow(); return; }
+            localStorage.setItem('session_user', val);
+            currentState = "PASSWORD";
+            startFlow();
         } else if (currentState === "PASSWORD") {
-            if (!val) { addToQueue("Password required:", "error-msg", true); return; }
-            finalizeLogin(tempUser, val);
+            if (!val) { print("Password required.", "error-msg"); startFlow(); return; }
+            localStorage.setItem('session_pass', val);
+            startLobbySync();
         } else if (currentState === "MODE_SELECT") {
-            executeMatchmaking(val);
+            processAction(val);
         }
-    }
-
-    function finalizeLogin(u, p) {
-        localStorage.setItem('session_user', u);
-        localStorage.setItem('session_pass', p);
-        startLobbySync();
     }
 
     function startLobbySync() {
         currentState = "MODE_SELECT";
-        // Listen to the top of the FIFO queue
-        db.ref('fifo_enforcer').orderByKey().limitToFirst(1).on('value', snapshot => {
-            if (snapshot.exists()) {
-                snapshot.forEach(child => {
-                    const mId = child.key;
-                    const et = child.val().et;
-                    // Fetch public data once for this match
-                    db.ref(`matches/${mId}/public_data`).once('value', pubSnap => {
-                        const data = pubSnap.val();
-                        if (data) {
-                            activeQueueMatch = { id: mId, et: et, data: data };
-                            renderLobbyStatus();
-                        }
-                    });
+        db.ref('fifo_enforcer').orderByKey().limitToFirst(1).on('value', snap => {
+            if (snap.exists()) {
+                let mId, et;
+                snap.forEach(c => { mId = c.key; et = c.val().et; });
+                db.ref(`matches/${mId}/public_data`).once('value', pSnap => {
+                    activeQueueMatch = { id: mId, et: et, data: pSnap.val() };
+                    renderMenu();
                 });
             } else {
                 activeQueueMatch = null;
-                renderLobbyStatus();
+                renderMenu();
             }
         });
     }
 
-    function renderLobbyStatus() {
-        if (isProcessing) return; // Don't interrupt typing
-        
+    function renderMenu() {
+        print("--- LOBBY STATUS ---", "system-msg");
         if (activeQueueMatch) {
             const side = activeQueueMatch.data.rn ? "RED" : "BLUE";
-            const opp = activeQueueMatch.data.rn || activeQueueMatch.data.bn;
-            addToQueue(`LOBBY: ${activeQueueMatch.id} | WAITING: ${opp} (${side})`, "highlight");
-            addToQueue("[A] QUICK JOIN | [R] CREATE RED | [B] CREATE BLUE", "system-msg");
+            print(`PENDING: ${activeQueueMatch.id} [${side}]`, "highlight");
+            print("[A] JOIN OPPOSITE | [R] CREATE RED | [B] CREATE BLUE", "system-msg");
         } else {
-            addToQueue("QUEUE EMPTY. [R] CREATE RED | [B] CREATE BLUE", "system-msg");
+            print("QUEUE EMPTY.", "system-msg");
+            print("[R] CREATE RED | [B] CREATE BLUE", "system-msg");
         }
-        addToQueue("Command:", "", true);
+        ask("CMD> ", handleInput);
     }
 
-    function executeMatchmaking(cmd) {
+    function processAction(cmd) {
         const u = localStorage.getItem('session_user');
         const p = localStorage.getItem('session_pass');
 
         if (cmd === "A" && activeQueueMatch) {
-            const color = activeQueueMatch.data.rn ? 0 : 1; 
-            joinExistingMatch(activeQueueMatch.id, color, u, p, activeQueueMatch.et);
+            const joinColor = activeQueueMatch.data.rn ? 0 : 1;
+            join(activeQueueMatch.id, joinColor, u, p, activeQueueMatch.et);
         } else if (cmd === "R") {
             if (activeQueueMatch && activeQueueMatch.data.rn) {
-                addToQueue("ERROR: RED ALREADY PENDING. JOIN AS BLUE [A].", "error-msg");
-                renderLobbyStatus();
+                print("ERROR: RED PENDING. USE [A] TO JOIN AS BLUE.", "error-msg");
+                renderMenu();
             } else {
-                createNewMatch(1, u, p);
+                create(1, u, p);
             }
         } else if (cmd === "B") {
             if (activeQueueMatch && activeQueueMatch.data.bn) {
-                addToQueue("ERROR: BLUE ALREADY PENDING. JOIN AS RED [A].", "error-msg");
-                renderLobbyStatus();
+                print("ERROR: BLUE PENDING. USE [A] TO JOIN AS RED.", "error-msg");
+                renderMenu();
             } else {
-                createNewMatch(0, u, p);
+                create(0, u, p);
             }
         } else {
-            addToQueue("INVALID COMMAND.", "error-msg");
-            renderLobbyStatus();
+            print("INVALID COMMAND.", "error-msg");
+            renderMenu();
         }
     }
 
-    function createNewMatch(color, u, p) {
-        const matchId = Date.now().toString();
-        const token = Math.floor(1000000000 + Math.random() * 9000000000).toString(); 
+    function create(color, u, p) {
+        const id = Date.now().toString();
+        const et = Math.random().toString(36).substr(2, 9);
         const upd = {};
+        upd[`fifo_enforcer/${id}/et`] = et;
+        upd[`matches/${id}/public_data/gamestate`] = INIT_STATE;
+        upd[`matches/${id}/public_data/${color === 1 ? 'rn' : 'bn'}`] = u;
+        upd[`matches/${id}/private_tokens/et`] = et;
+        upd[`matches/${id}/private_tokens/${color === 1 ? 'redpassword' : 'bluepassword'}`] = p;
 
-        upd[`fifo_enforcer/${matchId}/et`] = token;
-        upd[`matches/${matchId}/public_data/timestamp`] = SERVER_TIMESTAMP;
-        upd[`matches/${matchId}/public_data/gamestate`] = INIT_STATE;
-        if (color === 1) upd[`matches/${matchId}/public_data/rn`] = u;
-        else upd[`matches/${matchId}/public_data/bn`] = u;
-
-        upd[`matches/${matchId}/private_tokens/et`] = token;
-        if (color === 1) upd[`matches/${matchId}/private_tokens/redpassword`] = p;
-        else upd[`matches/${matchId}/private_tokens/bluepassword`] = p;
-
-        db.ref().update(upd).then(() => {
-            addToQueue(`SUCCESS: MATCH ${matchId} DEPLOYED.`, "success-msg");
-        }).catch(() => addToQueue("DATABASE REJECTED WRITE.", "error-msg"));
+        db.ref().update(upd).then(() => print(`MATCH ${id} CREATED.`, "success-msg"));
     }
 
-    function joinExistingMatch(matchId, color, u, p, token) {
+    function join(id, color, u, p, et) {
         const upd = {};
-        upd[`fifo_enforcer/${matchId}`] = null; // Clear from queue
+        upd[`fifo_enforcer/${id}`] = null;
+        upd[`matches/${id}/public_data/${color === 1 ? 'rn' : 'bn'}`] = u;
+        upd[`matches/${id}/private_tokens/et`] = et;
+        upd[`matches/${id}/private_tokens/${color === 1 ? 'redpassword' : 'bluepassword'}`] = p;
 
-        if (color === 1) upd[`matches/${matchId}/public_data/rn`] = u;
-        else upd[`matches/${matchId}/public_data/bn`] = u;
+        db.ref().update(upd).then(() => print(`JOINED ${id}.`, "success-msg"))
+          .catch(() => print("HANDSHAKE FAILED.", "error-msg"));
+    }
 
-        upd[`matches/${matchId}/private_tokens/et`] = token; 
-        if (color === 1) upd[`matches/${matchId}/private_tokens/redpassword`] = p;
-        else upd[`matches/${matchId}/private_tokens/bluepassword`] = p;
-
-        db.ref().update(upd).then(() => {
-            addToQueue(`SUCCESS: CONNECTED TO ${matchId}.`, "success-msg");
-        }).catch(() => {
-            addToQueue("HANDSHAKE FAILED. REFRESHING...", "error-msg");
-            renderLobbyStatus();
-        });
+    function startFlow() {
+        const u = localStorage.getItem('session_user');
+        const p = localStorage.getItem('session_pass');
+        if (!u) ask("USERNAME: ", handleInput);
+        else if (!p) ask("PASSWORD: ", handleInput);
+        else startLobbySync();
     }
 
     window.onload = () => {
-        addToQueue("Laser Chess - Core Edition", "highlight");
-        const u = localStorage.getItem('session_user');
-        const p = localStorage.getItem('session_pass');
-        if (u && p) finalizeLogin(u, p);
-        else addToQueue("Session Username:", "", true);
+        print("LASER CHESS CORE v1.0.4", "highlight");
+        startFlow();
     };
 </script>
 </body>
