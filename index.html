@@ -68,6 +68,7 @@
     let isProcessing = false;
     let currentState = "USERNAME";
     let tempUser = "";
+    let activeQueueMatch = null;
 
     function addToQueue(text, className = "", isRequest = false) {
         msgQueue.push({ text, className, isRequest });
@@ -153,53 +154,52 @@
     function finalizeLogin(u, p) {
         localStorage.setItem('session_user', u);
         localStorage.setItem('session_pass', p);
-        promptMode();
+        checkQueueAndPrompt();
     }
 
-    function promptMode() {
+    function checkQueueAndPrompt() {
         currentState = "MODE_SELECT";
-        addToQueue("[R] RED / [B] BLUE", "system-msg");
-        addToQueue("Choose:", "", true);
+        db.ref('fifo_enforcer').orderByKey().limitToFirst(1).once('value', snapshot => {
+            if (snapshot.exists()) {
+                let matchId, et;
+                snapshot.forEach(child => { matchId = child.key; et = child.val().et; });
+                
+                db.ref(`matches/${matchId}/public_data`).once('value', pubSnap => {
+                    const data = pubSnap.val();
+                    activeQueueMatch = { id: matchId, et: et, data: data };
+                    const opponent = data.rn || data.bn;
+                    const side = data.rn ? "RED" : "BLUE";
+                    
+                    addToQueue(`ACTIVE REQUEST: [${matchId}] - ${opponent} (${side})`, "highlight");
+                    addToQueue("[A] QUICK JOIN / [R] CREATE RED / [B] CREATE BLUE", "system-msg");
+                    addToQueue("Choose:", "", true);
+                });
+            } else {
+                activeQueueMatch = null;
+                addToQueue("QUEUE EMPTY.", "system-msg");
+                addToQueue("[R] CREATE RED / [B] CREATE BLUE", "system-msg");
+                addToQueue("Choose:", "", true);
+            }
+        });
     }
 
     function executeMatchmaking(cmd) {
         const u = localStorage.getItem('session_user');
         const p = localStorage.getItem('session_pass');
-        let color = (cmd === "R") ? 1 : (cmd === "B") ? 0 : -1;
 
-        if (color === -1) {
-            addToQueue("INVALID COMMAND:", "error-msg", true);
+        if (cmd === "A" && activeQueueMatch) {
+            const color = activeQueueMatch.data.rn ? 0 : 1; // Join as opposite
+            joinExistingMatch(activeQueueMatch.id, color, u, p, activeQueueMatch.et);
             return;
         }
 
-        db.ref('fifo_enforcer').orderByKey().limitToFirst(1).once('value', snapshot => {
-            if (!snapshot.exists()) {
-                createNewMatch(color, u, p);
-                return;
-            }
+        let color = (cmd === "R") ? 1 : (cmd === "B") ? 0 : -1;
+        if (color === -1) {
+            addToQueue("INVALID COMMAND.", "error-msg", true);
+            return;
+        }
 
-            let matchId, et;
-            snapshot.forEach(child => {
-                matchId = child.key;
-                et = child.val().et;
-            });
-
-            db.ref(`matches/${matchId}/public_data`).once('value', pubSnap => {
-                if (!pubSnap.exists()) {
-                    createNewMatch(color, u, p);
-                    return;
-                }
-
-                const lobbyData = pubSnap.val();
-                const targetSlot = color === 1 ? 'rn' : 'bn';
-                
-                if (lobbyData.hasOwnProperty(targetSlot)) {
-                    createNewMatch(color, u, p);
-                } else {
-                    joinExistingMatch(matchId, color, u, p, et);
-                }
-            });
-        });
+        createNewMatch(color, u, p);
     }
 
     function createNewMatch(color, u, p) {
@@ -220,19 +220,17 @@
 
         db.ref().update(atomicUpdate).then(() => {
             addToQueue(`MATCH ${matchId} CREATED.`, "success-msg");
-        }).catch(() => {
-            promptMode();
-        });
+        }).catch(() => checkQueueAndPrompt());
     }
 
     function joinExistingMatch(matchId, color, u, p, token) {
         const atomicUpdate = {};
-
         atomicUpdate[`fifo_enforcer/${matchId}`] = null;
 
         if (color === 1) atomicUpdate[`matches/${matchId}/public_data/rn`] = u;
         else atomicUpdate[`matches/${matchId}/public_data/bn`] = u;
 
+        // Handshake: Match the ET found in the FIFO queue with the Private register
         atomicUpdate[`matches/${matchId}/private_tokens/et`] = token; 
         if (color === 1) atomicUpdate[`matches/${matchId}/private_tokens/redpassword`] = p;
         else atomicUpdate[`matches/${matchId}/private_tokens/bluepassword`] = p;
@@ -240,7 +238,8 @@
         db.ref().update(atomicUpdate).then(() => {
             addToQueue(`MATCH ${matchId} JOINED.`, "success-msg");
         }).catch(() => {
-            executeMatchmaking(color === 1 ? "R" : "B");
+            addToQueue("HANDSHAKE FAILED.", "error-msg");
+            checkQueueAndPrompt();
         });
     }
 
