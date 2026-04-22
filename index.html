@@ -1,136 +1,232 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Laser Chess Core</title>
+    <title>Laser Chess - Core Edition</title>
     <style>
-        body { background: #000; color: #0f0; font-family: monospace; padding: 20px; }
-        .input-line { display: flex; }
-        input { background: transparent; border: none; color: #fff; outline: none; flex: 1; font-family: monospace; }
-        .err { color: #f55; }
-        .ok { color: #fff; font-weight: bold; }
+        @font-face {
+            font-family: 'Unifont';
+            src: url('unifont-15.0.01.ttf') format('truetype');
+            font-display: swap;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: #b0b0b0; 
+            font-family: 'Unifont', 'Courier New', monospace;
+            font-size: 16px; 
+            margin: 0; padding: 30px; 
+            line-height: 1.6;
+            image-rendering: pixelated;
+        }
+
+        #terminal-log { display: flex; flex-direction: column; }
+        .input-wrapper { display: flex; align-items: baseline; margin-top: 5px; }
+        
+        .user-input-line {
+            background: transparent; border: none; color: #ffffff;
+            font-family: inherit; font-size: 16px;
+            outline: none; flex-grow: 1; margin-left: 8px; caret-color: #ffffff;
+        }
+
+        .system-msg { color: #555; }
+        .success-msg { color: #fff; font-weight: bold; }
+        .error-msg { color: #ff5555; }
+        .highlight { color: #ffffff; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div id="log"></div>
-    <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
+
+<div id="terminal-log"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
 
 <script>
-    // Verification log
-    console.log("Terminal Initializing...");
-
-    const config = {
+    const firebaseConfig = {
         apiKey: "AIzaSyBuT7P1iTdXcZW-y05DX-kseuLrPGmaWSs",
         authDomain: "laserchess-web-free.firebaseapp.com",
         databaseURL: "https://laserchess-web-free-default-rtdb.firebaseio.com",
         projectId: "laserchess-web-free"
     };
 
-    firebase.initializeApp(config);
+    firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    const logEl = document.getElementById('log');
     
-    let user = localStorage.getItem('ls_user');
-    let pass = localStorage.getItem('ls_pass');
-    let activeMatch = null;
+    const log = document.getElementById('terminal-log');
+    let msgQueue = [];
+    let isProcessing = false;
+    let activeQueueMatch = null;
 
-    function out(txt, cls = "") {
-        const d = document.createElement('div');
-        d.className = cls;
-        d.innerHTML = txt;
-        logEl.appendChild(d);
-        window.scrollTo(0, document.body.scrollHeight);
+    // --- TYPEWRITER ENGINE ---
+    function addToQueue(text, className = "", isRequest = false) {
+        msgQueue.push({ text, className, isRequest });
+        if (!isProcessing) processQueue();
     }
 
-    function ask(txt, cb) {
-        const w = document.createElement('div');
-        w.className = "input-line";
-        w.innerHTML = `<span>${txt}&nbsp;</span><input type="text">`;
-        logEl.appendChild(w);
-        const i = w.querySelector('input');
-        i.focus();
-        i.onkeydown = (e) => {
-            if (e.key === 'Enter') {
-                const val = i.value.trim().toUpperCase();
-                i.disabled = true;
-                cb(val);
-            }
-        };
+    async function processQueue() {
+        isProcessing = true;
+        while (msgQueue.length > 0) {
+            const item = msgQueue.shift();
+            if (item.isRequest) await typeLineInline(item.text, item.className);
+            else await typeLineSimple(item.text, item.className);
+        }
+        isProcessing = false;
     }
 
-    function initSync() {
-        out("--- CONNECTED TO LOBBY ---", "ok");
+    function typeLineSimple(text, className) {
+        return new Promise((resolve) => {
+            const div = document.createElement('div');
+            div.className = className + " history-line";
+            log.appendChild(div);
+            let i = 0;
+            const timer = setInterval(() => {
+                if (i < text.length) {
+                    div.textContent += text.charAt(i);
+                    i++;
+                    window.scrollTo(0, document.body.scrollHeight);
+                } else {
+                    clearInterval(timer);
+                    resolve();
+                }
+            }, 10);
+        });
+    }
+
+    function typeLineInline(text, className) {
+        return new Promise((resolve) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = "input-wrapper " + className;
+            wrapper.innerHTML = `<span></span><input type="text" class="user-input-line" disabled>`;
+            log.appendChild(wrapper);
+            const label = wrapper.querySelector('span');
+            const input = wrapper.querySelector('input');
+            
+            let i = 0;
+            const timer = setInterval(() => {
+                if (i < text.length) {
+                    label.textContent += text.charAt(i);
+                    i++;
+                } else {
+                    clearInterval(timer);
+                    input.disabled = false;
+                    input.focus();
+                    input.onkeydown = (e) => {
+                        if (e.key === 'Enter') {
+                            const val = input.value.trim().toUpperCase();
+                            input.disabled = true;
+                            handleGlobalLogic(val);
+                            resolve();
+                        }
+                    };
+                }
+            }, 10);
+        });
+    }
+
+    // --- CORE LOGIC ---
+    function handleGlobalLogic(val) {
+        const u = localStorage.getItem('ls_user');
+        const p = localStorage.getItem('ls_pass');
+
+        if (!u) {
+            localStorage.setItem('ls_user', val);
+            bootSequence();
+        } else if (!p) {
+            localStorage.setItem('ls_pass', val);
+            startLobbySync();
+        } else {
+            executeMatchAction(val);
+        }
+    }
+
+    function startLobbySync() {
+        // Real-time listener for the head of the FIFO queue
         db.ref('fifo_enforcer').orderByKey().limitToFirst(1).on('value', snap => {
             if (snap.exists()) {
                 let mId, et;
                 snap.forEach(c => { mId = c.key; et = c.val().et; });
                 db.ref(`matches/${mId}/public_data`).once('value', pSnap => {
-                    activeMatch = { id: mId, et: et, data: pSnap.val() };
-                    showMenu();
+                    activeQueueMatch = { id: mId, et: et, data: pSnap.val() };
+                    renderLobby();
                 });
             } else {
-                activeMatch = null;
-                showMenu();
+                activeQueueMatch = null;
+                renderLobby();
             }
         });
     }
 
-    function showMenu() {
-        if (activeMatch) {
-            const side = activeMatch.data.rn ? "RED" : "BLUE";
-            out(`QUEUE TOP: ${activeMatch.id} [Occupied: ${side}]`, "ok");
-            out("[A] JOIN OPPOSITE | [R] NEW RED | [B] NEW BLUE");
+    function renderLobby() {
+        addToQueue("--- LOBBY REFRESH ---", "system-msg");
+        if (activeQueueMatch) {
+            const side = activeQueueMatch.data.rn ? "RED" : "BLUE";
+            addToQueue(`TOP MATCH: ${activeQueueMatch.id} [${side} WAITING]`, "highlight");
+            addToQueue("[A] JOIN OPPOSITE | [R] NEW RED | [B] NEW BLUE", "system-msg");
         } else {
-            out("QUEUE EMPTY. [R] NEW RED | [B] NEW BLUE");
+            addToQueue("QUEUE EMPTY.", "system-msg");
+            addToQueue("[R] CREATE RED | [B] CREATE BLUE", "system-msg");
         }
-        ask("COMMAND>", handleCmd);
+        addToQueue("COMMAND>", "", true);
     }
 
-    function handleCmd(val) {
-        if (val === "R") {
-            if (activeMatch?.data?.rn) return out("RED EXISTS. USE [A]", "err"), showMenu();
-            createMatch(1);
-        } else if (val === "B") {
-            if (activeMatch?.data?.bn) return out("BLUE EXISTS. USE [A]", "err"), showMenu();
-            createMatch(0);
-        } else if (val === "A" && activeMatch) {
-            joinMatch(activeMatch.data.rn ? 0 : 1);
+    function executeMatchAction(cmd) {
+        const u = localStorage.getItem('ls_user');
+        const p = localStorage.getItem('ls_pass');
+
+        if (cmd === "R") {
+            if (activeQueueMatch?.data?.rn) {
+                addToQueue("BLOCK: RED ALREADY AT TOP. JOIN BLUE [A].", "error-msg");
+                renderLobby();
+            } else create(1, u, p);
+        } else if (cmd === "B") {
+            if (activeQueueMatch?.data?.bn) {
+                addToQueue("BLOCK: BLUE ALREADY AT TOP. JOIN RED [A].", "error-msg");
+                renderLobby();
+            } else create(0, u, p);
+        } else if (cmd === "A" && activeQueueMatch) {
+            join(activeQueueMatch.data.rn ? 0 : 1, u, p);
         } else {
-            out("INVALID", "err");
-            showMenu();
+            addToQueue("INVALID CMD.", "error-msg");
+            renderLobby();
         }
     }
 
-    function createMatch(col) {
+    function create(col, u, p) {
         const id = Date.now().toString();
         const et = Math.random().toString(36).substring(7);
         const upd = {};
         upd[`fifo_enforcer/${id}/et`] = et;
-        upd[`matches/${id}/public_data/${col ? 'rn' : 'bn'}`] = user;
+        upd[`matches/${id}/public_data/${col ? 'rn' : 'bn'}`] = u;
         upd[`matches/${id}/private_tokens/et`] = et;
-        upd[`matches/${id}/private_tokens/${col ? 'redpassword' : 'bluepassword'}`] = pass;
-        db.ref().update(upd).then(() => out("MATCH CREATED", "ok"));
+        upd[`matches/${id}/private_tokens/${col ? 'redpassword' : 'bluepassword'}`] = p;
+        db.ref().update(upd).then(() => addToQueue("MATCH CREATED.", "success-msg"));
     }
 
-    function joinMatch(col) {
+    function join(col, u, p) {
         const upd = {};
-        upd[`fifo_enforcer/${activeMatch.id}`] = null;
-        upd[`matches/${activeMatch.id}/public_data/${col ? 'rn' : 'bn'}`] = user;
-        upd[`matches/${activeMatch.id}/private_tokens/et`] = activeMatch.et;
-        upd[`matches/${activeMatch.id}/private_tokens/${col ? 'redpassword' : 'bluepassword'}`] = pass;
-        db.ref().update(upd).then(() => out("JOINED SUCCESS", "ok")).catch(e => out("FAIL", "err"));
+        upd[`fifo_enforcer/${activeQueueMatch.id}`] = null;
+        upd[`matches/${activeQueueMatch.id}/public_data/${col ? 'rn' : 'bn'}`] = u;
+        upd[`matches/${activeQueueMatch.id}/private_tokens/et`] = activeQueueMatch.et;
+        upd[`matches/${activeQueueMatch.id}/private_tokens/${col ? 'redpassword' : 'bluepassword'}`] = p;
+        db.ref().update(upd).then(() => addToQueue("CONNECTION STABLISHED.", "success-msg"));
     }
 
-    // Startup
-    out("LASER CHESS v1.0.5");
-    if (!user) {
-        ask("USER:", (v) => { user = v; localStorage.setItem('ls_user', v); location.reload(); });
-    } else if (!pass) {
-        ask("PASS:", (v) => { pass = v; localStorage.setItem('ls_pass', v); location.reload(); });
-    } else {
-        initSync();
+    function bootSequence() {
+        const u = localStorage.getItem('ls_user');
+        const p = localStorage.getItem('ls_pass');
+        if (!u) {
+            addToQueue("LASER CHESS OS v1.0.6", "highlight");
+            addToQueue("ENTER USERNAME:", "", true);
+        } else if (!p) {
+            addToQueue("ENTER PASSKEY:", "", true);
+        } else {
+            startLobbySync();
+        }
     }
+
+    // Start immediately
+    bootSequence();
 </script>
 </body>
 </html>
