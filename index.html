@@ -14,7 +14,7 @@
             background-color: #0a0a0a;
             background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
             color: #b0b0b0; 
-            font-family: 'Unifont', monospace;
+            font-family: 'Unifont', 'Courier New', monospace; /* Fallback fonts added */
             font-size: 16px; 
             margin: 0; padding: 30px; 
             line-height: 1.6;
@@ -26,7 +26,7 @@
         
         .user-input-line {
             background: transparent; border: none; color: #ffffff;
-            font-family: 'Unifont', monospace; font-size: 16px;
+            font-family: inherit; font-size: 16px;
             outline: none; flex-grow: 1; margin-left: 8px; caret-color: #ffffff;
         }
 
@@ -34,7 +34,7 @@
         .success-msg { color: #ffffff; font-weight: bold; text-shadow: 0 0 5px #fff; }
         .error-msg { color: #ff5555; }
         .highlight { color: #ffffff; font-weight: bold; }
-        .history-line { margin-bottom: 4px; min-height: 1.6em; }
+        .history-line { margin-bottom: 4px; min-height: 1.6em; word-break: break-all; }
     </style>
 </head>
 <body>
@@ -45,6 +45,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
 
 <script>
+    // --- CONFIG ---
     const firebaseConfig = {
         apiKey: "AIzaSyBuT7P1iTdXcZW-y05DX-kseuLrPGmaWSs",
         authDomain: "laserchess-web-free.firebaseapp.com",
@@ -61,20 +62,29 @@
     let activeQueueMatch = null;
     let currentLobbySub = null;
 
-    // --- TYPEWRITER ENGINE ---
+    // --- ENGINE: TYPEWRITER ---
     function addToQueue(text, className = "", isRequest = false) {
         msgQueue.push({ text, className, isRequest });
         if (!isProcessing) processQueue();
     }
 
     async function processQueue() {
+        if (isProcessing) return;
         isProcessing = true;
-        while (msgQueue.length > 0) {
-            const item = msgQueue.shift();
-            if (item.isRequest) await typeLineInline(item.text, item.className);
-            else await typeLineSimple(item.text, item.className);
+        
+        try {
+            while (msgQueue.length > 0) {
+                const item = msgQueue.shift();
+                if (item.isRequest) await typeLineInline(item.text, item.className);
+                else await typeLineSimple(item.text, item.className);
+            }
+        } catch (e) {
+            console.error("Terminal Error:", e);
+        } finally {
+            isProcessing = false;
+            // Catch any messages added while finishing
+            if (msgQueue.length > 0) processQueue(); 
         }
-        isProcessing = false;
     }
 
     function typeLineSimple(text, className) {
@@ -83,6 +93,7 @@
             div.className = "history-line " + className;
             log.appendChild(div);
             let i = 0;
+            if (!text) return resolve();
             const timer = setInterval(() => {
                 if (i < text.length) {
                     div.textContent += text.charAt(i);
@@ -92,7 +103,7 @@
                     clearInterval(timer);
                     resolve();
                 }
-            }, 12);
+            }, 8); // Slightly faster for UX
         });
     }
 
@@ -118,16 +129,17 @@
                         if (e.key === 'Enter') {
                             const val = input.value.trim().toUpperCase();
                             input.disabled = true;
+                            input.onkeydown = null; // Prevent double-trigger
                             handleGlobalLogic(val);
                             resolve();
                         }
                     };
                 }
-            }, 12);
+            }, 8);
         });
     }
 
-    // --- CORE LOGIC ---
+    // --- LOGIC: LOBBY & MATCHMAKING ---
     function handleGlobalLogic(val) {
         const u = localStorage.getItem('ls_user');
         const p = localStorage.getItem('ls_pass');
@@ -148,36 +160,31 @@
     function startLobbySync() {
         if (currentLobbySub) db.ref('lobby').off('value', currentLobbySub);
 
-        // Lexicographical sort inherently pulls the oldest number timestamp to the top
+        // Limit to 1 to find the oldest public game (Numeric Key)
         currentLobbySub = db.ref('lobby').orderByKey().limitToFirst(1).on('value', snap => {
+            let foundMatch = null;
             if (snap.exists()) {
-                let mId, data;
-                snap.forEach(c => { mId = c.key; data = c.val(); });
-
-                // Check if the key starts with a number. If it starts with 'P' or 'G',
-                // it means all public games are gone and only active/private games remain.
-                if (/^[0-9]/.test(mId)) {
-                    activeQueueMatch = { id: mId, data: data };
-                    renderLobby();
-                } else {
-                    activeQueueMatch = null;
-                    renderLobby();
-                }
-            } else {
-                activeQueueMatch = null;
-                renderLobby();
+                snap.forEach(c => {
+                    // Only treat as a "Joinable Lobby" if it starts with a number
+                    if (/^[0-9]/.test(c.key)) {
+                        foundMatch = { id: c.key, data: c.val() };
+                    }
+                });
             }
+            activeQueueMatch = foundMatch;
+            renderLobby();
+        }, err => {
+            addToQueue("DATABASE ERROR: " + err.message, "error-msg");
         });
     }
 
     function renderLobby() {
-        if (isProcessing && msgQueue.length > 0) return; // Wait for current sequence
-        addToQueue("--- LOBBY READ SUCCESSFUL ---", "system-msg");
+        // Clear previous prompts if the lobby updates
+        addToQueue("--- LOBBY REFRESH ---", "system-msg");
         
         if (activeQueueMatch) {
-            // Check empty strings based on your new validation rule
             const side = activeQueueMatch.data.rn !== "" ? "RED" : "BLUE";
-            addToQueue(`MATCH DETECTED: ${activeQueueMatch.id} [${side} OCCUPIED]`, "highlight");
+            addToQueue(`MATCH FOUND: ${activeQueueMatch.id} [${side} OCCUPIED]`, "highlight");
             addToQueue("[A] JOIN OPPOSITE | [R] NEW RED | [B] NEW BLUE", "system-msg");
         } else {
             addToQueue("QUEUE STATUS: EMPTY.", "system-msg");
@@ -192,27 +199,27 @@
 
         if (cmd === "R") {
             if (activeQueueMatch && activeQueueMatch.data.rn !== "") {
-                addToQueue("ACCESS DENIED: RED SLOT TAKEN AT QUEUE HEAD. JOIN BLUE [A].", "error-msg");
+                addToQueue("DENIED: RED TAKEN. JOIN BLUE [A].", "error-msg");
                 renderLobby();
             } else create(1, u, p);
         } else if (cmd === "B") {
             if (activeQueueMatch && activeQueueMatch.data.bn !== "") {
-                addToQueue("ACCESS DENIED: BLUE SLOT TAKEN AT QUEUE HEAD. JOIN RED [A].", "error-msg");
+                addToQueue("DENIED: BLUE TAKEN. JOIN RED [A].", "error-msg");
                 renderLobby();
             } else create(0, u, p);
         } else if (cmd === "A" && activeQueueMatch) {
-            // Join whichever color is empty
             join(activeQueueMatch.data.rn !== "" ? 0 : 1, u, p);
+        } else if (cmd === "CLEAR") {
+            localStorage.clear();
+            location.reload();
         } else {
-            addToQueue("ERR: INVALID COMMAND.", "error-msg");
+            addToQueue("INVALID COMMAND. (R, B, A, or CLEAR)", "error-msg");
             renderLobby();
         }
     }
 
     function create(col, u, p) {
         const id = Date.now().toString();
-        
-        // Pass empty strings to satisfy the newData.hasChildren validation
         const payload = {
             createdAt: Date.now(),
             rn: col === 1 ? u : "",
@@ -222,9 +229,10 @@
         };
         
         db.ref(`lobby/${id}`).set(payload).then(() => {
-            addToQueue(`SUCCESS: PUBLIC MATCH ${id} INITIALIZED.`, "success-msg");
+            addToQueue(`SUCCESS: MATCH ${id} CREATED.`, "success-msg");
         }).catch(err => {
-            addToQueue(`ERR: ${err.message}`, "error-msg");
+            addToQueue(`WRITE REJECTED: ${err.message}`, "error-msg");
+            renderLobby();
         });
     }
 
@@ -234,12 +242,8 @@
         const data = activeQueueMatch.data;
 
         const upd = {};
-        upd[`lobby/${oldId}`] = null; // Delete the public lobby node
-
-        // Create the 'G' node.
-        // CRITICAL: We generate a fresh Date.now() for createdAt so it passes
-        // your server's 1-minute drift validation on the new write.
-        upd[`lobby/${newId}`] = {
+        upd[`lobby/${oldId}`] = null; // Rule-compliant Delete
+        upd[`lobby/${newId}`] = {     // Rule-compliant 'G' Write
             createdAt: Date.now(),
             rn: col === 1 ? u : data.rn,
             bn: col === 0 ? u : data.bn,
@@ -248,22 +252,26 @@
         };
         
         db.ref().update(upd).then(() => {
-            addToQueue("HANDSHAKE COMPLETE. MATCH STARTED. REDIRECTING...", "success-msg");
+            addToQueue("HANDSHAKE SUCCESS. REDIRECTING...", "success-msg");
         }).catch(err => {
-            addToQueue(`ERR: ${err.message}`, "error-msg");
+            addToQueue(`JOIN REJECTED: ${err.message}`, "error-msg");
+            renderLobby();
         });
     }
 
     async function bootSequence() {
+        console.log("Booting Core...");
+        
+        // Non-blocking Font Load
         if (document.fonts) {
-            try { await document.fonts.load('16px Unifont'); } catch(e) { console.log("Font failed"); }
+            document.fonts.load('16px Unifont').then(() => console.log("Font Active")).catch(() => {});
         }
 
         const u = localStorage.getItem('ls_user');
         const p = localStorage.getItem('ls_pass');
         
         if (!u) {
-            addToQueue("LASER CHESS CORE TERMINAL v2.0.0", "highlight");
+            addToQueue("LASER CHESS CORE TERMINAL v2.1.0", "highlight");
             addToQueue("IDENTIFY USER:", "", true);
         } else if (!p) {
             addToQueue(`WELCOME BACK, ${u}.`, "highlight");
@@ -273,7 +281,8 @@
         }
     }
 
-    bootSequence();
+    // Start
+    window.onload = bootSequence;
 </script>
 </body>
 </html>
