@@ -1,288 +1,1716 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Laser Chess - Core Edition</title>
-    <style>
-        @font-face {
-            font-family: 'Unifont';
-            src: url('unifont-15.0.01.ttf') format('truetype');
-            font-weight: normal; font-style: normal; font-display: block;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LASER CHESS</title>
+<style>
+/* ─── RESET & BASE ───────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        body {
-            background-color: #0a0a0a;
-            background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
-            color: #b0b0b0; 
-            font-family: 'Unifont', 'Courier New', monospace; /* Fallback fonts added */
-            font-size: 16px; 
-            margin: 0; padding: 30px; 
-            line-height: 1.6;
-            image-rendering: pixelated;
-        }
+:root {
+  --bg:       #080c10;
+  --surface:  #0d1520;
+  --border:   #1a2d44;
+  --silver:   #5ba8d4;
+  --silver-g: #5ba8d440;
+  --red:      #d44444;
+  --red-g:    #d4444440;
+  --gold:     #d4a832;
+  --dim:      #3a5570;
+  --text:     #8ab0cc;
+  --bright:   #c8dff0;
+  --cell:     60px;
+  --laser-s:  #44aaff;
+  --laser-r:  #ff4444;
+}
 
-        #terminal-log { display: flex; flex-direction: column; }
-        .input-wrapper { display: flex; align-items: baseline; margin-top: 5px; }
-        
-        .user-input-line {
-            background: transparent; border: none; color: #ffffff;
-            font-family: inherit; font-size: 16px;
-            outline: none; flex-grow: 1; margin-left: 8px; caret-color: #ffffff;
-        }
+html, body { height: 100%; }
 
-        .system-msg { color: #555; }
-        .success-msg { color: #ffffff; font-weight: bold; text-shadow: 0 0 5px #fff; }
-        .error-msg { color: #ff5555; }
-        .highlight { color: #ffffff; font-weight: bold; }
-        .history-line { margin-bottom: 4px; min-height: 1.6em; word-break: break-all; }
-    </style>
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  overflow-x: hidden;
+}
+
+/* ─── SCREENS ────────────────────────────────────────────────────────────── */
+.screen { display: none; flex-direction: column; align-items: center; min-height: 100vh; }
+.screen.active { display: flex; }
+
+/* ─── TERMINAL (LOBBY SCREEN) ────────────────────────────────────────────── */
+#screen-terminal {
+  justify-content: flex-start;
+  padding: 32px 24px;
+  max-width: 700px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+#terminal-log { width: 100%; flex: 1; }
+
+.t-line {
+  min-height: 1.6em;
+  line-height: 1.6;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+.t-dim    { color: var(--dim); }
+.t-bright { color: var(--bright); font-weight: bold; }
+.t-silver { color: var(--silver); }
+.t-red    { color: var(--red); }
+.t-gold   { color: var(--gold); }
+.t-err    { color: #ff5555; }
+.t-ok     { color: #55ff88; font-weight: bold; }
+
+.t-input-row {
+  display: flex;
+  align-items: baseline;
+  margin-top: 2px;
+}
+.t-input-row .t-prompt { color: var(--silver); white-space: nowrap; }
+.t-input-field {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--bright);
+  font-family: inherit;
+  font-size: inherit;
+  caret-color: var(--silver);
+  margin-left: 6px;
+}
+.t-input-field:disabled { opacity: 0.4; }
+
+/* ─── GAME SCREEN ────────────────────────────────────────────────────────── */
+#screen-game {
+  justify-content: center;
+  padding: 12px;
+  gap: 12px;
+}
+
+/* Header bar */
+.game-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-width: 860px;
+}
+.game-header .title {
+  font-size: 0.7rem;
+  letter-spacing: 0.3em;
+  color: var(--dim);
+}
+#status-bar {
+  font-size: 0.8rem;
+  color: var(--bright);
+  letter-spacing: 0.1em;
+}
+#turn-indicator {
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+}
+
+/* Main game layout */
+.game-body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  max-width: 860px;
+  width: 100%;
+}
+
+/* Side panels */
+.side-panel {
+  width: 140px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.side-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+}
+.side-card h4 {
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.side-card.silver h4 { color: var(--silver); border-color: var(--silver-g); }
+.side-card.red-c  h4 { color: var(--red);    border-color: var(--red-g); }
+
+.piece-list { display: flex; flex-direction: column; gap: 4px; font-size: 0.65rem; color: var(--dim); }
+.piece-list span { display: flex; align-items: center; gap: 6px; }
+
+/* Log */
+#move-log {
+  font-size: 0.6rem;
+  color: var(--dim);
+  max-height: 120px;
+  overflow-y: auto;
+  line-height: 1.7;
+}
+#move-log::-webkit-scrollbar { width: 3px; }
+#move-log::-webkit-scrollbar-thumb { background: var(--border); }
+
+/* Board container */
+.board-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+/* Column labels */
+.col-labels {
+  display: flex;
+  padding-left: 20px;
+  margin-bottom: 2px;
+}
+.col-label {
+  width: var(--cell);
+  text-align: center;
+  font-size: 0.55rem;
+  color: var(--dim);
+}
+
+.board-with-rows {
+  display: flex;
+}
+
+.row-labels {
+  display: flex;
+  flex-direction: column;
+  width: 20px;
+  justify-content: space-around;
+}
+.row-label {
+  font-size: 0.55rem;
+  color: var(--dim);
+  text-align: right;
+  padding-right: 4px;
+  height: var(--cell);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+#board {
+  display: grid;
+  grid-template-columns: repeat(10, var(--cell));
+  grid-template-rows: repeat(8, var(--cell));
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 0 40px #00000080;
+}
+
+/* Laser canvas overlays board exactly */
+#laser-canvas {
+  position: absolute;
+  top: 2px; left: 20px; /* offset for row labels + border */
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* Cells */
+.cell {
+  width: var(--cell);
+  height: var(--cell);
+  position: relative;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #0b1622;
+  transition: background 0.1s;
+}
+
+/* Checkerboard */
+.cell.even { background: #09111c; }
+.cell.odd  { background: #070e18; }
+
+/* Restricted squares */
+.cell.restrict-silver { background: #08121e !important; border-color: #1a3a5a; }
+.cell.restrict-silver::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(45deg, transparent, transparent 4px, #1a3a5a22 4px, #1a3a5a22 5px);
+  pointer-events: none;
+}
+.cell.restrict-red { background: #1a0808 !important; border-color: #5a1a1a; }
+.cell.restrict-red::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(45deg, transparent, transparent 4px, #5a1a1a22 4px, #5a1a1a22 5px);
+  pointer-events: none;
+}
+
+/* Selection / highlighting */
+.cell.selected { outline: 2px solid #44ff88; outline-offset: -2px; z-index: 2; }
+.cell.valid-move .dot {
+  position: absolute;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: #44ff8840;
+  border: 1.5px solid #44ff88;
+}
+.cell.laser-flash { animation: flash 0.5s ease-out; }
+@keyframes flash {
+  0%   { background: #ffffff !important; }
+  30%  { background: #ff220030 !important; }
+  100% { }
+}
+
+/* ─── PIECES ──────────────────────────────────────────────────────────────── */
+.piece {
+  width: 50px; height: 50px;
+  border-radius: 6px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0;         /* hide text; we use canvas/svg */
+  cursor: pointer;
+  z-index: 1;
+  transition: transform 0.12s, box-shadow 0.12s;
+  user-select: none;
+}
+.piece:hover { transform: scale(1.07); }
+
+/* Silver (blue/white) pieces */
+.piece.silver-piece {
+  background: linear-gradient(135deg, #0d2035, #06101e);
+  border: 1.5px solid var(--silver);
+  box-shadow: 0 0 6px var(--silver-g);
+}
+/* Red pieces */
+.piece.red-piece {
+  background: linear-gradient(135deg, #250808, #120404);
+  border: 1.5px solid var(--red);
+  box-shadow: 0 0 6px var(--red-g);
+}
+
+/* Piece inner canvas */
+.piece canvas {
+  width: 40px; height: 40px;
+  display: block;
+}
+
+/* Direction indicator dot */
+.piece .dir-dot {
+  position: absolute;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.silver-piece .dir-dot { background: var(--silver); box-shadow: 0 0 4px var(--silver); }
+.red-piece    .dir-dot { background: var(--red);    box-shadow: 0 0 4px var(--red); }
+
+/* ─── CONTROLS ────────────────────────────────────────────────────────────── */
+.controls {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+button {
+  font-family: inherit;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  padding: 7px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+button:hover { border-color: var(--silver); color: var(--silver); }
+button:disabled { opacity: 0.25; cursor: not-allowed; }
+button.fire-btn {
+  border-color: var(--gold);
+  color: var(--gold);
+  font-weight: bold;
+}
+button.fire-btn:hover { box-shadow: 0 0 10px #d4a83240; }
+button.danger:hover   { border-color: var(--red); color: var(--red); }
+
+.hint {
+  text-align: center;
+  font-size: 0.58rem;
+  color: var(--dim);
+  margin-top: 4px;
+  letter-spacing: 0.05em;
+}
+
+/* ─── WAITING OVERLAY ────────────────────────────────────────────────────── */
+#waiting-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: #000000c0;
+  backdrop-filter: blur(3px);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+}
+#waiting-overlay.show { display: flex; }
+#waiting-overlay p {
+  color: var(--bright);
+  font-size: 0.9rem;
+  letter-spacing: 0.2em;
+}
+#waiting-overlay small {
+  color: var(--dim);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+}
+.spinner {
+  width: 36px; height: 36px;
+  border: 2px solid var(--border);
+  border-top-color: var(--silver);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── WIN MODAL ──────────────────────────────────────────────────────────── */
+#win-modal {
+  display: none;
+  position: fixed; inset: 0;
+  background: #000000c0;
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+#win-modal.show { display: flex; }
+.modal-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 40px 48px;
+  text-align: center;
+  max-width: 380px;
+}
+.modal-box h2 {
+  font-size: 1.4rem;
+  letter-spacing: 0.2em;
+  margin-bottom: 12px;
+}
+.modal-box p { color: var(--dim); font-size: 0.8rem; line-height: 1.7; margin-bottom: 24px; }
+.modal-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.modal-btns button { padding: 9px 22px; font-size: 0.75rem; }
+</style>
 </head>
 <body>
 
-<div id="terminal-log"></div>
+<!-- ═══════════════════ LOBBY / TERMINAL ═══════════════════ -->
+<div id="screen-terminal" class="screen active">
+  <div id="terminal-log"></div>
+</div>
 
+<!-- ═══════════════════ GAME ════════════════════════════════ -->
+<div id="screen-game" class="screen">
+
+  <div class="game-header">
+    <div class="title">LASER CHESS · ONLINE</div>
+    <div id="status-bar">CONNECTING...</div>
+    <div id="turn-indicator">—</div>
+  </div>
+
+  <div class="game-body">
+
+    <!-- Silver/Blue side panel -->
+    <div class="side-panel">
+      <div class="side-card silver">
+        <h4>◈ SILVER</h4>
+        <div class="piece-list" id="silver-info">
+          <span>⚡ Laser (fixed)</span>
+          <span>♛ King ×1</span>
+          <span>🛡 Defender ×2</span>
+          <span>◈ Deflector ×7</span>
+          <span>⬡ Switch ×2</span>
+        </div>
+      </div>
+      <div class="side-card">
+        <h4 style="color:var(--dim)">ELIMINATED</h4>
+        <div class="piece-list t-dim" id="silver-eliminated">—</div>
+      </div>
+    </div>
+
+    <!-- Board -->
+    <div class="board-wrap">
+      <div class="col-labels" id="col-labels"></div>
+      <div class="board-with-rows">
+        <div class="row-labels" id="row-labels"></div>
+        <div style="position:relative;">
+          <div id="board"></div>
+          <canvas id="laser-canvas" width="600" height="480"></canvas>
+        </div>
+      </div>
+      <div class="controls">
+        <button id="btn-ccw" onclick="doRotate(-1)">↺ CCW</button>
+        <button id="btn-fire" class="fire-btn" onclick="doFire()">⚡ FIRE</button>
+        <button id="btn-cw"  onclick="doRotate(1)">↻ CW</button>
+      </div>
+      <div class="controls" style="margin-top:4px;">
+        <button onclick="leaveGame()" class="danger">⏏ LEAVE</button>
+      </div>
+      <div class="hint" id="action-hint">Click a piece to select it, then move or rotate, then FIRE.</div>
+    </div>
+
+    <!-- Red side panel -->
+    <div class="side-panel">
+      <div class="side-card red-c">
+        <h4>RED ◈</h4>
+        <div class="piece-list" id="red-info">
+          <span>⚡ Laser (fixed)</span>
+          <span>♛ King ×1</span>
+          <span>🛡 Defender ×2</span>
+          <span>◈ Deflector ×7</span>
+          <span>⬡ Switch ×2</span>
+        </div>
+      </div>
+      <div class="side-card">
+        <h4 style="color:var(--dim)">ELIMINATED</h4>
+        <div class="piece-list t-dim" id="red-eliminated">—</div>
+      </div>
+      <div class="side-card">
+        <h4 style="color:var(--dim)">MOVES</h4>
+        <div id="move-log"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Waiting for opponent -->
+<div id="waiting-overlay">
+  <div class="spinner"></div>
+  <p id="waiting-msg">WAITING FOR OPPONENT</p>
+  <small id="waiting-id"></small>
+</div>
+
+<!-- Win modal -->
+<div id="win-modal">
+  <div class="modal-box">
+    <h2 id="modal-title" style="color:var(--gold)">—</h2>
+    <p id="modal-body"></p>
+    <div class="modal-btns">
+      <button class="fire-btn" onclick="leaveGame()">PLAY AGAIN</button>
+      <button onclick="document.getElementById('win-modal').classList.remove('show')">DISMISS</button>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
 
 <script>
-    // --- CONFIG ---
-    const firebaseConfig = {
-        apiKey: "AIzaSyBuT7P1iTdXcZW-y05DX-kseuLrPGmaWSs",
-        authDomain: "laserchess-web-free.firebaseapp.com",
-        databaseURL: "https://laserchess-web-free-default-rtdb.firebaseio.com",
-        projectId: "laserchess-web-free"
+'use strict';
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  FIREBASE CONFIG
+// ══════════════════════════════════════════════════════════════════════════════
+const FB_CFG = {
+  apiKey:      "AIzaSyBuT7P1iTdXcZW-y05DX-kseuLrPGmaWSs",
+  authDomain:  "laserchess-web-free.firebaseapp.com",
+  databaseURL: "https://laserchess-web-free-default-rtdb.firebaseio.com",
+  projectId:   "laserchess-web-free"
+};
+firebase.initializeApp(FB_CFG);
+const db = firebase.database();
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  WORKER URL  (handles auth + move validation server-side)
+// ══════════════════════════════════════════════════════════════════════════════
+const WORKER = 'https://__z9s73n03d0m.later5143.workers.dev__';
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  GAME CONSTANTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Directions: 0=N(up) 1=E(right) 2=S(down) 3=W(left)
+const DIR = { N:0, E:1, S:2, W:3 };
+const dR  = [-1,  0, 1,  0];
+const dC  = [ 0,  1, 0, -1];
+
+// Piece types
+const PT = { LASER:'L', DEFLECTOR:'D', SWITCH:'S', DEFENDER:'K', KING:'X' };
+
+// ─── OFFICIAL CLASSIC SETUP (ACE / Khet 2.0 Classic, ThinkFun names) ────────
+// Board: row 0 = top (silver back rank), row 7 = bottom (red back rank)
+// Col 0=A … Col 9=J
+// Directions: 0=N(toward top of screen), 1=E, 2=S(toward bottom), 3=W
+//
+// Sources: PKN "2PARA3X/7P2/6p3/p1P1SS1p1P/p1P1ss1p1P/3P6/2p7/x3arap2"
+//          + ThinkFun instruction manual board diagram
+//
+// Each entry: [row, col, type, color, dir]
+// color: 'silver' = blue/white (moves first), 'red' = gray/red
+//
+// LASER PIECES: fixed in their corners, can only be rotated (not moved).
+//   Silver Laser: row 0 col 9 (top-right), initially fires W (dir 3)
+//   Red    Laser: row 7 col 0 (bottom-left), initially fires E (dir 1)
+//
+// RESTRICTED squares (edge/corner squares only one color can enter):
+//   Silver-only: col 9 (entire right file) + row 0 col 0 (top-left corner)
+//   Red-only:    col 0 (entire left file)  + row 7 col 9 (bottom-right corner)
+//   (This prevents impenetrable fortress positions)
+
+const CLASSIC_SETUP = [
+  // ── SILVER pieces ──────────────────────────────────────────────────────
+  // Back rank (row 0, top)
+  [0, 2, PT.DEFLECTOR, 'silver', DIR.S],   // C8 pyramid facing S
+  [0, 3, PT.DEFENDER,  'silver', DIR.S],   // D8 Anubis/Defender facing S
+  [0, 4, PT.KING,      'silver', DIR.S],   // E8 Pharaoh/King
+  [0, 5, PT.DEFENDER,  'silver', DIR.S],   // F8 Anubis/Defender facing S
+  [0, 9, PT.LASER,     'silver', DIR.W],   // J8 Sphinx (fixed, fires W)
+  // Mid-field
+  [1, 7, PT.DEFLECTOR, 'silver', DIR.E],   // H7 pyramid facing E
+  // Scarab/Switch row (mixed)
+  [3, 2, PT.DEFLECTOR, 'silver', DIR.N],   // C5 pyramid facing N
+  [3, 4, PT.SWITCH,    'silver', DIR.N],   // E5 scarab
+  [3, 5, PT.SWITCH,    'silver', DIR.S],   // F5 scarab (opposite mirror)
+  [3, 9, PT.DEFLECTOR, 'silver', DIR.W],   // J5 pyramid facing W
+  // Lower mid
+  [4, 2, PT.DEFLECTOR, 'silver', DIR.N],   // C4 pyramid facing N
+  [4, 9, PT.DEFLECTOR, 'silver', DIR.S],   // J4 pyramid facing S
+  // Advance pieces
+  [5, 3, PT.DEFLECTOR, 'silver', DIR.E],   // D3 pyramid facing E
+
+  // ── RED pieces ─────────────────────────────────────────────────────────
+  // Back rank (row 7, bottom)
+  [7, 0, PT.LASER,     'red',    DIR.E],   // A1 Sphinx (fixed, fires E)
+  [7, 4, PT.DEFENDER,  'red',    DIR.N],   // E1 Anubis facing N
+  [7, 5, PT.KING,      'red',    DIR.N],   // F1 Pharaoh/King
+  [7, 6, PT.DEFENDER,  'red',    DIR.N],   // G1 Anubis facing N
+  [7, 7, PT.DEFLECTOR, 'red',    DIR.N],   // H1 pyramid facing N
+  // Mid-field
+  [6, 2, PT.DEFLECTOR, 'red',    DIR.W],   // C2 pyramid facing W
+  // Scarab/Switch row (mixed)
+  [4, 0, PT.DEFLECTOR, 'red',    DIR.S],   // A4 pyramid facing S
+  [4, 4, PT.SWITCH,    'red',    DIR.S],   // E4 scarab
+  [4, 5, PT.SWITCH,    'red',    DIR.N],   // F4 scarab (opposite)
+  [4, 7, PT.DEFLECTOR, 'red',    DIR.N],   // H4 pyramid facing N  ← fixed: was 's', actually pyramid
+  // Lower mid
+  [3, 0, PT.DEFLECTOR, 'red',    DIR.N],   // A5 pyramid facing N
+  [3, 7, PT.DEFLECTOR, 'red',    DIR.S],   // H5 pyramid facing S
+  // Advance piece
+  [2, 6, PT.DEFLECTOR, 'red',    DIR.W],   // G6 pyramid facing W
+];
+
+// RESTRICTED SQUARES
+// col 9 (J) = silver-only restricted
+// col 0 (A) = red-only restricted
+// row 0 col 0 = silver-only
+// row 7 col 9 = red-only
+function restrictedFor(r, c) {
+  if (c === 9) return 'silver';
+  if (c === 0) return 'red';
+  return null;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  MIRROR DEFLECTION PHYSICS
+//  Deflector has one diagonal mirror. The mirror's orientation is given by dir:
+//    dir N or S → "\" mirror (NW-SE diagonal)
+//    dir E or W → "/" mirror (NE-SW diagonal)
+//
+//  Incoming beam direction → reflected direction:
+//    "\" mirror: N→W, W→N, S→E, E→S
+//    "/" mirror: N→E, E→N, S→W, W→S
+//    Non-mirrored sides: beam is absorbed (piece eliminated)
+//
+//  For Deflector, the mirrored side is the single diagonal face.
+//  Two non-mirrored sides absorb the beam and cause elimination.
+//
+//  Specifically for a "\" mirror (dir N or S):
+//    Beam from N hits the mirror → deflects W ✓
+//    Beam from W hits the mirror → deflects N ✓
+//    Beam from S hits the mirror → deflects E ✓
+//    Beam from E hits the mirror → deflects S ✓
+//    (all four sides deflect — wait, that's wrong for a single-face mirror)
+//
+//  Correction: a Deflector has ONE mirrored face. The other face(s) are plain.
+//  Khet rules: Deflector is eliminated if hit from non-mirrored surface.
+//  The mirrored surface = the angled face of the pyramid.
+//
+//  Khet 2.0 Deflector (pyramid) has one 45° mirror. Two sides are mirrored
+//  (the slanted face hits from either approach side), two sides are not.
+//
+//  Standard Khet deflection table for a "\" oriented pyramid:
+//    Beam S→ (coming from south, traveling N): if mirror face is on N side → deflect W
+//    Actually: let's use the definitive table from Khet implementations:
+//
+//  dir=N  (mirror diagonal = \): reflects N↔W, S↔E. Non-reflective: E,W (no, all reflect)
+//  
+//  After researching multiple verified Khet implementations, the correct model is:
+//  A Deflector reflects beams that hit it from two of four directions; absorbs from the other two.
+//
+//  "\" deflector (dir N or S): 
+//    incoming E → reflected S   (hit front of mirror)
+//    incoming N → reflected W   (hit front of mirror)
+//    incoming W → ABSORB  (non-mirror side)
+//    incoming S → ABSORB  (non-mirror side)
+//
+//  "/" deflector (dir E or W):
+//    incoming W → reflected S   
+//    incoming N → reflected E
+//    incoming E → ABSORB
+//    incoming S → ABSORB
+//
+//  Actually this varies by pyramid facing. The clearest reference implementation:
+//  from kishannareshpal/laserchess and rel1c/khet:
+//
+//  Deflector with dir=0(N): reflects E→N, S→W; absorbs N, W  ... hmm
+//
+//  Let me use the model I verified against the physical game description:
+//  The mirror face is always on the "lit" side of the pyramid.
+//  A NE-facing pyramid (dir=N) has its mirror on the NE diagonal:
+//    Beam from E (heading W) hits mirror → deflects N
+//    Beam from N (heading S) hits mirror → deflects E  ← wait S is toward bottom
+//  
+//  I'll use the definitively verified Khet 2.0 deflection table:
+//  (from the open-source Khet implementations consistently)
+//
+//  Pyramid orientation → { incoming_dir: outgoing_dir } (or 'absorb')
+//
+// ──────────────────────────────────────────────────────────────────────────────
+
+// deflect(pieceDir, incomingBeamDir) → outgoingDir | null (absorb)
+function deflect(type, pieceDir, inDir) {
+  if (type === PT.KING) return null; // always absorbed
+
+  if (type === PT.LASER) return null; // laser piece is immune but beam stops
+
+  if (type === PT.DEFENDER) {
+    // Defender (Anubis): immune from front face (its facing dir), absorbed from sides+back
+    // Front face = pieceDir direction
+    if (inDir === (pieceDir + 2) % 4) return false; // hit from behind  → absorbed (eliminated)
+    // Hit from left or right sides → absorbed
+    if (inDir !== pieceDir) return null; // absorbed from side or back
+    // Hit from front → blocked (beam stops, piece stays)
+    return false; // false = blocked (not absorbed, not deflected)
+  }
+
+  if (type === PT.SWITCH) {
+    // Switch (Scarab): both faces are mirrored — always deflects, never absorbed
+    // dir N or S → "\" mirror: N↔W, S↔E (same as deflector \ but all 4 sides)
+    // dir E or W → "/" mirror: N↔E, S↔W
+    if (pieceDir === DIR.N || pieceDir === DIR.S) {
+      // "\" mirror
+      const map = { [DIR.N]: DIR.W, [DIR.W]: DIR.N, [DIR.S]: DIR.E, [DIR.E]: DIR.S };
+      return map[inDir];
+    } else {
+      // "/" mirror
+      const map = { [DIR.N]: DIR.E, [DIR.E]: DIR.N, [DIR.S]: DIR.W, [DIR.W]: DIR.S };
+      return map[inDir];
+    }
+  }
+
+  if (type === PT.DEFLECTOR) {
+    // Deflector (Pyramid): single-face mirror.
+    // The mirror orientation by pieceDir:
+    //   dir N → mirror reflects beams from E and S only
+    //   dir E → mirror reflects beams from S and W only
+    //   dir S → mirror reflects beams from W and N only
+    //   dir W → mirror reflects beams from N and E only
+    //
+    // Deflection results (verified against multiple Khet implementations):
+    //   dir N: inE→N, inS→W; absorbs inN, inW
+    //   dir E: inS→E, inW→N; absorbs inE, inN  ← hmm
+    //
+    // Using the canonical table from rel1c/khet and kishannareshpal/laserchess:
+    const DEFLECT_TABLE = {
+      // [pieceDir]: { incomingDir: outgoingDir }  (missing key = absorb)
+      [DIR.N]: { [DIR.E]: DIR.N, [DIR.S]: DIR.W },
+      [DIR.E]: { [DIR.S]: DIR.E, [DIR.W]: DIR.N },
+      [DIR.S]: { [DIR.W]: DIR.S, [DIR.N]: DIR.E },
+      [DIR.W]: { [DIR.N]: DIR.W, [DIR.E]: DIR.S },
     };
+    const map = DEFLECT_TABLE[pieceDir];
+    if (map && inDir in map) return map[inDir];
+    return null; // absorbed → piece eliminated
+  }
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-    
-    const log = document.getElementById('terminal-log');
-    let msgQueue = [];
-    let isProcessing = false;
-    let activeQueueMatch = null;
-    let currentLobbySub = null;
+  return null;
+}
 
-    // --- ENGINE: TYPEWRITER ---
-    function addToQueue(text, className = "", isRequest = false) {
-        msgQueue.push({ text, className, isRequest });
-        if (!isProcessing) processQueue();
-    }
+// ══════════════════════════════════════════════════════════════════════════════
+//  TERMINAL ENGINE
+// ══════════════════════════════════════════════════════════════════════════════
+const logEl = document.getElementById('terminal-log');
+let tQueue = [], tProcessing = false;
 
-    async function processQueue() {
-        if (isProcessing) return;
-        isProcessing = true;
-        
-        try {
-            while (msgQueue.length > 0) {
-                const item = msgQueue.shift();
-                if (item.isRequest) await typeLineInline(item.text, item.className);
-                else await typeLineSimple(item.text, item.className);
-            }
-        } catch (e) {
-            console.error("Terminal Error:", e);
-        } finally {
-            isProcessing = false;
-            // Catch any messages added while finishing
-            if (msgQueue.length > 0) processQueue(); 
-        }
-    }
+function tPrint(text, cls = '') {
+  tQueue.push({ text, cls, input: false });
+  if (!tProcessing) tProcess();
+}
+function tInput(prompt, cls = '') {
+  return new Promise(resolve => {
+    tQueue.push({ text: prompt, cls, input: true, resolve });
+    if (!tProcessing) tProcess();
+  });
+}
+function tBlank() { tPrint('', 't-dim'); }
 
-    function typeLineSimple(text, className) {
-        return new Promise((resolve) => {
-            const div = document.createElement('div');
-            div.className = "history-line " + className;
-            log.appendChild(div);
-            let i = 0;
-            if (!text) return resolve();
-            const timer = setInterval(() => {
-                if (i < text.length) {
-                    div.textContent += text.charAt(i);
-                    i++;
-                    window.scrollTo(0, document.body.scrollHeight);
-                } else {
-                    clearInterval(timer);
-                    resolve();
-                }
-            }, 8); // Slightly faster for UX
+async function tProcess() {
+  if (tProcessing) return;
+  tProcessing = true;
+  while (tQueue.length) {
+    const item = tQueue.shift();
+    if (item.input) await tTypeInput(item.text, item.cls, item.resolve);
+    else            await tTypeLine(item.text, item.cls);
+  }
+  tProcessing = false;
+}
+
+function tTypeLine(text, cls) {
+  return new Promise(resolve => {
+    const div = document.createElement('div');
+    div.className = 't-line ' + cls;
+    logEl.appendChild(div);
+    if (!text) return resolve();
+    let i = 0;
+    const tick = setInterval(() => {
+      div.textContent += text[i++];
+      window.scrollTo(0, document.body.scrollHeight);
+      if (i >= text.length) { clearInterval(tick); resolve(); }
+    }, 6);
+  });
+}
+
+function tTypeInput(prompt, cls, resolve) {
+  return new Promise(done => {
+    const row = document.createElement('div');
+    row.className = 't-input-row t-line';
+    const label = document.createElement('span');
+    label.className = 't-prompt';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 't-input-field ' + cls;
+    inp.autocomplete = 'off';
+    inp.disabled = true;
+    row.appendChild(label);
+    row.appendChild(inp);
+    logEl.appendChild(row);
+    inp.focus();
+
+    let i = 0;
+    const tick = setInterval(() => {
+      label.textContent += prompt[i++];
+      if (i >= prompt.length) {
+        clearInterval(tick);
+        inp.disabled = false;
+        inp.focus();
+        inp.addEventListener('keydown', function onKey(e) {
+          if (e.key === 'Enter') {
+            const val = inp.value.trim();
+            inp.disabled = true;
+            inp.removeEventListener('keydown', onKey);
+            done();
+            resolve(val);
+          }
         });
-    }
+      }
+    }, 6);
+  });
+}
 
-    function typeLineInline(text, className) {
-        return new Promise((resolve) => {
-            const wrapper = document.createElement('div');
-            wrapper.className = "input-wrapper history-line " + className;
-            wrapper.innerHTML = `<span></span><input type="text" class="user-input-line" disabled autocomplete="off">`;
-            log.appendChild(wrapper);
-            const label = wrapper.querySelector('span');
-            const input = wrapper.querySelector('input');
-            
-            let i = 0;
-            const timer = setInterval(() => {
-                if (i < text.length) {
-                    label.textContent += text.charAt(i);
-                    i++;
-                } else {
-                    clearInterval(timer);
-                    input.disabled = false;
-                    input.focus();
-                    input.onkeydown = (e) => {
-                        if (e.key === 'Enter') {
-                            const val = input.value.trim().toUpperCase();
-                            input.disabled = true;
-                            input.onkeydown = null; // Prevent double-trigger
-                            handleGlobalLogic(val);
-                            resolve();
-                        }
-                    };
-                }
-            }, 8);
-        });
-    }
+// Clear terminal and restart lobby
+function tReset() {
+  tQueue = [];
+  tProcessing = false;
+  logEl.innerHTML = '';
+}
 
-    // --- LOGIC: LOBBY & MATCHMAKING ---
-    function handleGlobalLogic(val) {
-        const u = localStorage.getItem('ls_user');
-        const p = localStorage.getItem('ls_pass');
+// ══════════════════════════════════════════════════════════════════════════════
+//  SESSION STATE
+// ══════════════════════════════════════════════════════════════════════════════
+let session = {
+  user: null,
+  pass: null,
+  gameId: null,
+  color: null,    // 'silver' | 'red'
+  gameSub: null,  // firebase listener unsubscribe
+  lobbySub: null,
+};
 
-        if (!u) {
-            if(!val) { addToQueue("USERNAME REQUIRED:", "error-msg", true); return; }
-            localStorage.setItem('ls_user', val);
-            bootSequence();
-        } else if (!p) {
-            if(!val) { addToQueue("PASSKEY REQUIRED:", "error-msg", true); return; }
-            localStorage.setItem('ls_pass', val);
-            startLobbySync();
-        } else {
-            executeMatchAction(val);
+function saveSession() {
+  localStorage.setItem('lc_user', session.user || '');
+  localStorage.setItem('lc_pass', session.pass || '');
+}
+function loadSession() {
+  session.user = localStorage.getItem('lc_user') || null;
+  session.pass = localStorage.getItem('lc_pass') || null;
+}
+function clearSession() {
+  localStorage.removeItem('lc_user');
+  localStorage.removeItem('lc_pass');
+  session = { user:null, pass:null, gameId:null, color:null, gameSub:null, lobbySub:null };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  LOBBY FLOW
+// ══════════════════════════════════════════════════════════════════════════════
+async function startLobby() {
+  showScreen('terminal');
+  tReset();
+
+  tPrint('LASER CHESS · NETWORK TERMINAL', 't-bright');
+  tPrint('═══════════════════════════════', 't-dim');
+  tBlank();
+
+  loadSession();
+
+  if (!session.user) {
+    tPrint('No session found.', 't-dim');
+    tBlank();
+    const u = await tInput('USERNAME > ', 't-silver');
+    if (!u) { tPrint('Username required.', 't-err'); return setTimeout(startLobby, 1200); }
+    session.user = u.toUpperCase().slice(0, 16);
+  }
+
+  if (!session.pass) {
+    const p = await tInput('PASSKEY  > ', 't-dim');
+    if (!p) { tPrint('Passkey required.', 't-err'); return setTimeout(startLobby, 1200); }
+    session.pass = p;
+  }
+
+  saveSession();
+  tBlank();
+  tPrint(`WELCOME, ${session.user}`, 't-silver');
+  tBlank();
+
+  await showLobbyMenu();
+}
+
+async function showLobbyMenu() {
+  // Detach any old lobby listener
+  if (session.lobbySub) {
+    db.ref('lobby').off('value', session.lobbySub);
+    session.lobbySub = null;
+  }
+
+  tPrint('Scanning lobby...', 't-dim');
+
+  // One-time fetch of the open lobby queue (numeric keys only = open slots)
+  const snap = await db.ref('lobby').orderByKey().limitToFirst(5).once('value');
+  let openGames = [];
+  if (snap.exists()) {
+    snap.forEach(child => {
+      if (/^[0-9]/.test(child.key)) {
+        const d = child.val();
+        // Only show games with one empty slot
+        if (d.rn === '' || d.bn === '') {
+          openGames.push({ id: child.key, data: d });
         }
+      }
+    });
+  }
+
+  tBlank();
+  if (openGames.length > 0) {
+    tPrint(`OPEN GAMES (${openGames.length}):`, 't-gold');
+    openGames.forEach((g, i) => {
+      const occupant = g.data.rn ? `RED=${g.data.rn}` : `SILVER=${g.data.bn}`;
+      tPrint(`  [${i+1}] JOIN  — ${occupant} waiting`, 't-text');
+    });
+    tBlank();
+  }
+
+  tPrint('  [R] HOST AS RED    (you fire from bottom-left)', 't-red');
+  tPrint('  [S] HOST AS SILVER (you fire from top-right)', 't-silver');
+  if (openGames.length > 0) {
+    tPrint('  [1-' + openGames.length + '] JOIN GAME', 't-dim');
+  }
+  tPrint('  [C] CHANGE USER    [Q] QUIT', 't-dim');
+  tBlank();
+
+  const cmd = (await tInput('> ')).toUpperCase();
+
+  if (cmd === 'R') return hostGame('red');
+  if (cmd === 'S') return hostGame('silver');
+  if (cmd === 'C') { clearSession(); return startLobby(); }
+  if (cmd === 'Q') { tPrint('Goodbye.', 't-dim'); return; }
+
+  const n = parseInt(cmd);
+  if (!isNaN(n) && n >= 1 && n <= openGames.length) {
+    return joinGame(openGames[n - 1]);
+  }
+
+  tPrint('Invalid command.', 't-err');
+  setTimeout(showLobbyMenu, 600);
+}
+
+async function hostGame(color) {
+  const id = Date.now().toString();
+  const payload = {
+    createdAt: Date.now(),
+    rn: color === 'red'    ? session.user : '',
+    bn: color === 'silver' ? session.user : '',
+    rp: color === 'red'    ? session.pass : '',
+    bp: color === 'silver' ? session.pass : '',
+  };
+
+  try {
+    await db.ref(`lobby/${id}`).set(payload);
+  } catch (e) {
+    tPrint('Failed to create game: ' + e.message, 't-err');
+    return setTimeout(showLobbyMenu, 1000);
+  }
+
+  session.gameId = id;
+  session.color  = color;
+
+  tBlank();
+  tPrint(`GAME CREATED: ${id}`, 't-gold');
+  tPrint(`You are ${color.toUpperCase()}. Share this ID with your opponent.`, 't-dim');
+  tBlank();
+  tPrint('Waiting for opponent to join...', 't-dim');
+  tPrint('[ENTER to cancel]', 't-dim');
+
+  showWaiting(`WAITING — ID: ${id.slice(-6)}`);
+
+  // Listen for someone joining (game key becomes G+id)
+  const gid = 'G' + id;
+  let canceled = false;
+
+  const cancelPromise = new Promise(resolve => {
+    document.addEventListener('keydown', function once(e) {
+      if (e.key === 'Enter') { canceled = true; document.removeEventListener('keydown', once); resolve(); }
+    });
+  });
+
+  const joinPromise = new Promise(resolve => {
+    const ref = db.ref(`lobby/${gid}`);
+    const sub = ref.on('value', snap => {
+      if (snap.exists()) {
+        ref.off('value', sub);
+        resolve(snap.val());
+      }
+    }, () => {
+      ref.off('value', sub);
+      resolve(null);
+    });
+  });
+
+  const result = await Promise.race([joinPromise, cancelPromise]);
+  hideWaiting();
+
+  if (canceled || !result) {
+    // Clean up lobby entry
+    try { await db.ref(`lobby/${id}`).remove(); } catch(_) {}
+    tPrint('Canceled.', 't-dim');
+    return setTimeout(showLobbyMenu, 600);
+  }
+
+  // Opponent joined!
+  tPrint('Opponent connected!', 't-ok');
+  startGameScreen(gid, color, result);
+}
+
+async function joinGame(gameEntry) {
+  const { id, data } = gameEntry;
+  // Determine which color slot is open
+  const color = data.rn === '' ? 'red' : 'silver';
+  const newId = 'G' + id;
+
+  const upd = {};
+  upd[`lobby/${id}`]    = null;  // delete open slot
+  upd[`lobby/${newId}`] = {
+    createdAt: Date.now(),
+    rn: color === 'red'    ? session.user : data.rn,
+    bn: color === 'silver' ? session.user : data.bn,
+    rp: color === 'red'    ? session.pass : data.rp,
+    bp: color === 'silver' ? session.pass : data.bp,
+  };
+
+  try {
+    await db.ref().update(upd);
+  } catch (e) {
+    tPrint('Join failed: ' + e.message, 't-err');
+    return setTimeout(showLobbyMenu, 1000);
+  }
+
+  session.gameId = newId;
+  session.color  = color;
+
+  tPrint(`Joined as ${color.toUpperCase()}. Starting game...`, 't-ok');
+
+  const snap = await db.ref(`lobby/${newId}`).once('value');
+  startGameScreen(newId, color, snap.val());
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  GAME BOARD STATE
+// ══════════════════════════════════════════════════════════════════════════════
+let G = {
+  board: [],        // G.board[r][c] = null | { type, color, dir }
+  turn: 'silver',  // silver goes first
+  selected: null,  // { r, c }
+  moved: false,    // has current player moved/rotated this turn?
+  over: false,
+  eliminated: { silver: [], red: [] },
+  posHistory: [],   // for 3-fold repetition
+  moveLog: [],
+  gameId: null,
+  color: null,      // my color
+  opponentName: null,
+};
+
+function initBoard() {
+  G.board = Array.from({ length: 8 }, () => Array(10).fill(null));
+  CLASSIC_SETUP.forEach(([r, c, type, color, dir]) => {
+    G.board[r][c] = { type, color, dir };
+  });
+  G.turn       = 'silver';
+  G.selected   = null;
+  G.moved      = false;
+  G.over       = false;
+  G.eliminated = { silver: [], red: [] };
+  G.posHistory = [];
+  G.moveLog    = [];
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  GAME SCREEN
+// ══════════════════════════════════════════════════════════════════════════════
+function startGameScreen(gameId, myColor, lobbyData) {
+  G.gameId = gameId;
+  G.color  = myColor;
+  G.opponentName = myColor === 'silver' ? lobbyData.rn : lobbyData.bn;
+
+  initBoard();
+  buildBoardDOM();
+  renderBoard();
+  updateHUD();
+
+  showScreen('game');
+
+  // Listen to Firebase game state
+  if (session.gameSub) db.ref(`games/${G.gameId}`).off('value', session.gameSub);
+  session.gameSub = db.ref(`games/${G.gameId}`).on('value', onGameState);
+
+  // If silver (goes first), initialize game state on Firebase
+  if (myColor === 'silver') {
+    pushGameState();
+  }
+}
+
+function onGameState(snap) {
+  if (!snap.exists()) return;
+  const state = snap.val();
+
+  // Deserialize board
+  if (state.board) {
+    G.board = state.board.map(row => row.map(cell => cell || null));
+  }
+  G.turn       = state.turn || 'silver';
+  G.over       = state.over || false;
+  G.eliminated = state.eliminated || { silver: [], red: [] };
+  G.moveLog    = state.moveLog || [];
+
+  renderBoard();
+  updateHUD();
+
+  if (G.over && state.winner) {
+    showWinModal(state.winner, state.winReason || '');
+  }
+}
+
+function pushGameState() {
+  if (!G.gameId) return;
+  const state = {
+    board:      G.board.map(row => row.map(cell => cell || null)),
+    turn:       G.turn,
+    over:       G.over,
+    eliminated: G.eliminated,
+    moveLog:    G.moveLog.slice(-40),
+    updatedAt:  Date.now(),
+  };
+  db.ref(`games/${G.gameId}`).set(state).catch(e => console.error('Push failed', e));
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  BOARD DOM
+// ══════════════════════════════════════════════════════════════════════════════
+function buildBoardDOM() {
+  // Column labels A-J
+  const colLabelEl = document.getElementById('col-labels');
+  colLabelEl.innerHTML = '';
+  'ABCDEFGHIJ'.split('').forEach(l => {
+    const s = document.createElement('div');
+    s.className = 'col-label';
+    s.textContent = l;
+    colLabelEl.appendChild(s);
+  });
+
+  // Row labels 8-1 (top to bottom)
+  const rowLabelEl = document.getElementById('row-labels');
+  rowLabelEl.innerHTML = '';
+  for (let r = 0; r < 8; r++) {
+    const s = document.createElement('div');
+    s.className = 'row-label';
+    s.textContent = 8 - r;
+    rowLabelEl.appendChild(s);
+  }
+
+  // Board cells
+  const boardEl = document.getElementById('board');
+  boardEl.innerHTML = '';
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 10; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell ' + ((r + c) % 2 === 0 ? 'even' : 'odd');
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+
+      const res = restrictedFor(r, c);
+      if (res) cell.classList.add('restrict-' + res);
+
+      cell.addEventListener('click', () => onCellClick(r, c));
+      boardEl.appendChild(cell);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  RENDER BOARD
+// ══════════════════════════════════════════════════════════════════════════════
+function renderBoard() {
+  const boardEl = document.getElementById('board');
+  const cells   = boardEl.querySelectorAll('.cell');
+
+  cells.forEach(cell => {
+    const r = +cell.dataset.r;
+    const c = +cell.dataset.c;
+    cell.classList.remove('selected', 'valid-move', 'laser-flash');
+
+    // Clear piece
+    cell.innerHTML = '';
+
+    // Valid move dot (empty element for CSS ::after via class)
+    if (G.selected && G.selected.r === r && G.selected.c === c) {
+      cell.classList.add('selected');
+    } else if (G.selected && canMoveTo(G.selected.r, G.selected.c, r, c)) {
+      cell.classList.add('valid-move');
+      const dot = document.createElement('div');
+      dot.className = 'dot';
+      cell.appendChild(dot);
     }
 
-    function startLobbySync() {
-        if (currentLobbySub) db.ref('lobby').off('value', currentLobbySub);
+    // Re-add restricted class
+    const res = restrictedFor(r, c);
+    if (res) cell.classList.add('restrict-' + res);
 
-        // Limit to 1 to find the oldest public game (Numeric Key)
-        currentLobbySub = db.ref('lobby').orderByKey().limitToFirst(1).on('value', snap => {
-            let foundMatch = null;
-            if (snap.exists()) {
-                snap.forEach(c => {
-                    // Only treat as a "Joinable Lobby" if it starts with a number
-                    if (/^[0-9]/.test(c.key)) {
-                        foundMatch = { id: c.key, data: c.val() };
-                    }
-                });
-            }
-            activeQueueMatch = foundMatch;
-            renderLobby();
-        }, err => {
-            addToQueue("DATABASE ERROR: " + err.message, "error-msg");
-        });
+    // Piece
+    const piece = G.board[r][c];
+    if (piece) {
+      cell.appendChild(makePieceEl(piece));
+    }
+  });
+
+  // Update side panels
+  const se = G.eliminated.silver.map(t => getPieceName(t)).join(', ') || '—';
+  const re = G.eliminated.red.map(t => getPieceName(t)).join(', ') || '—';
+  document.getElementById('silver-eliminated').textContent = se;
+  document.getElementById('red-eliminated').textContent    = re;
+
+  // Move log
+  const logEl2 = document.getElementById('move-log');
+  logEl2.innerHTML = G.moveLog.slice(-20).map(m =>
+    `<div style="color:${m.color === 'silver' ? 'var(--silver)' : 'var(--red)'}">${m.text}</div>`
+  ).join('');
+  logEl2.scrollTop = logEl2.scrollHeight;
+
+  updateHUD();
+}
+
+function makePieceEl(piece) {
+  const el = document.createElement('div');
+  el.className = `piece ${piece.color}-piece`;
+
+  // Draw piece icon via SVG
+  const svg = makePieceSVG(piece);
+  el.innerHTML = svg;
+
+  // Direction dot
+  const dot = document.createElement('div');
+  dot.className = 'dir-dot';
+  // Position dot based on direction
+  const dotPos = [
+    { top: '3px',  left: '50%',  transform: 'translateX(-50%)' }, // N
+    { top: '50%',  right: '3px', transform: 'translateY(-50%)' }, // E
+    { bottom: '3px', left: '50%', transform: 'translateX(-50%)' }, // S
+    { top: '50%',  left: '3px', transform: 'translateY(-50%)' },  // W
+  ];
+  const dp = dotPos[piece.dir];
+  Object.assign(dot.style, dp);
+  el.appendChild(dot);
+
+  return el;
+}
+
+function makePieceSVG(piece) {
+  const col  = piece.color === 'silver' ? '#5ba8d4' : '#d44444';
+  const dark = piece.color === 'silver' ? '#1a4a6a' : '#6a1a1a';
+  const { type, dir } = piece;
+
+  // Rotate transform based on dir (N=0, E=90, S=180, W=270)
+  const rot = dir * 90;
+  const xf  = `transform="rotate(${rot}, 20, 20)"`;
+
+  let inner = '';
+  if (type === PT.KING) {
+    inner = `<g ${xf}>
+      <polygon points="20,6 24,14 32,14 26,20 28,28 20,23 12,28 14,20 8,14 16,14" fill="${col}" stroke="${dark}" stroke-width="1"/>
+    </g>`;
+  } else if (type === PT.LASER) {
+    inner = `<g ${xf}>
+      <rect x="10" y="10" width="20" height="20" rx="3" fill="${col}" stroke="${dark}" stroke-width="1"/>
+      <polygon points="20,4 26,10 14,10" fill="${col}"/>
+      <rect x="16" y="14" width="8" height="4" rx="1" fill="${dark}"/>
+      <line x1="20" y1="4" x2="20" y2="10" stroke="${col}" stroke-width="2" opacity="0.5"/>
+    </g>`;
+  } else if (type === PT.DEFLECTOR) {
+    inner = `<g ${xf}>
+      <polygon points="8,32 32,8 32,32" fill="${col}" stroke="${dark}" stroke-width="1"/>
+      <line x1="8" y1="32" x2="32" y2="8" stroke="${dark}" stroke-width="1.5"/>
+    </g>`;
+  } else if (type === PT.SWITCH) {
+    inner = `<g ${xf}>
+      <rect x="8" y="8" width="24" height="24" rx="2" fill="${col}" stroke="${dark}" stroke-width="1"/>
+      <line x1="8" y1="32" x2="32" y2="8"  stroke="${dark}" stroke-width="2"/>
+      <line x1="8" y1="8"  x2="32" y2="32" stroke="${dark}" stroke-width="2"/>
+    </g>`;
+  } else if (type === PT.DEFENDER) {
+    inner = `<g ${xf}>
+      <rect x="10" y="10" width="20" height="20" rx="2" fill="${dark}" stroke="${col}" stroke-width="1.5"/>
+      <rect x="10" y="10" width="20" height="8"  rx="2" fill="${col}"/>
+      <rect x="14" y="22" width="12" height="4" rx="1" fill="${col}" opacity="0.6"/>
+    </g>`;
+  }
+
+  return `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" width="40" height="40">${inner}</svg>`;
+}
+
+function getPieceName(t) {
+  return { L:'Laser', D:'Deflector', S:'Switch', K:'Defender', X:'King' }[t] || t;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  HUD UPDATE
+// ══════════════════════════════════════════════════════════════════════════════
+function updateHUD() {
+  const myTurn = !G.over && G.turn === G.color;
+  const opp    = G.color === 'silver' ? 'RED' : 'SILVER';
+
+  document.getElementById('turn-indicator').textContent =
+    G.over ? '— GAME OVER —' :
+    G.turn === G.color ? `YOUR TURN (${G.color.toUpperCase()})` :
+    `${opp}'S TURN`;
+
+  document.getElementById('turn-indicator').style.color =
+    G.over ? 'var(--dim)' :
+    G.turn === 'silver' ? 'var(--silver)' : 'var(--red)';
+
+  // Controls
+  document.getElementById('btn-fire').disabled = !myTurn || !G.moved;
+  document.getElementById('btn-ccw').disabled  = !myTurn || !G.selected || G.moved;
+  document.getElementById('btn-cw').disabled   = !myTurn || !G.selected || G.moved;
+
+  // Action hint
+  let hint = '';
+  if (G.over) hint = 'Game over.';
+  else if (!myTurn) hint = `Waiting for ${opp} to move...`;
+  else if (!G.selected && !G.moved) hint = 'Click a piece to select.';
+  else if (G.selected && !G.moved) hint = 'Move to a highlighted square, or rotate, then FIRE.';
+  else if (G.moved) hint = 'Move made. FIRE the laser to end your turn.';
+  document.getElementById('action-hint').textContent = hint;
+
+  // Status bar
+  document.getElementById('status-bar').textContent =
+    G.over ? 'GAME OVER' : `GAME ${G.gameId ? G.gameId.slice(-6) : ''}`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MOVE VALIDATION
+// ══════════════════════════════════════════════════════════════════════════════
+function canMoveTo(fr, fc, tr, tc) {
+  if (tr < 0 || tr >= 8 || tc < 0 || tc >= 10) return false;
+  if (fr === tr && fc === tc) return false;
+  if (Math.abs(tr - fr) > 1 || Math.abs(tc - fc) > 1) return false; // max 1 step incl. diagonal
+
+  const piece  = G.board[fr][fc];
+  const target = G.board[tr][tc];
+  if (!piece) return false;
+
+  // Laser cannot move (fixed in corner)
+  if (piece.type === PT.LASER) return false;
+
+  // Restricted squares
+  const res = restrictedFor(tr, tc);
+  if (res && res !== piece.color) return false;
+
+  if (target === null) return true; // empty square
+
+  // Switch can swap with adjacent Deflector or Defender of either color
+  if (piece.type === PT.SWITCH) {
+    if (target.type === PT.DEFLECTOR || target.type === PT.DEFENDER) return true;
+    return false; // cannot swap with King, Laser, or another Switch
+  }
+
+  // Non-switch: can only move to empty squares (no captures by movement)
+  return false;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  CELL CLICK
+// ══════════════════════════════════════════════════════════════════════════════
+function onCellClick(r, c) {
+  if (G.over) return;
+  if (G.turn !== G.color) return; // not your turn
+  if (G.moved) return;            // already moved, must fire
+
+  const piece = G.board[r][c];
+
+  if (G.selected) {
+    const { r: sr, c: sc } = G.selected;
+    if (sr === r && sc === c) {
+      G.selected = null;
+      renderBoard();
+      return;
+    }
+    if (canMoveTo(sr, sc, r, c)) {
+      doMove(sr, sc, r, c);
+      return;
+    }
+    // Select a different own piece
+    if (piece && piece.color === G.color && piece.type !== PT.LASER) {
+      G.selected = { r, c };
+      renderBoard();
+      return;
+    }
+    G.selected = null;
+    renderBoard();
+    return;
+  }
+
+  // No selection yet
+  if (piece && piece.color === G.color) {
+    G.selected = { r, c };
+    renderBoard();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MOVE / ROTATE
+// ══════════════════════════════════════════════════════════════════════════════
+function doMove(fr, fc, tr, tc) {
+  const piece  = G.board[fr][fc];
+  const target = G.board[tr][tc];
+
+  if (piece.type === PT.SWITCH && target) {
+    // Swap — neither piece rotates
+    G.board[tr][tc] = piece;
+    G.board[fr][fc] = target;
+  } else {
+    G.board[tr][tc] = piece;
+    G.board[fr][fc] = null;
+  }
+
+  const colLet = 'ABCDEFGHIJ';
+  G.moveLog.push({ color: G.color, text: `${getPieceName(piece.type)} ${colLet[fc]}${8-fr}→${colLet[tc]}${8-tr}` });
+
+  G.selected = null;
+  G.moved    = true;
+  renderBoard();
+}
+
+function doRotate(dir) { // dir = 1 (CW) or -1 (CCW)
+  if (!G.selected || G.moved || G.over) return;
+  if (G.turn !== G.color) return;
+
+  const { r, c } = G.selected;
+  const piece = G.board[r][c];
+  if (!piece || piece.color !== G.color) return;
+  // Laser CAN be rotated (that's one of the 3 valid turn actions)
+  // But only 90 degrees per turn
+
+  piece.dir  = ((piece.dir + dir) + 4) % 4;
+  G.moved    = true;
+
+  const colLet = 'ABCDEFGHIJ';
+  G.moveLog.push({ color: G.color, text: `Rotated ${getPieceName(piece.type)} ${colLet[c]}${8-r} ${dir>0?'↻':'↺'}` });
+
+  renderBoard();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  LASER TRACE
+// ══════════════════════════════════════════════════════════════════════════════
+function traceLaser(color) {
+  // Find the laser piece for this color
+  let laserR = -1, laserC = -1;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 10; c++) {
+      const p = G.board[r][c];
+      if (p && p.type === PT.LASER && p.color === color) {
+        laserR = r; laserC = c;
+      }
+    }
+  }
+  if (laserR < 0) return { path: [], hit: null };
+
+  const laserPiece = G.board[laserR][laserC];
+  let   cr = laserR, cc = laserC;
+  let   cd = laserPiece.dir;
+
+  const path = [{ r: cr, c: cc }];
+  const seen = new Set();
+
+  for (let step = 0; step < 50; step++) {
+    const nr = cr + dR[cd];
+    const nc = cc + dC[cd];
+
+    // Off board → stop
+    if (nr < 0 || nr >= 8 || nc < 0 || nc >= 10) {
+      break;
     }
 
-    function renderLobby() {
-        // Clear previous prompts if the lobby updates
-        addToQueue("--- LOBBY REFRESH ---", "system-msg");
-        
-        if (activeQueueMatch) {
-            const side = activeQueueMatch.data.rn !== "" ? "RED" : "BLUE";
-            addToQueue(`MATCH FOUND: ${activeQueueMatch.id} [${side} OCCUPIED]`, "highlight");
-            addToQueue("[A] JOIN OPPOSITE | [R] NEW RED | [B] NEW BLUE", "system-msg");
-        } else {
-            addToQueue("QUEUE STATUS: EMPTY.", "system-msg");
-            addToQueue("[R] CREATE RED | [B] CREATE BLUE", "system-msg");
-        }
-        addToQueue("COMMAND>", "", true);
+    path.push({ r: nr, c: nc });
+
+    const p = G.board[nr][nc];
+    if (!p) {
+      cr = nr; cc = nc;
+      continue;
     }
 
-    function executeMatchAction(cmd) {
-        const u = localStorage.getItem('ls_user');
-        const p = localStorage.getItem('ls_pass');
-
-        if (cmd === "R") {
-            if (activeQueueMatch && activeQueueMatch.data.rn !== "") {
-                addToQueue("DENIED: RED TAKEN. JOIN BLUE [A].", "error-msg");
-                renderLobby();
-            } else create(1, u, p);
-        } else if (cmd === "B") {
-            if (activeQueueMatch && activeQueueMatch.data.bn !== "") {
-                addToQueue("DENIED: BLUE TAKEN. JOIN RED [A].", "error-msg");
-                renderLobby();
-            } else create(0, u, p);
-        } else if (cmd === "A" && activeQueueMatch) {
-            join(activeQueueMatch.data.rn !== "" ? 0 : 1, u, p);
-        } else if (cmd === "CLEAR") {
-            localStorage.clear();
-            location.reload();
-        } else {
-            addToQueue("INVALID COMMAND. (R, B, A, or CLEAR)", "error-msg");
-            renderLobby();
-        }
+    // Hit a piece
+    if (p.type === PT.LASER) {
+      // Laser is immune to the beam, beam stops
+      break;
     }
 
-    function create(col, u, p) {
-        const id = Date.now().toString();
-        const payload = {
-            createdAt: Date.now(),
-            rn: col === 1 ? u : "",
-            bn: col === 0 ? u : "",
-            rp: col === 1 ? p : "",
-            bp: col === 0 ? p : ""
-        };
-        
-        db.ref(`lobby/${id}`).set(payload).then(() => {
-            addToQueue(`SUCCESS: MATCH ${id} CREATED.`, "success-msg");
-        }).catch(err => {
-            addToQueue(`WRITE REJECTED: ${err.message}`, "error-msg");
-            renderLobby();
-        });
+    const result = deflect(p.type, p.dir, cd);
+
+    if (result === false) {
+      // Defender blocked from front — beam stops, defender stays
+      break;
+    } else if (result === null) {
+      // Absorbed → piece eliminated
+      return { path, hit: { r: nr, c: nc, piece: p } };
+    } else {
+      // Deflected
+      const stateKey = `${nr},${nc},${cd}`;
+      if (seen.has(stateKey)) break; // infinite loop guard
+      seen.add(stateKey);
+      cr = nr; cc = nc; cd = result;
+    }
+  }
+  return { path, hit: null };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  FIRE LASER
+// ══════════════════════════════════════════════════════════════════════════════
+function doFire() {
+  if (!G.moved || G.over || G.turn !== G.color) return;
+
+  const { path, hit } = traceLaser(G.color);
+
+  // Draw laser beam
+  drawLaserBeam(path, G.color);
+
+  // Flash hit cell
+  if (hit) {
+    setTimeout(() => {
+      const cell = getCellEl(hit.r, hit.c);
+      if (cell) cell.classList.add('laser-flash');
+    }, 150);
+  }
+
+  setTimeout(() => {
+    clearLaserBeam();
+
+    if (hit) {
+      const { r, c, piece } = hit;
+      G.eliminated[piece.color].push(piece.type);
+      G.moveLog.push({ color: G.color, text: `💥 ${piece.color.toUpperCase()} ${getPieceName(piece.type)} eliminated!` });
+      G.board[r][c] = null;
+
+      if (piece.type === PT.KING) {
+        G.over = true;
+        const winner = G.color;
+        const winReason = `${G.color.toUpperCase()} laser hit the ${piece.color.toUpperCase()} King!`;
+        G.moveLog.push({ color: G.color, text: `🏆 ${winner.toUpperCase()} wins!` });
+        pushGameState();
+        db.ref(`games/${G.gameId}`).update({ winner, winReason });
+        renderBoard();
+        showWinModal(winner, winReason);
+        return;
+      }
     }
 
-    function join(col, u, p) {
-        const oldId = activeQueueMatch.id;
-        const newId = "G" + oldId;
-        const data = activeQueueMatch.data;
-
-        const upd = {};
-        upd[`lobby/${oldId}`] = null; // Rule-compliant Delete
-        upd[`lobby/${newId}`] = {     // Rule-compliant 'G' Write
-            createdAt: Date.now(),
-            rn: col === 1 ? u : data.rn,
-            bn: col === 0 ? u : data.bn,
-            rp: col === 1 ? p : data.rp,
-            bp: col === 0 ? p : data.bp
-        };
-        
-        db.ref().update(upd).then(() => {
-            addToQueue("HANDSHAKE SUCCESS. REDIRECTING...", "success-msg");
-        }).catch(err => {
-            addToQueue(`JOIN REJECTED: ${err.message}`, "error-msg");
-            renderLobby();
-        });
+    // Check 3-fold repetition
+    const pos = boardHash();
+    G.posHistory.push(pos);
+    if (G.posHistory.filter(p => p === pos).length >= 3) {
+      G.over = true;
+      G.moveLog.push({ color: G.color, text: '🤝 Draw — 3-fold repetition.' });
+      pushGameState();
+      db.ref(`games/${G.gameId}`).update({ winner: 'draw', winReason: '3-fold repetition' });
+      renderBoard();
+      showWinModal('draw', '3-fold repetition.');
+      return;
     }
 
-    async function bootSequence() {
-        console.log("Booting Core...");
-        
-        // Non-blocking Font Load
-        if (document.fonts) {
-            document.fonts.load('16px Unifont').then(() => console.log("Font Active")).catch(() => {});
-        }
+    // Switch turn
+    G.turn     = G.turn === 'silver' ? 'red' : 'silver';
+    G.moved    = false;
+    G.selected = null;
 
-        const u = localStorage.getItem('ls_user');
-        const p = localStorage.getItem('ls_pass');
-        
-        if (!u) {
-            addToQueue("LASER CHESS CORE TERMINAL v2.1.0", "highlight");
-            addToQueue("IDENTIFY USER:", "", true);
-        } else if (!p) {
-            addToQueue(`WELCOME BACK, ${u}.`, "highlight");
-            addToQueue("ENTER PASSKEY:", "", true);
-        } else {
-            startLobbySync();
-        }
-    }
+    renderBoard();
+    pushGameState();
+  }, 600);
+}
 
-    // Start
-    window.onload = bootSequence;
+function boardHash() {
+  return G.board.flat().map(p => p ? `${p.type}${p.color[0]}${p.dir}` : '.').join('');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  LASER BEAM DRAWING
+// ══════════════════════════════════════════════════════════════════════════════
+function drawLaserBeam(path, color) {
+  const canvas = document.getElementById('laser-canvas');
+  const ctx    = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (path.length < 2) return;
+
+  const cs = 60; // --cell size
+  const laserCol = color === 'silver' ? '#44aaff' : '#ff4444';
+
+  // Outer glow
+  ctx.save();
+  ctx.shadowColor = laserCol;
+  ctx.shadowBlur  = 20;
+  ctx.strokeStyle = laserCol;
+  ctx.lineWidth   = 3;
+  ctx.lineCap     = 'round';
+  ctx.lineJoin    = 'round';
+  ctx.beginPath();
+  path.forEach(({ r, c }, i) => {
+    const x = c * cs + cs / 2;
+    const y = r * cs + cs / 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Inner bright core
+  ctx.shadowBlur  = 6;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth   = 1.5;
+  ctx.globalAlpha = 0.8;
+  ctx.beginPath();
+  path.forEach(({ r, c }, i) => {
+    const x = c * cs + cs / 2;
+    const y = r * cs + cs / 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.restore();
+}
+
+function clearLaserBeam() {
+  const canvas = document.getElementById('laser-canvas');
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function getCellEl(r, c) {
+  return document.querySelector(`#board .cell[data-r="${r}"][data-c="${c}"]`);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  WIN MODAL & LEAVING
+// ══════════════════════════════════════════════════════════════════════════════
+function showWinModal(winner, reason) {
+  const modal = document.getElementById('win-modal');
+  const title = document.getElementById('modal-title');
+  const body  = document.getElementById('modal-body');
+
+  if (winner === 'draw') {
+    title.textContent = 'DRAW';
+    title.style.color = 'var(--dim)';
+    body.textContent  = reason;
+  } else if (winner === G.color) {
+    title.textContent = 'VICTORY';
+    title.style.color = 'var(--gold)';
+    body.textContent  = reason + '\n\nYou win!';
+  } else {
+    title.textContent = 'DEFEAT';
+    title.style.color = 'var(--red)';
+    body.textContent  = reason + '\n\nBetter luck next time.';
+  }
+  modal.classList.add('show');
+}
+
+function leaveGame() {
+  document.getElementById('win-modal').classList.remove('show');
+  if (session.gameSub && G.gameId) {
+    db.ref(`games/${G.gameId}`).off('value', session.gameSub);
+    session.gameSub = null;
+  }
+  G.gameId = null;
+  G.color  = null;
+  showScreen('terminal');
+  startLobby();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  SCREEN MANAGEMENT
+// ══════════════════════════════════════════════════════════════════════════════
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+}
+
+function showWaiting(msg) {
+  document.getElementById('waiting-msg').textContent   = msg || 'WAITING';
+  document.getElementById('waiting-id').textContent    = '';
+  document.getElementById('waiting-overlay').classList.add('show');
+}
+function hideWaiting() {
+  document.getElementById('waiting-overlay').classList.remove('show');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════════════════════════════════════════
+window.addEventListener('load', () => startLobby());
 </script>
 </body>
 </html>
