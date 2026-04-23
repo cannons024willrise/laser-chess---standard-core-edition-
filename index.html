@@ -149,13 +149,13 @@
         const p = localStorage.getItem('ls_pass');
 
         if (!u) {
-            addToQueue("LASER CHESS CORE TERMINAL v1.0.6", "highlight");
+            addToQueue("LASER CHESS STANDARD VERSION - CORE EDITION(BETA η-)  v1.0.6", "highlight");
             addToQueue("IDENTIFY USER:", "", true);
         } else if (!p) {
             addToQueue(`WELCOME BACK, ${u}.`, "highlight");
             addToQueue("ENTER PASSKEY:", "", true);
         } else {
-            addToQueue("AUTH COMPLETE. SYSTEM READY.", "success-msg");
+            addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
         }
     }
 
