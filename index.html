@@ -58,8 +58,25 @@
 
 <div id="terminal-log"></div>
 
+<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
+
 <script>
     const WORKER_URL = "https://z9s73n03d0m.later5143.workers.dev/";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
+        authDomain: "lasercheowefficiencymanager.firebaseapp.com",
+        databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com",
+        projectId: "lasercheowefficiencymanager",
+        storageBucket: "lasercheowefficiencymanager.firebasestorage.app",
+        messagingSenderId: "28090691314",
+        appId: "1:28090691314:web:e8c8ae5b0fd437038b6a6b",
+        measurementId: "G-RXND7NVDHT"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
     const log = document.getElementById('terminal-log');
     let msgQueue = [];
@@ -156,7 +173,29 @@
         }
     }
 
-    // --- ONLY AUTH FLOW (NO GAME / NO FIREBASE / NOTHING ELSE) ---
+    async function checkExistingMatch() {
+        const matchId = localStorage.getItem('ls_match');
+        if (!matchId) return;
+
+        addToQueue("RESUMING MATCH STATE...", "system-msg");
+
+        try {
+            const snap = await db.ref(`R/matches/${matchId}`).once('value');
+            const data = snap.val();
+
+            if (data) {
+                addToQueue(`MATCH RESUMED: ${matchId}`, "success-msg");
+            } else {
+                addToQueue("MATCH NOT FOUND. CLEARING STATE.", "error-msg");
+                localStorage.removeItem('ls_match');
+            }
+        } catch (e) {
+            console.log("Match read failed:", e);
+            addToQueue("MATCH READ FAILED.", "error-msg");
+        }
+    }
+
+    // --- ONLY AUTH FLOW ---
     function handleAuth(val) {
         const u = localStorage.getItem('ls_user');
 
@@ -194,6 +233,10 @@
         } else {
             addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
             await triggerWorkerAuth();
+
+            if (localStorage.getItem('ls_match')) {
+                await checkExistingMatch();
+            }
         }
     }
 
