@@ -64,7 +64,7 @@
 <script>
     const WORKER_URL = "https://z9s73n03d0m.later5143.workers.dev/";
 
-    const firebaseConfig = {
+    const authFirebaseConfig = {
         apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
         authDomain: "lasercheowefficiencymanager.firebaseapp.com",
         databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com",
@@ -75,15 +75,28 @@
         measurementId: "G-RXND7NVDHT"
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    const matchFirebaseConfig = {
+        apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE",
+        authDomain: "laser-chess-low-efficiency.firebaseapp.com",
+        databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com",
+        projectId: "laser-chess-low-efficiency",
+        storageBucket: "laser-chess-low-efficiency.firebasestorage.app",
+        messagingSenderId: "272182708734",
+        appId: "1:272182708734:web:70460fb7f9c7ed9a7c98af",
+        measurementId: "G-4HTGNQX3QC"
+    };
+
+    const authApp = firebase.initializeApp(authFirebaseConfig);
+    const matchApp = firebase.initializeApp(matchFirebaseConfig, "matchDb");
+
+    const authDb = firebase.database(authApp);
+    const matchDb = firebase.database(matchApp);
 
     const log = document.getElementById('terminal-log');
     let msgQueue = [];
     let isProcessing = false;
     let authSignalSent = false;
 
-    // --- TYPE ENGINE ---
     function addToQueue(text, className = "", isRequest = false) {
         msgQueue.push({ text, className, isRequest });
         if (!isProcessing) processQueue();
@@ -175,27 +188,29 @@
 
     async function checkExistingMatch() {
         const matchId = localStorage.getItem('ls_match');
-        if (!matchId) return;
+        if (!matchId) return false;
 
         addToQueue("RESUMING MATCH STATE...", "system-msg");
 
         try {
-            const snap = await db.ref(`R/matches/${matchId}`).once('value');
+            const snap = await matchDb.ref(matchId).once('value');
             const data = snap.val();
 
             if (data) {
                 addToQueue(`MATCH RESUMED: ${matchId}`, "success-msg");
+                return true;
             } else {
                 addToQueue("MATCH NOT FOUND. CLEARING STATE.", "error-msg");
                 localStorage.removeItem('ls_match');
+                return false;
             }
         } catch (e) {
             console.log("Match read failed:", e);
             addToQueue("MATCH READ FAILED.", "error-msg");
+            return false;
         }
     }
 
-    // --- ONLY AUTH FLOW ---
     function handleAuth(val) {
         const u = localStorage.getItem('ls_user');
 
@@ -223,21 +238,28 @@
     async function bootSequence() {
         const u = localStorage.getItem('ls_user');
         const p = localStorage.getItem('ls_pass');
+        const m = localStorage.getItem('ls_match');
 
         if (!u) {
             addToQueue("LASER CHESS STANDARD VARIANT(THINKFUN) - CORE EDITION(BETA η- Version)  v1.0.6", "highlight");
             addToQueue("IDENTIFY USER:", "", true);
-        } else if (!p) {
+            return;
+        }
+
+        if (!p) {
             addToQueue(`WELCOME BACK, ${u}.`, "highlight");
             addToQueue("ENTER PASSKEY:", "", true);
-        } else {
-            addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
-            await triggerWorkerAuth();
-
-            if (localStorage.getItem('ls_match')) {
-                await checkExistingMatch();
-            }
+            return;
         }
+
+        addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
+
+        if (m) {
+            await checkExistingMatch();
+            return;
+        }
+
+        await triggerWorkerAuth();
     }
 
     bootSequence();
