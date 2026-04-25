@@ -58,44 +58,10 @@
 
 <div id="terminal-log"></div>
 
-<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
-
 <script>
-    const WORKER_URL = "https://z9s73n03d0m.later5143.workers.dev/";
-
-    const authFirebaseConfig = {
-        apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
-        authDomain: "lasercheowefficiencymanager.firebaseapp.com",
-        databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com",
-        projectId: "lasercheowefficiencymanager",
-        storageBucket: "lasercheowefficiencymanager.firebasestorage.app",
-        messagingSenderId: "28090691314",
-        appId: "1:28090691314:web:e8c8ae5b0fd437038b6a6b",
-        measurementId: "G-RXND7NVDHT"
-    };
-
-    const matchFirebaseConfig = {
-        apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE",
-        authDomain: "laser-chess-low-efficiency.firebaseapp.com",
-        databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com",
-        projectId: "laser-chess-low-efficiency",
-        storageBucket: "laser-chess-low-efficiency.firebasestorage.app",
-        messagingSenderId: "272182708734",
-        appId: "1:272182708734:web:70460fb7f9c7ed9a7c98af",
-        measurementId: "G-4HTGNQX3QC"
-    };
-
-    const authApp = firebase.initializeApp(authFirebaseConfig);
-    const matchApp = firebase.initializeApp(matchFirebaseConfig, "matchDb");
-
-    const authDb = firebase.database(authApp);
-    const matchDb = firebase.database(matchApp);
-
     const log = document.getElementById('terminal-log');
     let msgQueue = [];
     let isProcessing = false;
-    let authSignalSent = false;
 
     function addToQueue(text, className = "", isRequest = false) {
         msgQueue.push({ text, className, isRequest });
@@ -161,56 +127,6 @@
         });
     }
 
-    async function triggerWorkerAuth() {
-        if (authSignalSent) return;
-        authSignalSent = true;
-
-        const payload = {
-            type: "AUTH",
-            action: "AUTH_CHECK",
-            user: localStorage.getItem('ls_user'),
-            pass: localStorage.getItem('ls_pass'),
-            ts: Date.now()
-        };
-
-        try {
-            await fetch(WORKER_URL, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-            });
-        } catch (e) {
-            console.log("Worker signal failed:", e);
-        }
-    }
-
-    async function checkExistingMatch() {
-        const matchId = localStorage.getItem('ls_match');
-        if (!matchId) return false;
-
-        addToQueue("RESUMING MATCH STATE...", "system-msg");
-
-        try {
-            const snap = await matchDb.ref(matchId).once('value');
-            const data = snap.val();
-
-            if (data) {
-                addToQueue(`MATCH RESUMED: ${matchId}`, "success-msg");
-                return true;
-            } else {
-                addToQueue("MATCH NOT FOUND. CLEARING STATE.", "error-msg");
-                localStorage.removeItem('ls_match');
-                return false;
-            }
-        } catch (e) {
-            console.log("Match read failed:", e);
-            addToQueue("MATCH READ FAILED.", "error-msg");
-            return false;
-        }
-    }
-
     function handleAuth(val) {
         const u = localStorage.getItem('ls_user');
 
@@ -238,7 +154,6 @@
     async function bootSequence() {
         const u = localStorage.getItem('ls_user');
         const p = localStorage.getItem('ls_pass');
-        const m = localStorage.getItem('ls_match');
 
         if (!u) {
             addToQueue("LASER CHESS STANDARD VARIANT(THINKFUN) - CORE EDITION(BETA η- Version)  v1.0.6", "highlight");
@@ -253,13 +168,6 @@
         }
 
         addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
-
-        if (m) {
-            await checkExistingMatch();
-            return;
-        }
-
-        await triggerWorkerAuth();
     }
 
     bootSequence();
