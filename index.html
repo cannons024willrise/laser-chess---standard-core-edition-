@@ -58,7 +58,21 @@
 
 <div id="terminal-log"></div>
 
+<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
+
 <script>
+    // 🔌 MATCH DB ONLY (R branch lives here)
+    const matchFirebaseConfig = {
+        apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE",
+        authDomain: "laser-chess-low-efficiency.firebaseapp.com",
+        databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com",
+        projectId: "laser-chess-low-efficiency"
+    };
+
+    const matchApp = firebase.initializeApp(matchFirebaseConfig);
+    const matchDb = firebase.database(matchApp);
+
     const log = document.getElementById('terminal-log');
     let msgQueue = [];
     let isProcessing = false;
@@ -151,6 +165,29 @@
         }
     }
 
+    // 🔍 READ EXACT PATH: R/{requestId}
+    async function checkExistingRequest() {
+        const requestId = localStorage.getItem('ls_request');
+        if (!requestId) return;
+
+        addToQueue("CHECKING SAVED REQUEST...", "system-msg");
+
+        try {
+            const snap = await matchDb.ref(`R/${requestId}`).once('value');
+            const data = snap.val();
+
+            if (data) {
+                addToQueue(`REQUEST FOUND: ${requestId}`, "success-msg");
+            } else {
+                addToQueue("REQUEST NOT FOUND.", "error-msg");
+                localStorage.removeItem('ls_request');
+            }
+        } catch (e) {
+            console.log("Request read failed:", e);
+            addToQueue("REQUEST READ FAILED.", "error-msg");
+        }
+    }
+
     async function bootSequence() {
         const u = localStorage.getItem('ls_user');
         const p = localStorage.getItem('ls_pass');
@@ -168,6 +205,11 @@
         }
 
         addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
+
+        // 🔥 YOUR NEW LOGIC
+        if (localStorage.getItem('ls_request')) {
+            await checkExistingRequest();
+        }
     }
 
     bootSequence();
