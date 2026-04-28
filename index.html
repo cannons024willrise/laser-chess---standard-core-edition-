@@ -24,31 +24,6 @@
             image-rendering: pixelated;
         }
 
-        .status-banner {
-            border: 1px solid #444;
-            background: rgba(255,255,255,0.04);
-            color: #ffffff;
-            padding: 10px 14px;
-            margin-bottom: 18px;
-            text-shadow: 0 0 5px rgba(255,255,255,0.2);
-            letter-spacing: 0.5px;
-        }
-
-        .status-banner.active {
-            border-color: #ffffff;
-            box-shadow: 0 0 14px rgba(255,255,255,0.18);
-        }
-
-        .status-banner.ok {
-            border-color: #ffffff;
-            color: #ffffff;
-        }
-
-        .status-banner.error {
-            border-color: #ff5555;
-            color: #ff5555;
-        }
-
         #terminal-log {
             display: flex;
             flex-direction: column;
@@ -81,7 +56,6 @@
 </head>
 <body>
 
-<div id="status-banner" class="status-banner">SYSTEM: IDLE</div>
 <div id="terminal-log"></div>
 
 <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
@@ -99,15 +73,8 @@
     const matchDb = firebase.database(matchApp);
 
     const log = document.getElementById('terminal-log');
-    const banner = document.getElementById('status-banner');
-
     let msgQueue = [];
     let isProcessing = false;
-
-    function setBanner(text, state = "") {
-        banner.textContent = text;
-        banner.className = "status-banner" + (state ? ` ${state}` : "");
-    }
 
     function addToQueue(text, className = "", isRequest = false) {
         msgQueue.push({ text, className, isRequest });
@@ -178,24 +145,22 @@
 
         if (!u) {
             if (!val) {
-                setBanner("USERNAME REQUIRED", "error");
                 addToQueue("USERNAME REQUIRED:", "error-msg", true);
                 return;
             }
             localStorage.setItem('ls_user', val);
-            setBanner(`USER SAVED: ${val}`, "ok");
+            addToQueue(`USER SAVED: ${val}`, "success-msg");
             bootSequence();
         } else {
             const p = localStorage.getItem('ls_pass');
 
             if (!p) {
                 if (!val) {
-                    setBanner("PASSKEY REQUIRED", "error");
                     addToQueue("PASSKEY REQUIRED:", "error-msg", true);
                     return;
                 }
                 localStorage.setItem('ls_pass', val);
-                setBanner("PASSKEY SAVED", "ok");
+                addToQueue("PASSKEY SAVED.", "success-msg");
                 bootSequence();
             }
         }
@@ -205,28 +170,24 @@
         const requestId = localStorage.getItem('ls_request');
         if (!requestId) return;
 
-        setBanner(`REQUEST CHECK: ${requestId}`, "active");
         addToQueue("SAVED REQUEST DETECTED.", "highlight");
-        addToQueue("SCANNING MATCH DATABASE NOW...", "system-msg");
-        addToQueue(`LOOKING UP REQUEST ID: ${requestId}`, "system-msg");
+        addToQueue("CHECKING MATCH DATABASE...", "system-msg");
+        addToQueue(`LOOKUP: R/${requestId}`, "system-msg");
 
         try {
             const snap = await matchDb.ref(`R/${requestId}`).once('value');
             const data = snap.val();
 
             if (data) {
-                setBanner("REQUEST FOUND — MATCH LINKED", "ok");
                 addToQueue("REQUEST FOUND ✓", "success-msg");
                 addToQueue("MATCH LINKED.", "success-msg");
             } else {
-                setBanner("REQUEST NOT FOUND", "error");
                 addToQueue("REQUEST NOT FOUND ✗", "error-msg");
                 addToQueue("LOCAL REQUEST CLEARED.", "system-msg");
                 localStorage.removeItem('ls_request');
             }
         } catch (e) {
             console.log("Request read failed:", e);
-            setBanner("REQUEST READ FAILED", "error");
             addToQueue("REQUEST READ FAILED.", "error-msg");
         }
     }
@@ -236,20 +197,17 @@
         const p = localStorage.getItem('ls_pass');
 
         if (!u) {
-            setBanner("IDENTIFY USER", "active");
             addToQueue("LASER CHESS STANDARD VARIANT(THINKFUN) - CORE EDITION(BETA η- Version)  v1.0.6", "highlight");
             addToQueue("IDENTIFY USER:", "", true);
             return;
         }
 
         if (!p) {
-            setBanner("ENTER PASSKEY", "active");
             addToQueue(`WELCOME BACK, ${u}.`, "highlight");
             addToQueue("ENTER PASSKEY:", "", true);
             return;
         }
 
-        setBanner("AUTH COMPLETE — GAME READY", "ok");
         addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
 
         if (localStorage.getItem('ls_request')) {
