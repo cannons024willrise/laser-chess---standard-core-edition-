@@ -151,18 +151,18 @@
             localStorage.setItem('ls_user', val);
             addToQueue(`USER SAVED: ${val}`, "success-msg");
             bootSequence();
-        } else {
-            const p = localStorage.getItem('ls_pass');
+            return;
+        }
 
-            if (!p) {
-                if (!val) {
-                    addToQueue("PASSKEY REQUIRED:", "error-msg", true);
-                    return;
-                }
-                localStorage.setItem('ls_pass', val);
-                addToQueue("PASSKEY SAVED.", "success-msg");
-                bootSequence();
+        const p = localStorage.getItem('ls_pass');
+        if (!p) {
+            if (!val) {
+                addToQueue("PASSKEY REQUIRED:", "error-msg", true);
+                return;
             }
+            localStorage.setItem('ls_pass', val);
+            addToQueue("PASSKEY SAVED.", "success-msg");
+            bootSequence();
         }
     }
 
@@ -215,7 +215,18 @@
         }
     }
 
-    bootSequence();
+    (async () => {
+        try {
+            if (document.fonts && document.fonts.load) {
+                await document.fonts.load('16px Unifont');
+                await document.fonts.ready;
+            }
+        } catch (e) {
+            console.log("Font load issue:", e);
+        }
+
+        bootSequence();
+    })();
 </script>
 
 </body>
