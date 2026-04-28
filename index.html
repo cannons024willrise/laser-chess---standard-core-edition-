@@ -195,6 +195,7 @@
     async function bootSequence() {
         const u = localStorage.getItem('ls_user');
         const p = localStorage.getItem('ls_pass');
+        const r = localStorage.getItem('ls_request');
 
         if (!u) {
             addToQueue("LASER CHESS STANDARD VARIANT(THINKFUN) - CORE EDITION(BETA η- Version)  v1.0.6", "highlight");
@@ -210,8 +211,10 @@
 
         addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
 
-        if (localStorage.getItem('ls_request')) {
+        if (r) {
             await checkExistingRequest();
+        } else {
+            addToQueue("NO SAVED REQUEST FOUND.", "system-msg");
         }
     }
 
