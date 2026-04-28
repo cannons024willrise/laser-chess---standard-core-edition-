@@ -170,16 +170,20 @@
         const requestId = localStorage.getItem('ls_request');
         if (!requestId) return;
 
-        addToQueue("CHECKING SAVED REQUEST...", "system-msg");
+        addToQueue("SAVED REQUEST DETECTED.", "system-msg");
+        addToQueue("CHECKING MATCH DATABASE...", "system-msg");
+        addToQueue(`LOOKING UP REQUEST ID: ${requestId}`, "system-msg");
 
         try {
             const snap = await matchDb.ref(`R/${requestId}`).once('value');
             const data = snap.val();
 
             if (data) {
-                addToQueue(`REQUEST FOUND: ${requestId}`, "success-msg");
+                addToQueue("REQUEST FOUND ✓", "success-msg");
+                addToQueue("MATCH LINKED.", "success-msg");
             } else {
-                addToQueue("REQUEST NOT FOUND.", "error-msg");
+                addToQueue("REQUEST NOT FOUND ✗", "error-msg");
+                addToQueue("LOCAL REQUEST CLEARED.", "system-msg");
                 localStorage.removeItem('ls_request');
             }
         } catch (e) {
@@ -206,7 +210,6 @@
 
         addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
 
-        // 🔥 YOUR NEW LOGIC
         if (localStorage.getItem('ls_request')) {
             await checkExistingRequest();
         }
