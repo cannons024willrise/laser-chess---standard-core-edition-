@@ -173,65 +173,57 @@
         addToQueue("================================", "system-msg");
         addToQueue("REQUEST SESSION CHECK STARTED.", "highlight");
         addToQueue("CHECKING MATCH DATABASE...", "system-msg");
-        addToQueue("QUERY MODE: ORDER BY KEY + LIMIT 1", "system-msg");
-        addToQueue("WAITING FOR DATABASE RESPONSE...", "system-msg");
-        addToQueue("================================", "system-msg");
 
         try {
-            const snap = await matchDb.ref("R").orderByKey().limitToFirst(1).once('value');
+            if (requestId) {
+                // MODE 2: DIRECT PATH LOOKUP (Triggering query.limitToFirst === null in rules)
+                addToQueue(`SAVED REQUEST DETECTED: ${requestId}`, "system-msg");
+                addToQueue("QUERY MODE: DIRECT PATH LOOKUP", "system-msg");
+                addToQueue("WAITING FOR DATABASE RESPONSE...", "system-msg");
 
-            if (!snap.exists()) {
-                addToQueue("NO SAVED REQUESTS FOUND.", "system-msg");
-                addToQueue("READ COMPLETE — EMPTY RESULT.", "system-msg");
-                addToQueue("READY FOR MATCH CREATION.", "highlight");
-                addToQueue("================================", "system-msg");
-                return;
-            }
+                const snap = await matchDb.ref("R/" + requestId).once('value');
 
-            let firstKey = null;
-            let firstValue = null;
-
-            snap.forEach(child => {
-                if (!firstKey) {
-                    firstKey = child.key;
-                    firstValue = child.val();
+                if (snap.exists()) {
+                    addToQueue(`MATCH LINKED: ${requestId}`, "success-msg");
+                    addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
+                } else {
+                    addToQueue("SAVED REQUEST EXPIRED OR INVALID.", "error-msg");
+                    localStorage.removeItem('ls_request');
+                    addToQueue("LOCAL CACHE CLEARED. REBOOTING SESSION...", "system-msg");
+                    
+                    // Delay slightly to prevent infinite rapid looping if server is down
+                    setTimeout(checkExistingRequest, 800); 
+                    return; 
                 }
-            });
-
-            if (!firstKey) {
-                addToQueue("NO SAVED REQUESTS FOUND.", "system-msg");
-                addToQueue("READ COMPLETE — EMPTY RESULT.", "system-msg");
-                addToQueue("READY FOR MATCH CREATION.", "highlight");
-                addToQueue("================================", "system-msg");
-                return;
-            }
-
-            if (!requestId) {
-                addToQueue("NO SAVED REQUEST FLAG FOUND.", "system-msg");
-                addToQueue("ADOPTING FIRST QUEUE INTENT.", "highlight");
-                localStorage.setItem('ls_request', firstKey);
-                addToQueue(`REQUEST STORED: ${firstKey}`, "success-msg");
-                addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
-                addToQueue("================================", "system-msg");
-                return;
-            }
-
-            if (requestId === firstKey) {
-                addToQueue(`REQUEST FOUND: ${firstKey}`, "success-msg");
-                addToQueue("MATCH LINKED.", "success-msg");
-                addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
             } else {
-                addToQueue("SAVED REQUEST DID NOT MATCH QUEUE HEAD.", "error-msg");
-                addToQueue("ADOPTING FIRST QUEUE INTENT.", "highlight");
-                localStorage.setItem('ls_request', firstKey);
-                addToQueue(`REQUEST UPDATED: ${firstKey}`, "success-msg");
-                addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
-            }
+                // MODE 1: QUEUE HEAD LOOKUP (Triggering query.orderByKey && limitToFirst === 1)
+                addToQueue("NO SAVED REQUEST FOUND. SEEKING AVAILABLE...", "system-msg");
+                addToQueue("QUERY MODE: ORDER BY KEY + LIMIT 1", "system-msg");
+                addToQueue("WAITING FOR DATABASE RESPONSE...", "system-msg");
 
+                const snap = await matchDb.ref("R").orderByKey().limitToFirst(1).once('value');
+
+                if (!snap.exists()) {
+                    addToQueue("NO SAVED REQUESTS FOUND IN QUEUE.", "system-msg");
+                    addToQueue("READ COMPLETE — EMPTY RESULT.", "system-msg");
+                    addToQueue("READY FOR MATCH CREATION.", "highlight");
+                } else {
+                    let firstKey = null;
+                    snap.forEach(child => {
+                        firstKey = child.key;
+                    });
+
+                    localStorage.setItem('ls_request', firstKey);
+                    addToQueue(`NEW REQUEST ADOPTED: ${firstKey}`, "success-msg");
+                    addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
+                }
+            }
+            
             addToQueue("================================", "system-msg");
+            
         } catch (e) {
-            console.log("Request read failed:", e);
-            addToQueue("REQUEST READ FAILED.", "error-msg");
+            console.error("Request read failed:", e);
+            addToQueue("REQUEST READ FAILED: ACCESS DENIED.", "error-msg");
             addToQueue("DATABASE LOOKUP ABORTED.", "error-msg");
             addToQueue("READ COMPLETE — FAILURE.", "error-msg");
             addToQueue("================================", "system-msg");
