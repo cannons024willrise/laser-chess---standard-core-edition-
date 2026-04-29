@@ -1,246 +1,296 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>LASER CHESS STANDARD VARIANT(THINKFUN) - CORE EDITION(BETA η- Version)</title>
-    <style>
-        @font-face {
-            font-family: 'Unifont';
-            src: url('unifont-15.0.01.ttf') format('truetype');
-            font-weight: normal;
-            font-style: normal;
-            font-display: block;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LASER CHESS STANDARD VARIANT (THINKFUN) - CORE EDITION (BETA η- Version)</title>
+  <style>
+    :root {
+      --bg0: #0a0a0a;
+      --bg1: #1a1a1a;
+      --text: #b0b0b0;
+      --bright: #ffffff;
+      --error: #ff5555;
+      --muted: #999999;
+    }
 
-        body {
-            background-color: #0a0a0a;
-            background: radial-gradient(circle at center, #1a1a1a 0%, #0a0a0a 100%);
-            color: #b0b0b0;
-            font-family: 'Unifont', monospace;
-            font-size: 16px;
-            margin: 0;
-            padding: 30px;
-            line-height: 1.6;
-            image-rendering: pixelated;
-        }
+    body {
+      margin: 0;
+      padding: 30px;
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 16px;
+      line-height: 1.6;
+      background: radial-gradient(circle at center, var(--bg1) 0%, var(--bg0) 100%);
+      image-rendering: pixelated;
+    }
 
-        #terminal-log {
-            display: flex;
-            flex-direction: column;
-        }
+    #terminal-log {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-width: 1100px;
+    }
 
-        .input-wrapper {
-            display: flex;
-            align-items: baseline;
-            margin-top: 5px;
-        }
+    .history-line {
+      min-height: 1.6em;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
 
-        .user-input-line {
-            background: transparent;
-            border: none;
-            color: #ffffff;
-            font-family: 'Unifont', monospace;
-            font-size: 16px;
-            outline: none;
-            flex-grow: 1;
-            margin-left: 8px;
-            caret-color: #ffffff;
-        }
+    .input-wrapper {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-height: 1.6em;
+    }
 
-        .system-msg { color: #999; }
-        .success-msg { color: #ffffff; font-weight: bold; text-shadow: 0 0 5px #fff; }
-        .error-msg { color: #ff5555; }
-        .highlight { color: #ffffff; font-weight: bold; }
-        .history-line { margin-bottom: 4px; min-height: 1.6em; }
-    </style>
+    .prompt {
+      white-space: pre;
+      flex: 0 0 auto;
+    }
+
+    .user-input-line {
+      flex: 1 1 auto;
+      min-width: 0;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--bright);
+      font: inherit;
+      caret-color: var(--bright);
+      padding: 0;
+      margin: 0;
+    }
+
+    .system-msg { color: var(--muted); }
+    .success-msg { color: var(--bright); font-weight: 700; text-shadow: 0 0 5px rgba(255,255,255,0.85); }
+    .error-msg { color: var(--error); }
+    .highlight { color: var(--bright); font-weight: 700; }
+  </style>
 </head>
 <body>
+  <div id="terminal-log" aria-live="polite"></div>
 
-<div id="terminal-log"></div>
+  <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
 
-<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
+  <script>
+    (() => {
+      'use strict';
 
-<script>
-    // --- FIREBASE CONFIGURATION ---
-    const matchFirebaseConfig = {
+      // --- FIREBASE CONFIGURATION ---
+      const matchFirebaseConfig = {
         apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE",
         authDomain: "laser-chess-low-efficiency.firebaseapp.com",
         databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com",
         projectId: "laser-chess-low-efficiency"
-    };
+      };
 
-    const matchApp = firebase.initializeApp(matchFirebaseConfig);
-    const matchDb = firebase.database(matchApp);
+      const app = firebase.apps && firebase.apps.length
+        ? firebase.app()
+        : firebase.initializeApp(matchFirebaseConfig);
+      const db = firebase.database(app);
 
-    // --- TERMINAL UI ENGINE ---
-    const log = document.getElementById('terminal-log');
-    let msgQueue = [];
-    let isProcessing = false;
+      // --- STORAGE KEYS ---
+      const KEY_USER = 'ls_user';
+      const KEY_PASS = 'ls_pass';
+      const KEY_REQUEST = 'ls_request';
 
-    function addToQueue(text, className = "", isRequest = false) {
-        msgQueue.push({ text, className, isRequest });
-        if (!isProcessing) processQueue();
-    }
+      // --- UI ENGINE ---
+      const log = document.getElementById('terminal-log');
+      const queue = [];
+      let processing = false;
 
-    async function processQueue() {
-        isProcessing = true;
-        while (msgQueue.length > 0) {
-            const item = msgQueue.shift();
-            if (item.isRequest) await typeLineInline(item.text, item.className);
-            else await typeLineSimple(item.text, item.className);
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+      function appendLine(className = '') {
+        const div = document.createElement('div');
+        div.className = `history-line ${className}`.trim();
+        log.appendChild(div);
+        return div;
+      }
+
+      function addToQueue(text, className = '', isRequest = false) {
+        queue.push({ text, className, isRequest });
+        if (!processing) processQueue();
+      }
+
+      async function processQueue() {
+        processing = true;
+        while (queue.length) {
+          const item = queue.shift();
+          if (item.isRequest) {
+            await typeInputPrompt(item.text, item.className);
+          } else {
+            await typeTextLine(item.text, item.className);
+          }
         }
-        isProcessing = false;
-    }
+        processing = false;
+      }
 
-    function typeLineSimple(text, className) {
+      async function typeTextLine(text, className) {
+        const line = appendLine(className);
+        for (let i = 0; i < text.length; i++) {
+          line.textContent += text[i];
+          await sleep(12);
+        }
+      }
+
+      function waitForEnter(input, onSubmit) {
         return new Promise((resolve) => {
-            const div = document.createElement('div');
-            div.className = "history-line " + className;
-            log.appendChild(div);
-            let i = 0;
-            const timer = setInterval(() => {
-                if (i < text.length) {
-                    div.textContent += text.charAt(i++);
-                } else {
-                    clearInterval(timer);
-                    resolve();
-                }
-            }, 12);
+          input.addEventListener('keydown', async (e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            const value = input.value.trim().toUpperCase();
+            input.disabled = true;
+            try {
+              await onSubmit(value);
+            } finally {
+              resolve();
+            }
+          }, { once: true });
         });
-    }
+      }
 
-    function typeLineInline(text, className) {
-        return new Promise((resolve) => {
-            const wrapper = document.createElement('div');
-            wrapper.className = "input-wrapper history-line " + className;
-            wrapper.innerHTML = `<span></span><input type="text" class="user-input-line" autocomplete="off">`;
-            log.appendChild(wrapper);
+      async function typeInputPrompt(promptText, className) {
+        const wrapper = document.createElement('div');
+        wrapper.className = `input-wrapper history-line ${className}`.trim();
 
-            const label = wrapper.querySelector('span');
-            const input = wrapper.querySelector('input');
+        const prompt = document.createElement('span');
+        prompt.className = 'prompt';
+        wrapper.appendChild(prompt);
 
-            let i = 0;
-            const timer = setInterval(() => {
-                if (i < text.length) {
-                    label.textContent += text.charAt(i++);
-                } else {
-                    clearInterval(timer);
-                    input.focus();
-                    input.onkeydown = (e) => {
-                        if (e.key === 'Enter') {
-                            const val = input.value.trim().toUpperCase();
-                            input.disabled = true;
-                            handleAuth(val);
-                            resolve();
-                        }
-                    };
-                }
-            }, 12);
-        });
-    }
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'user-input-line';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        input.autocapitalize = 'characters';
+        input.autocorrect = 'off';
+        wrapper.appendChild(input);
 
-    // --- AUTH & DATA LOGIC ---
-    function handleAuth(val) {
-        const u = localStorage.getItem('ls_user');
-        if (!u) {
-            if (!val) { addToQueue("USERNAME REQUIRED:", "error-msg", true); return; }
-            localStorage.setItem('ls_user', val);
-            addToQueue(`USER SAVED: ${val}`, "success-msg");
-            bootSequence();
+        log.appendChild(wrapper);
+
+        for (let i = 0; i < promptText.length; i++) {
+          prompt.textContent += promptText[i];
+          await sleep(12);
+        }
+
+        setTimeout(() => input.focus(), 0);
+        await waitForEnter(input, handleAuth);
+      }
+
+      // --- AUTH & DATA LOGIC ---
+      async function handleAuth(val) {
+        const savedUser = localStorage.getItem(KEY_USER);
+        const savedPass = localStorage.getItem(KEY_PASS);
+
+        if (!savedUser) {
+          if (!val) {
+            addToQueue('USERNAME REQUIRED:', 'error-msg', true);
             return;
+          }
+          localStorage.setItem(KEY_USER, val);
+          addToQueue(`USER SAVED: ${val}`, 'success-msg');
+          await bootSequence();
+          return;
         }
-        const p = localStorage.getItem('ls_pass');
-        if (!p) {
-            if (!val) { addToQueue("PASSKEY REQUIRED:", "error-msg", true); return; }
-            localStorage.setItem('ls_pass', val);
-            addToQueue("PASSKEY SAVED.", "success-msg");
-            bootSequence();
+
+        if (!savedPass) {
+          if (!val) {
+            addToQueue('PASSKEY REQUIRED:', 'error-msg', true);
+            return;
+          }
+          localStorage.setItem(KEY_PASS, val);
+          addToQueue('PASSKEY SAVED.', 'success-msg');
+          await bootSequence();
         }
-    }
+      }
 
-    async function checkExistingRequest() {
-        const requestId = localStorage.getItem('ls_request');
+      async function checkExistingRequest() {
+        const requestId = localStorage.getItem(KEY_REQUEST);
 
-        addToQueue("================================", "system-msg");
-        addToQueue("REQUEST SESSION CHECK STARTED.", "highlight");
-        addToQueue("CHECKING MATCH DATABASE...", "system-msg");
+        addToQueue('================================', 'system-msg');
+        addToQueue('REQUEST SESSION CHECK STARTED.', 'highlight');
+        addToQueue('CHECKING MATCH DATABASE...', 'system-msg');
 
         try {
-            if (requestId) {
-                // RULE TARGET: R/$requestId { ".read": "true" }
-                addToQueue(`SAVED REQUEST DETECTED: ${requestId}`, "system-msg");
-                addToQueue("QUERY MODE: DIRECT PATH", "system-msg");
+          if (requestId) {
+            addToQueue(`SAVED REQUEST DETECTED: ${requestId}`, 'system-msg');
+            addToQueue('QUERY MODE: DIRECT PATH', 'system-msg');
 
-                const snap = await matchDb.ref("R/" + requestId).once('value');
-
-                if (snap.exists()) {
-                    addToQueue(`MATCH LINKED: ${requestId}`, "success-msg");
-                    addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
-                } else {
-                    addToQueue("SAVED REQUEST EXPIRED.", "error-msg");
-                    localStorage.removeItem('ls_request');
-                    addToQueue("RE-INITIALIZING QUEUE LOOKUP...", "system-msg");
-                    return checkExistingRequest(); 
-                }
+            const snap = await db.ref(`R/${requestId}`).once('value');
+            if (snap.exists()) {
+              addToQueue(`MATCH LINKED: ${requestId}`, 'success-msg');
+              addToQueue('READ COMPLETE — ACTIVE REQUEST LOADED.', 'highlight');
             } else {
-                // RULE TARGET: R { ".read": "query.orderByKey == true && query.limitToFirst <= 1" }
-                addToQueue("NO SAVED REQUEST. SEEKING QUEUE HEAD...", "system-msg");
-                addToQueue("QUERY MODE: KEY_SORT + LIMIT_1", "system-msg");
-
-                const snap = await matchDb.ref("R").orderByKey().limitToFirst(1).once('value');
-
-                if (!snap.exists()) {
-                    addToQueue("NO ACTIVE REQUESTS FOUND.", "system-msg");
-                    addToQueue("READY FOR MATCH CREATION.", "highlight");
-                } else {
-                    let firstKey = null;
-                    snap.forEach(child => { firstKey = child.key; });
-                    localStorage.setItem('ls_request', firstKey);
-                    addToQueue(`NEW REQUEST ADOPTED: ${firstKey}`, "success-msg");
-                    addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
-                }
+              addToQueue('SAVED REQUEST EXPIRED.', 'error-msg');
+              localStorage.removeItem(KEY_REQUEST);
+              addToQueue('RE-INITIALIZING QUEUE LOOKUP...', 'system-msg');
+              return checkExistingRequest();
             }
-            addToQueue("================================", "system-msg");
+          } else {
+            addToQueue('NO SAVED REQUEST. SEEKING QUEUE HEAD...', 'system-msg');
+            addToQueue('QUERY MODE: KEY_SORT + LIMIT_1', 'system-msg');
+
+            const snap = await db.ref('R').orderByKey().limitToFirst(1).once('value');
+            if (!snap.exists()) {
+              addToQueue('NO ACTIVE REQUESTS FOUND.', 'system-msg');
+              addToQueue('READY FOR MATCH CREATION.', 'highlight');
+            } else {
+              let firstKey = null;
+              snap.forEach((child) => {
+                firstKey = child.key;
+              });
+              if (firstKey) localStorage.setItem(KEY_REQUEST, firstKey);
+              addToQueue(`NEW REQUEST ADOPTED: ${firstKey}`, 'success-msg');
+              addToQueue('READ COMPLETE — ACTIVE REQUEST LOADED.', 'highlight');
+            }
+          }
+
+          addToQueue('================================', 'system-msg');
         } catch (e) {
-            console.error("Firebase Read Error:", e);
-            addToQueue("CRITICAL: DATABASE ACCESS DENIED.", "error-msg");
-            addToQueue("CHECK SECURITY RULE INTEGRATION.", "error-msg");
-            addToQueue("================================", "system-msg");
+          console.error('Firebase Read Error:', e);
+          addToQueue('CRITICAL: DATABASE ACCESS DENIED.', 'error-msg');
+          addToQueue('CHECK SECURITY RULE INTEGRATION.', 'error-msg');
+          addToQueue('================================', 'system-msg');
         }
-    }
+      }
 
-    async function bootSequence() {
-        const u = localStorage.getItem('ls_user');
-        const p = localStorage.getItem('ls_pass');
+      async function bootSequence() {
+        const user = localStorage.getItem(KEY_USER);
+        const pass = localStorage.getItem(KEY_PASS);
 
-        if (!u) {
-            addToQueue("LASER CHESS STANDARD VARIANT(THINKFUN) - CORE EDITION(BETA η- Version) v1.0.6", "highlight");
-            addToQueue("IDENTIFY USER:", "", true);
-            return;
-        }
-
-        if (!p) {
-            addToQueue(`WELCOME BACK, ${u}.`, "highlight");
-            addToQueue("ENTER PASSKEY:", "", true);
-            return;
+        if (!user) {
+          addToQueue('LASER CHESS STANDARD VARIANT(THINKFUN) - CORE EDITION(BETA η- Version) v1.0.6', 'highlight');
+          addToQueue('IDENTIFY USER:', '', true);
+          return;
         }
 
-        addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
+        if (!pass) {
+          addToQueue(`WELCOME BACK, ${user}.`, 'highlight');
+          addToQueue('ENTER PASSKEY:', '', true);
+          return;
+        }
+
+        addToQueue('AUTH COMPLETE. GAME READY.', 'success-msg');
         await checkExistingRequest();
-    }
+      }
 
-    // --- INITIALIZE ---
-    (async () => {
+      // --- INITIALIZE ---
+      window.addEventListener('DOMContentLoaded', async () => {
         try {
-            if (document.fonts && document.fonts.load) {
-                await document.fonts.load('16px Unifont');
-                await document.fonts.ready;
-            }
-        } catch (e) { console.log("Font issue:", e); }
+          if (document.fonts?.load) {
+            await document.fonts.load('16px ui-monospace');
+            await document.fonts.ready;
+          }
+        } catch (e) {
+          console.log('Font load issue:', e);
+        }
         bootSequence();
+      });
     })();
-</script>
-
+  </script>
 </body>
 </html>
