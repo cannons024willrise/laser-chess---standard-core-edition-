@@ -173,17 +173,9 @@
         addToQueue("================================", "system-msg");
         addToQueue("REQUEST SESSION CHECK STARTED.", "highlight");
         addToQueue("CHECKING MATCH DATABASE...", "system-msg");
-
-        if (!requestId) {
-            addToQueue("NO SAVED REQUEST FLAG FOUND.", "system-msg");
-            addToQueue("NO MATCH LINK TO RESUME.", "system-msg");
-            addToQueue("READY FOR MATCH CREATION.", "highlight");
-            addToQueue("================================", "system-msg");
-            return;
-        }
-
-        addToQueue(`LOOKUP: R/${requestId}`, "system-msg");
+        addToQueue("QUERY MODE: ORDER BY KEY + LIMIT 1", "system-msg");
         addToQueue("WAITING FOR DATABASE RESPONSE...", "system-msg");
+        addToQueue("================================", "system-msg");
 
         try {
             const snap = await matchDb.ref("R").orderByKey().limitToFirst(1).once('value');
@@ -191,22 +183,49 @@
             if (!snap.exists()) {
                 addToQueue("NO SAVED REQUESTS FOUND.", "system-msg");
                 addToQueue("READ COMPLETE — EMPTY RESULT.", "system-msg");
+                addToQueue("READY FOR MATCH CREATION.", "highlight");
                 addToQueue("================================", "system-msg");
                 return;
             }
 
-            let foundAny = false;
+            let firstKey = null;
+            let firstValue = null;
 
             snap.forEach(child => {
-                foundAny = true;
-                addToQueue(`REQUEST FOUND: ${child.key}`, "success-msg");
-                addToQueue("MATCH LINKED.", "success-msg");
-                addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
+                if (!firstKey) {
+                    firstKey = child.key;
+                    firstValue = child.val();
+                }
             });
 
-            if (!foundAny) {
+            if (!firstKey) {
                 addToQueue("NO SAVED REQUESTS FOUND.", "system-msg");
                 addToQueue("READ COMPLETE — EMPTY RESULT.", "system-msg");
+                addToQueue("READY FOR MATCH CREATION.", "highlight");
+                addToQueue("================================", "system-msg");
+                return;
+            }
+
+            if (!requestId) {
+                addToQueue("NO SAVED REQUEST FLAG FOUND.", "system-msg");
+                addToQueue("ADOPTING FIRST QUEUE INTENT.", "highlight");
+                localStorage.setItem('ls_request', firstKey);
+                addToQueue(`REQUEST STORED: ${firstKey}`, "success-msg");
+                addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
+                addToQueue("================================", "system-msg");
+                return;
+            }
+
+            if (requestId === firstKey) {
+                addToQueue(`REQUEST FOUND: ${firstKey}`, "success-msg");
+                addToQueue("MATCH LINKED.", "success-msg");
+                addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
+            } else {
+                addToQueue("SAVED REQUEST DID NOT MATCH QUEUE HEAD.", "error-msg");
+                addToQueue("ADOPTING FIRST QUEUE INTENT.", "highlight");
+                localStorage.setItem('ls_request', firstKey);
+                addToQueue(`REQUEST UPDATED: ${firstKey}`, "success-msg");
+                addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
             }
 
             addToQueue("================================", "system-msg");
