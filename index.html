@@ -167,33 +167,48 @@
     }
 
     async function checkExistingRequest() {
-        addToQueue("SAVED REQUEST DETECTED.", "highlight");
+        addToQueue("================================", "system-msg");
+        addToQueue("REQUEST SCAN STARTED.", "highlight");
         addToQueue("CHECKING MATCH DATABASE...", "system-msg");
-        addToQueue("QUERY: R / ORDERBYKEY / LIMITTOFIRST(1)", "system-msg");
-        addToQueue("WAITING FOR RESPONSE...", "system-msg");
+        addToQueue("QUERY MODE: ORDER BY KEY + LIMIT 1", "system-msg");
+        addToQueue("WAITING FOR DATABASE RESPONSE...", "system-msg");
+        addToQueue("================================", "system-msg");
 
         try {
             const snap = await matchDb.ref("R").orderByKey().limitToFirst(1).once('value');
 
             if (!snap.exists()) {
+                addToQueue("================================", "system-msg");
                 addToQueue("NO SAVED REQUESTS FOUND.", "system-msg");
+                addToQueue("READ COMPLETE — EMPTY RESULT.", "system-msg");
+                addToQueue("================================", "system-msg");
                 return;
             }
 
-            let found = false;
+            let foundAny = false;
 
             snap.forEach(child => {
-                found = true;
+                foundAny = true;
+                addToQueue("================================", "system-msg");
                 addToQueue(`REQUEST FOUND: ${child.key}`, "success-msg");
                 addToQueue("MATCH LINKED.", "success-msg");
+                addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
+                addToQueue("================================", "system-msg");
             });
 
-            if (!found) {
+            if (!foundAny) {
+                addToQueue("================================", "system-msg");
                 addToQueue("NO SAVED REQUESTS FOUND.", "system-msg");
+                addToQueue("READ COMPLETE — EMPTY RESULT.", "system-msg");
+                addToQueue("================================", "system-msg");
             }
         } catch (e) {
             console.log("Request read failed:", e);
+            addToQueue("================================", "system-msg");
             addToQueue("REQUEST READ FAILED.", "error-msg");
+            addToQueue("DATABASE LOOKUP ABORTED.", "error-msg");
+            addToQueue("READ COMPLETE — FAILURE.", "error-msg");
+            addToQueue("================================", "system-msg");
         }
     }
 
@@ -217,6 +232,7 @@
         addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
 
         if (r) {
+            addToQueue("SAVED REQUEST FLAG DETECTED.", "system-msg");
             await checkExistingRequest();
         } else {
             addToQueue("NO SAVED REQUEST FOUND.", "system-msg");
