@@ -62,6 +62,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
 
 <script>
+    // --- FIREBASE CONFIGURATION ---
     const matchFirebaseConfig = {
         apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE",
         authDomain: "laser-chess-low-efficiency.firebaseapp.com",
@@ -72,6 +73,7 @@
     const matchApp = firebase.initializeApp(matchFirebaseConfig);
     const matchDb = firebase.database(matchApp);
 
+    // --- TERMINAL UI ENGINE ---
     const log = document.getElementById('terminal-log');
     let msgQueue = [];
     let isProcessing = false;
@@ -96,7 +98,6 @@
             const div = document.createElement('div');
             div.className = "history-line " + className;
             log.appendChild(div);
-
             let i = 0;
             const timer = setInterval(() => {
                 if (i < text.length) {
@@ -126,7 +127,6 @@
                 } else {
                     clearInterval(timer);
                     input.focus();
-
                     input.onkeydown = (e) => {
                         if (e.key === 'Enter') {
                             const val = input.value.trim().toUpperCase();
@@ -140,27 +140,19 @@
         });
     }
 
+    // --- AUTH & DATA LOGIC ---
     function handleAuth(val) {
         const u = localStorage.getItem('ls_user');
-
         if (!u) {
-            if (!val) {
-                addToQueue("USERNAME REQUIRED:", "error-msg", true);
-                return;
-            }
+            if (!val) { addToQueue("USERNAME REQUIRED:", "error-msg", true); return; }
             localStorage.setItem('ls_user', val);
             addToQueue(`USER SAVED: ${val}`, "success-msg");
             bootSequence();
             return;
         }
-
         const p = localStorage.getItem('ls_pass');
-
         if (!p) {
-            if (!val) {
-                addToQueue("PASSKEY REQUIRED:", "error-msg", true);
-                return;
-            }
+            if (!val) { addToQueue("PASSKEY REQUIRED:", "error-msg", true); return; }
             localStorage.setItem('ls_pass', val);
             addToQueue("PASSKEY SAVED.", "success-msg");
             bootSequence();
@@ -176,10 +168,9 @@
 
         try {
             if (requestId) {
-                // MODE 2: DIRECT PATH LOOKUP (Triggering query.limitToFirst === null in rules)
+                // RULE TARGET: R/$requestId { ".read": "true" }
                 addToQueue(`SAVED REQUEST DETECTED: ${requestId}`, "system-msg");
-                addToQueue("QUERY MODE: DIRECT PATH LOOKUP", "system-msg");
-                addToQueue("WAITING FOR DATABASE RESPONSE...", "system-msg");
+                addToQueue("QUERY MODE: DIRECT PATH", "system-msg");
 
                 const snap = await matchDb.ref("R/" + requestId).once('value');
 
@@ -187,45 +178,34 @@
                     addToQueue(`MATCH LINKED: ${requestId}`, "success-msg");
                     addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
                 } else {
-                    addToQueue("SAVED REQUEST EXPIRED OR INVALID.", "error-msg");
+                    addToQueue("SAVED REQUEST EXPIRED.", "error-msg");
                     localStorage.removeItem('ls_request');
-                    addToQueue("LOCAL CACHE CLEARED. REBOOTING SESSION...", "system-msg");
-                    
-                    // Delay slightly to prevent infinite rapid looping if server is down
-                    setTimeout(checkExistingRequest, 800); 
-                    return; 
+                    addToQueue("RE-INITIALIZING QUEUE LOOKUP...", "system-msg");
+                    return checkExistingRequest(); 
                 }
             } else {
-                // MODE 1: QUEUE HEAD LOOKUP (Triggering query.orderByKey && limitToFirst === 1)
-                addToQueue("NO SAVED REQUEST FOUND. SEEKING AVAILABLE...", "system-msg");
-                addToQueue("QUERY MODE: ORDER BY KEY + LIMIT 1", "system-msg");
-                addToQueue("WAITING FOR DATABASE RESPONSE...", "system-msg");
+                // RULE TARGET: R { ".read": "query.orderByKey == true && query.limitToFirst <= 1" }
+                addToQueue("NO SAVED REQUEST. SEEKING QUEUE HEAD...", "system-msg");
+                addToQueue("QUERY MODE: KEY_SORT + LIMIT_1", "system-msg");
 
                 const snap = await matchDb.ref("R").orderByKey().limitToFirst(1).once('value');
 
                 if (!snap.exists()) {
-                    addToQueue("NO SAVED REQUESTS FOUND IN QUEUE.", "system-msg");
-                    addToQueue("READ COMPLETE — EMPTY RESULT.", "system-msg");
+                    addToQueue("NO ACTIVE REQUESTS FOUND.", "system-msg");
                     addToQueue("READY FOR MATCH CREATION.", "highlight");
                 } else {
                     let firstKey = null;
-                    snap.forEach(child => {
-                        firstKey = child.key;
-                    });
-
+                    snap.forEach(child => { firstKey = child.key; });
                     localStorage.setItem('ls_request', firstKey);
                     addToQueue(`NEW REQUEST ADOPTED: ${firstKey}`, "success-msg");
                     addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
                 }
             }
-            
             addToQueue("================================", "system-msg");
-            
         } catch (e) {
-            console.error("Request read failed:", e);
-            addToQueue("REQUEST READ FAILED: ACCESS DENIED.", "error-msg");
-            addToQueue("DATABASE LOOKUP ABORTED.", "error-msg");
-            addToQueue("READ COMPLETE — FAILURE.", "error-msg");
+            console.error("Firebase Read Error:", e);
+            addToQueue("CRITICAL: DATABASE ACCESS DENIED.", "error-msg");
+            addToQueue("CHECK SECURITY RULE INTEGRATION.", "error-msg");
             addToQueue("================================", "system-msg");
         }
     }
@@ -235,7 +215,7 @@
         const p = localStorage.getItem('ls_pass');
 
         if (!u) {
-            addToQueue("LASER CHESS STANDARD VARIANT(THINKFUN) - CORE EDITION(BETA η- Version)  v1.0.6", "highlight");
+            addToQueue("LASER CHESS STANDARD VARIANT(THINKFUN) - CORE EDITION(BETA η- Version) v1.0.6", "highlight");
             addToQueue("IDENTIFY USER:", "", true);
             return;
         }
@@ -250,16 +230,14 @@
         await checkExistingRequest();
     }
 
+    // --- INITIALIZE ---
     (async () => {
         try {
             if (document.fonts && document.fonts.load) {
                 await document.fonts.load('16px Unifont');
                 await document.fonts.ready;
             }
-        } catch (e) {
-            console.log("Font load issue:", e);
-        }
-
+        } catch (e) { console.log("Font issue:", e); }
         bootSequence();
     })();
 </script>
