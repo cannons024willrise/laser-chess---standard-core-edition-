@@ -155,6 +155,7 @@
         }
 
         const p = localStorage.getItem('ls_pass');
+
         if (!p) {
             if (!val) {
                 addToQueue("PASSKEY REQUIRED:", "error-msg", true);
@@ -167,18 +168,27 @@
     }
 
     async function checkExistingRequest() {
+        const requestId = localStorage.getItem('ls_request');
+
         addToQueue("================================", "system-msg");
-        addToQueue("REQUEST SCAN STARTED.", "highlight");
+        addToQueue("REQUEST SESSION CHECK STARTED.", "highlight");
         addToQueue("CHECKING MATCH DATABASE...", "system-msg");
-        addToQueue("QUERY MODE: ORDER BY KEY + LIMIT 1", "system-msg");
+
+        if (!requestId) {
+            addToQueue("NO SAVED REQUEST FLAG FOUND.", "system-msg");
+            addToQueue("NO MATCH LINK TO RESUME.", "system-msg");
+            addToQueue("READY FOR MATCH CREATION.", "highlight");
+            addToQueue("================================", "system-msg");
+            return;
+        }
+
+        addToQueue(`LOOKUP: R/${requestId}`, "system-msg");
         addToQueue("WAITING FOR DATABASE RESPONSE...", "system-msg");
-        addToQueue("================================", "system-msg");
 
         try {
             const snap = await matchDb.ref("R").orderByKey().limitToFirst(1).once('value');
 
             if (!snap.exists()) {
-                addToQueue("================================", "system-msg");
                 addToQueue("NO SAVED REQUESTS FOUND.", "system-msg");
                 addToQueue("READ COMPLETE — EMPTY RESULT.", "system-msg");
                 addToQueue("================================", "system-msg");
@@ -189,22 +199,19 @@
 
             snap.forEach(child => {
                 foundAny = true;
-                addToQueue("================================", "system-msg");
                 addToQueue(`REQUEST FOUND: ${child.key}`, "success-msg");
                 addToQueue("MATCH LINKED.", "success-msg");
                 addToQueue("READ COMPLETE — ACTIVE REQUEST LOADED.", "highlight");
-                addToQueue("================================", "system-msg");
             });
 
             if (!foundAny) {
-                addToQueue("================================", "system-msg");
                 addToQueue("NO SAVED REQUESTS FOUND.", "system-msg");
                 addToQueue("READ COMPLETE — EMPTY RESULT.", "system-msg");
-                addToQueue("================================", "system-msg");
             }
+
+            addToQueue("================================", "system-msg");
         } catch (e) {
             console.log("Request read failed:", e);
-            addToQueue("================================", "system-msg");
             addToQueue("REQUEST READ FAILED.", "error-msg");
             addToQueue("DATABASE LOOKUP ABORTED.", "error-msg");
             addToQueue("READ COMPLETE — FAILURE.", "error-msg");
@@ -215,7 +222,6 @@
     async function bootSequence() {
         const u = localStorage.getItem('ls_user');
         const p = localStorage.getItem('ls_pass');
-        const r = localStorage.getItem('ls_request');
 
         if (!u) {
             addToQueue("LASER CHESS STANDARD VARIANT(THINKFUN) - CORE EDITION(BETA η- Version)  v1.0.6", "highlight");
@@ -230,13 +236,7 @@
         }
 
         addToQueue("AUTH COMPLETE. GAME READY.", "success-msg");
-
-        if (r) {
-            addToQueue("SAVED REQUEST FLAG DETECTED.", "system-msg");
-            await checkExistingRequest();
-        } else {
-            addToQueue("NO SAVED REQUEST FOUND.", "system-msg");
-        }
+        await checkExistingRequest();
     }
 
     (async () => {
