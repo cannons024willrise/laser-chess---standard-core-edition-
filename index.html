@@ -97,6 +97,10 @@
       const KEY_PASS = 'ls_pass';
       const KEY_REQUEST = 'ls_request';
 
+      // --- BRANCHES ---
+      const PATH_REQUESTS = 'R';   // exact path lookup branch
+      const PATH_QUEUE = 'RQ';     // queue-head branch
+
       // --- UI ENGINE ---
       const log = document.getElementById('terminal-log');
       const queue = [];
@@ -208,6 +212,49 @@
         }
       }
 
+      async function readQueueHeadIntent() {
+        addToQueue('QUERY MODE: KEY_SORT + LIMIT_1', 'system-msg');
+
+        try {
+          const snap = await db.ref(PATH_QUEUE).orderByKey().limitToFirst(1).once('value');
+
+          if (!snap.exists()) {
+            addToQueue('NO ACTIVE REQUESTS FOUND.', 'system-msg');
+            addToQueue('READY FOR MATCH CREATION.', 'highlight');
+            return;
+          }
+
+          let firstKey = null;
+          let firstValue = null;
+
+          snap.forEach((child) => {
+            if (!firstKey) {
+              firstKey = child.key;
+              firstValue = child.val();
+            }
+          });
+
+          if (!firstKey) {
+            addToQueue('NO ACTIVE REQUESTS FOUND.', 'system-msg');
+            addToQueue('READY FOR MATCH CREATION.', 'highlight');
+            return;
+          }
+
+          localStorage.setItem(KEY_REQUEST, firstKey);
+          addToQueue(`NEW REQUEST ADOPTED: ${firstKey}`, 'success-msg');
+
+          if (firstValue && typeof firstValue === 'object' && firstValue.m) {
+            addToQueue(`MATCH REFERENCE: ${firstValue.m}`, 'system-msg');
+          }
+
+          addToQueue('READ COMPLETE — ACTIVE REQUEST LOADED.', 'highlight');
+        } catch (e) {
+          console.error('Queue Read Error:', e);
+          addToQueue('CRITICAL: QUEUE ACCESS FAILED.', 'error-msg');
+          addToQueue('CHECK SECURITY RULE INTEGRATION.', 'error-msg');
+        }
+      }
+
       async function checkExistingRequest() {
         const requestId = localStorage.getItem(KEY_REQUEST);
 
@@ -220,42 +267,27 @@
             addToQueue(`SAVED REQUEST DETECTED: ${requestId}`, 'system-msg');
             addToQueue('QUERY MODE: DIRECT PATH', 'system-msg');
 
-            const snap = await db.ref(`R/${requestId}`).once('value');
+            const snap = await db.ref(`${PATH_REQUESTS}/${requestId}`).once('value');
+
             if (snap.exists()) {
               addToQueue(`MATCH LINKED: ${requestId}`, 'success-msg');
               addToQueue('READ COMPLETE — ACTIVE REQUEST LOADED.', 'highlight');
             } else {
               addToQueue('SAVED REQUEST EXPIRED.', 'error-msg');
               localStorage.removeItem(KEY_REQUEST);
-              addToQueue('READY FOR MATCH CREATION.', 'highlight');
+              addToQueue('REQUEST CLEARED. SEEKING QUEUE HEAD...', 'system-msg');
+              await readQueueHeadIntent();
             }
           } else {
-            addToQueue('NO SAVED REQUEST. SEEKING QUEUE HEAD...', 'system-msg');
-            addToQueue('QUERY MODE: KEY_SORT + LIMIT_1', 'system-msg');
-
-            // Keep the collection read: this is the crucial RTDB query path.
-            // Firebase rules docs show query-based reads should match the query shape exactly.
-            const headQuery = db.ref('R').orderByKey().limitToFirst(1);
-            const snap = await headQuery.once('value');
-
-            if (!snap.exists()) {
-              addToQueue('NO ACTIVE REQUESTS FOUND.', 'system-msg');
-              addToQueue('READY FOR MATCH CREATION.', 'highlight');
-            } else {
-              let firstKey = null;
-              snap.forEach((child) => {
-                firstKey = child.key;
-              });
-              if (firstKey) localStorage.setItem(KEY_REQUEST, firstKey);
-              addToQueue(`NEW REQUEST ADOPTED: ${firstKey}`, 'success-msg');
-              addToQueue('READ COMPLETE — ACTIVE REQUEST LOADED.', 'highlight');
-            }
+            addToQueue('NO SAVED REQUEST FLAG FOUND.', 'system-msg');
+            addToQueue('SEEKING QUEUE HEAD...', 'system-msg');
+            await readQueueHeadIntent();
           }
 
           addToQueue('================================', 'system-msg');
         } catch (e) {
           console.error('Firebase Read Error:', e);
-          addToQueue('CRITICAL: DATABASE ACCESS DENIED.', 'error-msg');
+          addToQueue('CRITICAL: DATABASE ACCESS FAILED.', 'error-msg');
           addToQueue('CHECK SECURITY RULE INTEGRATION.', 'error-msg');
           addToQueue('================================', 'system-msg');
         }
@@ -281,7 +313,6 @@
         await checkExistingRequest();
       }
 
-      // --- INITIALIZE ---
       window.addEventListener('DOMContentLoaded', async () => {
         try {
           if (document.fonts?.load) {
