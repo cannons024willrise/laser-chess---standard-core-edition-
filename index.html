@@ -79,7 +79,6 @@
     (() => {
       'use strict';
 
-      // --- FIREBASE CONFIGURATION ---
       const matchFirebaseConfig = {
         apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE",
         authDomain: "laser-chess-low-efficiency.firebaseapp.com",
@@ -92,16 +91,13 @@
         : firebase.initializeApp(matchFirebaseConfig);
       const db = firebase.database(app);
 
-      // --- STORAGE KEYS ---
       const KEY_USER = 'ls_user';
       const KEY_PASS = 'ls_pass';
       const KEY_REQUEST = 'ls_request';
 
-      // --- BRANCHES ---
-      const PATH_REQUESTS = 'R';   // exact path lookup branch
-      const PATH_QUEUE = 'RQ';     // queue-head branch
+      const PATH_REQUESTS = 'R';
+      const PATH_QUEUE = 'RQ';
 
-      // --- UI ENGINE ---
       const log = document.getElementById('terminal-log');
       const queue = [];
       let processing = false;
@@ -185,7 +181,6 @@
         await waitForEnter(input, handleAuth);
       }
 
-      // --- AUTH & DATA LOGIC ---
       async function handleAuth(val) {
         const savedUser = localStorage.getItem(KEY_USER);
         const savedPass = localStorage.getItem(KEY_PASS);
