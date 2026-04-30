@@ -240,10 +240,16 @@
             return;
           }
 
-          localStorage.setItem(KEY_REQUEST, firstKey);
-          addToQueue(`NEW REQUEST ADOPTED: ${firstKey}`, 'success-msg');
+          const adoptedRequestId =
+            firstValue && typeof firstValue === 'object' && firstValue.m
+              ? String(firstValue.m)
+              : firstKey;
+
+          localStorage.setItem(KEY_REQUEST, adoptedRequestId);
+          addToQueue(`NEW REQUEST ADOPTED: ${adoptedRequestId}`, 'success-msg');
 
           if (firstValue && typeof firstValue === 'object' && firstValue.m) {
+            addToQueue(`QUEUE NODE: ${firstKey}`, 'system-msg');
             addToQueue(`MATCH REFERENCE: ${firstValue.m}`, 'system-msg');
           }
 
