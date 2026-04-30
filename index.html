@@ -227,26 +227,13 @@
             } else {
               addToQueue('SAVED REQUEST EXPIRED.', 'error-msg');
               localStorage.removeItem(KEY_REQUEST);
-              addToQueue('RE-INITIALIZING QUEUE LOOKUP...', 'system-msg');
-              return checkExistingRequest();
+              addToQueue('READY FOR MATCH CREATION.', 'highlight');
             }
           } else {
-            addToQueue('NO SAVED REQUEST. SEEKING QUEUE HEAD...', 'system-msg');
-            addToQueue('QUERY MODE: KEY_SORT + LIMIT_1', 'system-msg');
-
-            const snap = await db.ref('R').orderByKey().limitToFirst(1).once('value');
-            if (!snap.exists()) {
-              addToQueue('NO ACTIVE REQUESTS FOUND.', 'system-msg');
-              addToQueue('READY FOR MATCH CREATION.', 'highlight');
-            } else {
-              let firstKey = null;
-              snap.forEach((child) => {
-                firstKey = child.key;
-              });
-              if (firstKey) localStorage.setItem(KEY_REQUEST, firstKey);
-              addToQueue(`NEW REQUEST ADOPTED: ${firstKey}`, 'success-msg');
-              addToQueue('READ COMPLETE — ACTIVE REQUEST LOADED.', 'highlight');
-            }
+            // Collection reads may be blocked by rules, so the client boots safely
+            // without probing /R. Request discovery should happen from a known ID.
+            addToQueue('NO SAVED REQUEST.', 'system-msg');
+            addToQueue('READY FOR MATCH CREATION.', 'highlight');
           }
 
           addToQueue('================================', 'system-msg');
@@ -254,6 +241,7 @@
           console.error('Firebase Read Error:', e);
           addToQueue('CRITICAL: DATABASE ACCESS DENIED.', 'error-msg');
           addToQueue('CHECK SECURITY RULE INTEGRATION.', 'error-msg');
+          addToQueue('READY FOR MATCH CREATION.', 'highlight');
           addToQueue('================================', 'system-msg');
         }
       }
