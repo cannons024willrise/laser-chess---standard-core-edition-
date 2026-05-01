@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LASER CHESS STANDARD VARIANT (THINKFUN) - CORE EDITION (BETA η- Version)</title>
   <style>
+    @font-face {
+      font-family: 'Unifont';
+      src: url('unifont-15.0.01.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+      font-display: block;
+    }
+
     :root {
       --bg0: #0a0a0a;
       --bg1: #1a1a1a;
@@ -18,11 +26,13 @@
       margin: 0;
       padding: 30px;
       color: var(--text);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-family: 'Unifont', monospace;
       font-size: 16px;
       line-height: 1.6;
       background: radial-gradient(circle at center, var(--bg1) 0%, var(--bg0) 100%);
       image-rendering: pixelated;
+      font-variant-ligatures: none;
+      letter-spacing: 0;
     }
 
     #terminal-log {
@@ -58,9 +68,12 @@
       outline: none;
       color: var(--bright);
       font: inherit;
+      font-family: 'Unifont', monospace;
       caret-color: var(--bright);
       padding: 0;
       margin: 0;
+      font-variant-ligatures: none;
+      letter-spacing: 0;
     }
 
     .system-msg { color: var(--muted); }
@@ -321,7 +334,7 @@
       window.addEventListener('DOMContentLoaded', async () => {
         try {
           if (document.fonts?.load) {
-            await document.fonts.load('16px ui-monospace');
+            await document.fonts.load('16px Unifont');
             await document.fonts.ready;
           }
         } catch (e) {
