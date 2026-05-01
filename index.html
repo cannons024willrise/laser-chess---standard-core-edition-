@@ -103,6 +103,8 @@
         measurementId: "G-RXND7NVDHT"
       };
 
+      const WORKER_URL = 'https://your-worker-url.workers.dev/match';
+
       const app = firebase.apps && firebase.apps.length
         ? firebase.app()
         : firebase.initializeApp(matchFirebaseConfig);
@@ -204,7 +206,7 @@
 
         if (!savedUser) {
           if (!val) {
-            addToQueue('USERNAME REQUIRED:', 'error-msg', true);
+            addToQueue('USERNAME REQUIRED:', 'error-msg', true, handleAuth);
             return;
           }
           localStorage.setItem(KEY_USER, val);
@@ -215,7 +217,7 @@
 
         if (!savedPass) {
           if (!val) {
-            addToQueue('PASSKEY REQUIRED:', 'error-msg', true);
+            addToQueue('PASSKEY REQUIRED:', 'error-msg', true, handleAuth);
             return;
           }
           localStorage.setItem(KEY_PASS, val);
@@ -224,33 +226,74 @@
         }
       }
 
+      function buildMatchRequest(mode) {
+        const user = localStorage.getItem(KEY_USER) || '';
+        const pass = localStorage.getItem(KEY_PASS) || '';
+
+        const intentMap = {
+          PR: { mode: 'PR', matchType: 'private', side: 'red' },
+          PB: { mode: 'PB', matchType: 'private', side: 'blue' },
+          R:  { mode: 'R',  matchType: 'public',  side: 'red' },
+          B:  { mode: 'B',  matchType: 'public',  side: 'blue' }
+        };
+
+        return {
+          intent: intentMap[mode] || null,
+          auth: {
+            user,
+            pass
+          }
+        };
+      }
+
       async function handleModeSelection(val) {
         if (!val) {
           addToQueue('MODE REQUIRED:', 'error-msg', true, handleModeSelection);
           return;
         }
 
-        switch (val) {
-          case 'PR':
-            addToQueue('MODE SELECTED: PRIVATE RED', 'success-msg');
-            break;
+        if (!['PR', 'PB', 'R', 'B'].includes(val)) {
+          addToQueue('INVALID MODE. USE PR / PB / R / B', 'error-msg');
+          addToQueue('ENTER MODE:', '', true, handleModeSelection);
+          return;
+        }
 
-          case 'PB':
-            addToQueue('MODE SELECTED: PRIVATE BLUE', 'success-msg');
-            break;
+        const requestObject = buildMatchRequest(val);
 
-          case 'R':
-            addToQueue('MODE SELECTED: PUBLIC RED', 'success-msg');
-            break;
+        addToQueue(`MODE SELECTED: ${val}`, 'success-msg');
+        addToQueue('COMPILING REQUEST OBJECT...', 'system-msg');
+        addToQueue('CONTACTING MATCH ENGINE...', 'system-msg');
 
-          case 'B':
-            addToQueue('MODE SELECTED: PUBLIC BLUE', 'success-msg');
-            break;
+        try {
+          const res = await fetch(WORKER_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestObject)
+          });
 
-          default:
-            addToQueue('INVALID MODE. USE PR / PB / R / B', 'error-msg');
-            addToQueue('ENTER MODE:', '', true, handleModeSelection);
-            return;
+          const data = await res.json();
+
+          if (!res.ok) {
+            throw new Error(data?.error || 'UNKNOWN ERROR');
+          }
+
+          if (data.matchId) {
+            localStorage.setItem(KEY_REQUEST, data.matchId);
+            addToQueue(`MATCH CREATED: ${data.matchId}`, 'success-msg');
+            addToQueue('AWAITING OPPONENT...', 'highlight');
+          } else if (data.joinedMatchId) {
+            localStorage.setItem(KEY_REQUEST, data.joinedMatchId);
+            addToQueue(`MATCH JOINED: ${data.joinedMatchId}`, 'success-msg');
+            addToQueue('INITIALIZING GAME SESSION...', 'highlight');
+          } else {
+            addToQueue('UNEXPECTED RESPONSE FROM MATCH ENGINE.', 'error-msg');
+          }
+        } catch (err) {
+          console.error(err);
+          addToQueue('MATCH ENGINE FAILURE.', 'error-msg');
+          addToQueue('RETRY OR CHECK CONNECTION.', 'error-msg');
         }
       }
 
