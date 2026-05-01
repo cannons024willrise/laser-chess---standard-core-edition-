@@ -128,8 +128,8 @@
         return div;
       }
 
-      function addToQueue(text, className = '', isRequest = false) {
-        queue.push({ text, className, isRequest });
+      function addToQueue(text, className = '', isRequest = false, handler = null) {
+        queue.push({ text, className, isRequest, handler });
         if (!processing) processQueue();
       }
 
@@ -138,7 +138,7 @@
         while (queue.length) {
           const item = queue.shift();
           if (item.isRequest) {
-            await typeInputPrompt(item.text, item.className);
+            await typeInputPrompt(item.text, item.className, item.handler || handleAuth);
           } else {
             await typeTextLine(item.text, item.className);
           }
@@ -170,7 +170,7 @@
         });
       }
 
-      async function typeInputPrompt(promptText, className) {
+      async function typeInputPrompt(promptText, className, handler = handleAuth) {
         const wrapper = document.createElement('div');
         wrapper.className = `input-wrapper history-line ${className}`.trim();
 
@@ -195,7 +195,7 @@
         }
 
         setTimeout(() => input.focus(), 0);
-        await waitForEnter(input, handleAuth);
+        await waitForEnter(input, handler);
       }
 
       async function handleAuth(val) {
@@ -224,6 +224,36 @@
         }
       }
 
+      async function handleModeSelection(val) {
+        if (!val) {
+          addToQueue('MODE REQUIRED:', 'error-msg', true, handleModeSelection);
+          return;
+        }
+
+        switch (val) {
+          case 'PR':
+            addToQueue('MODE SELECTED: PRIVATE RED', 'success-msg');
+            break;
+
+          case 'PB':
+            addToQueue('MODE SELECTED: PRIVATE BLUE', 'success-msg');
+            break;
+
+          case 'R':
+            addToQueue('MODE SELECTED: PUBLIC RED', 'success-msg');
+            break;
+
+          case 'B':
+            addToQueue('MODE SELECTED: PUBLIC BLUE', 'success-msg');
+            break;
+
+          default:
+            addToQueue('INVALID MODE. USE PR / PB / R / B', 'error-msg');
+            addToQueue('ENTER MODE:', '', true, handleModeSelection);
+            return;
+        }
+      }
+
       async function readQueueHeadIntent() {
         addToQueue('QUERY MODE: KEY_SORT + LIMIT_1', 'system-msg');
 
@@ -233,6 +263,12 @@
           if (!snap.exists()) {
             addToQueue('NO ACTIVE REQUESTS FOUND.', 'system-msg');
             addToQueue('READY FOR MATCH CREATION.', 'highlight');
+            addToQueue('SELECT MODE:', 'system-msg');
+            addToQueue('PR - PRIVATE RED', 'system-msg');
+            addToQueue('PB - PRIVATE BLUE', 'system-msg');
+            addToQueue('R  - PUBLIC RED', 'system-msg');
+            addToQueue('B  - PUBLIC BLUE', 'system-msg');
+            addToQueue('ENTER MODE:', '', true, handleModeSelection);
             return;
           }
 
@@ -249,6 +285,12 @@
           if (!firstKey) {
             addToQueue('NO ACTIVE REQUESTS FOUND.', 'system-msg');
             addToQueue('READY FOR MATCH CREATION.', 'highlight');
+            addToQueue('SELECT MODE:', 'system-msg');
+            addToQueue('PR - PRIVATE RED', 'system-msg');
+            addToQueue('PB - PRIVATE BLUE', 'system-msg');
+            addToQueue('R  - PUBLIC RED', 'system-msg');
+            addToQueue('B  - PUBLIC BLUE', 'system-msg');
+            addToQueue('ENTER MODE:', '', true, handleModeSelection);
             return;
           }
 
@@ -317,13 +359,13 @@
 
         if (!user) {
           addToQueue('LASER CHESS STANDARD VARIANT(THINKFUN) - CORE EDITION(BETA η- Version) v1.0.6', 'highlight');
-          addToQueue('IDENTIFY USER:', '', true);
+          addToQueue('IDENTIFY USER:', '', true, handleAuth);
           return;
         }
 
         if (!pass) {
           addToQueue(`WELCOME BACK, ${user}.`, 'highlight');
-          addToQueue('ENTER PASSKEY:', '', true);
+          addToQueue('ENTER PASSKEY:', '', true, handleAuth);
           return;
         }
 
