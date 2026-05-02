@@ -164,8 +164,7 @@
             if (handled) return;
             handled = true;
 
-            const rawValue = input.value.trim();
-            const value = rawValue.toUpperCase();
+            const value = input.value.trim().toUpperCase();
             input.disabled = true;
 
             const wrapper = input.parentElement;
@@ -173,10 +172,6 @@
 
             const echo = appendLine('highlight');
             echo.textContent = `${promptText}${value}`;
-
-            if (/ENTER MODE:/i.test(promptText)) {
-              addToQueue('REQUEST MODE RECEIVED.', 'success-msg');
-            }
 
             wrapper?.remove();
 
@@ -230,11 +225,11 @@
       }
 
       function showModeMenu() {
-        addToQueue('SELECT MODE:', 'system-msg');
-        addToQueue('PR - PRIVATE RED', 'system-msg');
-        addToQueue('PB - PRIVATE BLUE', 'system-msg');
-        addToQueue('R  - PUBLIC RED', 'system-msg');
-        addToQueue('B  - PUBLIC BLUE', 'system-msg');
+        addToQueue('Select mode:', 'system-msg');
+        addToQueue('PR - private red', 'system-msg');
+        addToQueue('PB - private blue', 'system-msg');
+        addToQueue('R  - public red', 'system-msg');
+        addToQueue('B  - public blue', 'system-msg');
         addToQueue('ENTER MODE:', '', true, handleModeSelection);
       }
 
@@ -249,7 +244,7 @@
           }
           localStorage.setItem(KEY_USER, val);
           addToQueue(`USER SAVED: ${val}`, 'success-msg');
-          addToQueue('USER CONFIRMED.', 'highlight');
+          addToQueue('User set.', 'highlight');
           await bootSequence();
           return;
         }
@@ -261,7 +256,7 @@
           }
           localStorage.setItem(KEY_PASS, val);
           addToQueue('PASSKEY SAVED.', 'success-msg');
-          addToQueue('AUTH CONFIRMED.', 'highlight');
+          addToQueue('Auth set.', 'highlight');
           await bootSequence();
         }
       }
@@ -299,19 +294,17 @@
 
         if (!['PR', 'PB', 'R', 'B'].includes(val)) {
           addToQueue('INVALID MODE. USE PR / PB / R / B', 'error-msg');
-          addToQueue('MODE CONFIRMATION FAILED.', 'error-msg');
+          addToQueue('Mode rejected.', 'error-msg');
           showModeMenu();
           return;
         }
 
         const requestObject = buildMatchRequest(val);
 
-        addToQueue(`MODE SELECTED: ${val}`, 'success-msg');
-        addToQueue('MODE CONFIRMED.', 'highlight');
-        addToQueue('COMPILING REQUEST OBJECT...', 'system-msg');
-        addToQueue('REQUEST BUILD CONFIRMED.', 'highlight');
-        addToQueue(`INTENT: ${requestObject.intent.mode} / ${requestObject.intent.type.toUpperCase()} / ${requestObject.intent.side.toUpperCase()}`, 'system-msg');
-        addToQueue('CONTACTING MATCH ENGINE...', 'system-msg');
+        addToQueue(`MODE: ${val}`, 'success-msg');
+        addToQueue('Attempting.', 'system-msg');
+        addToQueue('Building request.', 'system-msg');
+        addToQueue('Sending.', 'system-msg');
 
         try {
           const res = await fetch(WORKER_URL, {
@@ -332,38 +325,35 @@
           if (data.matchId) {
             localStorage.setItem(KEY_REQUEST, data.matchId);
             addToQueue(`MATCH CREATED: ${data.matchId}`, 'success-msg');
-            addToQueue('MATCH CREATION CONFIRMED.', 'highlight');
-            addToQueue('AWAITING OPPONENT...', 'highlight');
+            addToQueue('Created.', 'highlight');
+            addToQueue('Waiting.', 'highlight');
           } else if (data.joinedMatchId) {
             localStorage.setItem(KEY_REQUEST, data.joinedMatchId);
             addToQueue(`MATCH JOINED: ${data.joinedMatchId}`, 'success-msg');
-            addToQueue('MATCH JOIN CONFIRMED.', 'highlight');
-            addToQueue('INITIALIZING GAME SESSION...', 'highlight');
+            addToQueue('Joined.', 'highlight');
+            addToQueue('Starting.', 'highlight');
           } else if (status === 'QUEUED' || data.queued === true) {
             if (data.queueId) {
               localStorage.setItem(KEY_REQUEST, String(data.queueId));
             }
-            addToQueue('REQUEST QUEUED.', 'success-msg');
-            addToQueue('QUEUE CONFIRMED.', 'highlight');
+            addToQueue('Queued.', 'success-msg');
             if (data.queuePosition !== undefined && data.queuePosition !== null) {
-              addToQueue(`QUEUE POSITION: ${data.queuePosition}`, 'system-msg');
+              addToQueue(`Pos: ${data.queuePosition}`, 'system-msg');
             }
-            addToQueue('AWAITING OPPONENT...', 'highlight');
+            addToQueue('Waiting.', 'highlight');
           } else if (status === 'DENIED' || status === 'REJECTED' || status === 'ERROR') {
-            addToQueue('REQUEST DENIED.', 'error-msg');
+            addToQueue('Denied.', 'error-msg');
             if (data.message) {
               addToQueue(String(data.message), 'error-msg');
             }
-            addToQueue('CONFIRMATION FAILED.', 'error-msg');
             showModeMenu();
           } else {
-            addToQueue('UNEXPECTED RESPONSE FROM MATCH ENGINE.', 'error-msg');
-            addToQueue('NO CONFIRMATION RECEIVED.', 'error-msg');
+            addToQueue('Unexpected response.', 'error-msg');
           }
         } catch (err) {
           console.error(err);
-          addToQueue('MATCH ENGINE FAILURE.', 'error-msg');
-          addToQueue('RETRY OR CHECK CONNECTION.', 'error-msg');
+          addToQueue('Match engine failure.', 'error-msg');
+          addToQueue('Retry.', 'error-msg');
         }
       }
 
