@@ -158,9 +158,11 @@
 
       function waitForEnter(input, onSubmit) {
         return new Promise((resolve) => {
-          input.addEventListener('keydown', (e) => {
-            if (e.key !== 'Enter' && e.code !== 'NumpadEnter') return;
-            e.preventDefault();
+          let handled = false;
+
+          const submit = () => {
+            if (handled) return;
+            handled = true;
 
             const rawValue = input.value.trim();
             const value = rawValue.toUpperCase();
@@ -178,9 +180,24 @@
 
             wrapper?.remove();
 
-            Promise.resolve(onSubmit(value)).catch(console.error);
+            Promise.resolve().then(() => onSubmit(value)).catch(console.error);
             resolve();
-          }, { once: true });
+          };
+
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.code === 'NumpadEnter' || e.keyCode === 13) {
+              e.preventDefault();
+              submit();
+            }
+          });
+
+          input.addEventListener('keyup', (e) => {
+            if (handled) return;
+            if (e.key === 'Enter' || e.code === 'NumpadEnter' || e.keyCode === 13) {
+              e.preventDefault();
+              submit();
+            }
+          });
         });
       }
 
