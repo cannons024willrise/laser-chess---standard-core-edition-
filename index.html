@@ -159,10 +159,11 @@
       function waitForEnter(input, onSubmit) {
         return new Promise((resolve) => {
           input.addEventListener('keydown', (e) => {
-            if (e.key !== 'Enter') return;
+            if (e.key !== 'Enter' && e.code !== 'NumpadEnter') return;
             e.preventDefault();
 
-            const value = input.value.trim().toUpperCase();
+            const rawValue = input.value.trim();
+            const value = rawValue.toUpperCase();
             input.disabled = true;
 
             const wrapper = input.parentElement;
@@ -170,6 +171,10 @@
 
             const echo = appendLine('highlight');
             echo.textContent = `${promptText}${value}`;
+
+            if (/ENTER MODE:/i.test(promptText)) {
+              addToQueue('REQUEST MODE RECEIVED.', 'success-msg');
+            }
 
             wrapper?.remove();
 
