@@ -32,7 +32,6 @@
       background: radial-gradient(circle at center, var(--bg1) 0%, var(--bg0) 100%);
       image-rendering: pixelated;
       font-variant-ligatures: none;
-      letter-spacing: 0;
     }
 
     #terminal-log {
@@ -42,439 +41,231 @@
       max-width: 1100px;
     }
 
-    .history-line {
-      min-height: 1.6em;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
+    .history-line { min-height: 1.6em; white-space: pre-wrap; }
 
     .input-wrapper {
       display: flex;
-      align-items: baseline;
       gap: 8px;
-      min-height: 1.6em;
+      align-items: baseline;
     }
 
-    .prompt {
-      white-space: pre;
-      flex: 0 0 auto;
-    }
+    .prompt { white-space: pre; }
 
     .user-input-line {
-      flex: 1 1 auto;
-      min-width: 0;
+      flex: 1;
       background: transparent;
       border: none;
       outline: none;
       color: var(--bright);
       font: inherit;
       font-family: 'Unifont', monospace;
-      caret-color: var(--bright);
-      padding: 0;
-      margin: 0;
-      font-variant-ligatures: none;
-      letter-spacing: 0;
     }
 
     .system-msg { color: var(--muted); }
-    .success-msg { color: var(--bright); font-weight: 700; text-shadow: 0 0 5px rgba(255,255,255,0.85); }
+    .success-msg { color: var(--bright); font-weight: 700; }
     .error-msg { color: var(--error); }
     .highlight { color: var(--bright); font-weight: 700; }
   </style>
 </head>
+
 <body>
-  <div id="terminal-log" aria-live="polite"></div>
+<div id="terminal-log"></div>
 
-  <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
 
-  <script>
-    (() => {
-      'use strict';
+<script>
+(() => {
+  'use strict';
 
-      const matchFirebaseConfig = {
-        apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
-        authDomain: "lasercheowefficiencymanager.firebaseapp.com",
-        databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com",
-        projectId: "lasercheowefficiencymanager",
-        storageBucket: "lasercheowefficiencymanager.firebasestorage.app",
-        messagingSenderId: "28090691314",
-        appId: "1:28090691314:web:e8c8ae5b0fd437038b6a6b",
-        measurementId: "G-RXND7NVDHT"
+  const matchFirebaseConfig = {
+    apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
+    authDomain: "lasercheowefficiencymanager.firebaseapp.com",
+    databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com",
+    projectId: "lasercheowefficiencymanager",
+    storageBucket: "lasercheowefficiencymanager.firebasestorage.app",
+    messagingSenderId: "28090691314",
+    appId: "1:28090691314:web:e8c8ae5b0fd437038b6a6b"
+  };
+
+  // ✅ YOUR WORKER
+  const WORKER_URL = 'https://laserchessnexus-matchmanager-v-alpha.later5143.workers.dev/match';
+
+  const app = firebase.apps?.length ? firebase.app() : firebase.initializeApp(matchFirebaseConfig);
+  const db = firebase.database(app);
+
+  const KEY_USER = 'ls_user';
+  const KEY_PASS = 'ls_pass';
+  const KEY_REQUEST = 'ls_request';
+
+  const PATH_REQUESTS = 'R';
+  const PATH_QUEUE = 'RQ';
+
+  const log = document.getElementById('terminal-log');
+  const queue = [];
+  let processing = false;
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  function line(cls='') {
+    const d = document.createElement('div');
+    d.className = `history-line ${cls}`.trim();
+    log.appendChild(d);
+    return d;
+  }
+
+  function add(text, cls='', req=false, handler=null) {
+    queue.push({text,cls,req,handler});
+    if (!processing) run();
+  }
+
+  async function run() {
+    processing = true;
+    while(queue.length) {
+      const i = queue.shift();
+      if (i.req) await prompt(i.text, i.cls, i.handler || handleAuth);
+      else await type(i.text, i.cls);
+    }
+    processing = false;
+  }
+
+  async function type(text, cls) {
+    const l = line(cls);
+    for (let c of text) {
+      l.textContent += c;
+      await sleep(10);
+    }
+  }
+
+  function waitEnter(input, cb) {
+    return new Promise(resolve => {
+      const submit = () => {
+        const v = input.value.trim().toUpperCase();
+        input.disabled = true;
+
+        const wrap = input.parentElement;
+        const p = wrap?.querySelector('.prompt')?.textContent ?? '';
+
+        line('highlight').textContent = p + v;
+
+        wrap?.remove();
+        cb(v);
+        resolve();
       };
 
-      const WORKER_URL = 'https://your-worker-url.workers.dev/match';
-
-      const app = firebase.apps && firebase.apps.length
-        ? firebase.app()
-        : firebase.initializeApp(matchFirebaseConfig);
-      const db = firebase.database(app);
-
-      const KEY_USER = 'ls_user';
-      const KEY_PASS = 'ls_pass';
-      const KEY_REQUEST = 'ls_request';
-
-      const PATH_REQUESTS = 'R';
-      const PATH_QUEUE = 'RQ';
-
-      const log = document.getElementById('terminal-log');
-      const queue = [];
-      let processing = false;
-
-      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-      function appendLine(className = '') {
-        const div = document.createElement('div');
-        div.className = `history-line ${className}`.trim();
-        log.appendChild(div);
-        return div;
-      }
-
-      function addToQueue(text, className = '', isRequest = false, handler = null) {
-        queue.push({ text, className, isRequest, handler });
-        if (!processing) processQueue();
-      }
-
-      async function processQueue() {
-        processing = true;
-        while (queue.length) {
-          const item = queue.shift();
-          if (item.isRequest) {
-            await typeInputPrompt(item.text, item.className, item.handler || handleAuth);
-          } else {
-            await typeTextLine(item.text, item.className);
-          }
-        }
-        processing = false;
-      }
-
-      async function typeTextLine(text, className) {
-        const line = appendLine(className);
-        for (let i = 0; i < text.length; i++) {
-          line.textContent += text[i];
-          await sleep(12);
-        }
-      }
-
-      function waitForEnter(input, onSubmit) {
-        return new Promise((resolve) => {
-          let handled = false;
-
-          const submit = () => {
-            if (handled) return;
-            handled = true;
-
-            const value = input.value.trim().toUpperCase();
-            input.disabled = true;
-
-            const wrapper = input.parentElement;
-            const promptText = wrapper?.querySelector('.prompt')?.textContent ?? '';
-
-            const echo = appendLine('highlight');
-            echo.textContent = `${promptText}${value}`;
-
-            wrapper?.remove();
-
-            Promise.resolve().then(() => onSubmit(value)).catch(console.error);
-            resolve();
-          };
-
-          input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.code === 'NumpadEnter' || e.keyCode === 13) {
-              e.preventDefault();
-              submit();
-            }
-          });
-
-          input.addEventListener('keyup', (e) => {
-            if (handled) return;
-            if (e.key === 'Enter' || e.code === 'NumpadEnter' || e.keyCode === 13) {
-              e.preventDefault();
-              submit();
-            }
-          });
-        });
-      }
-
-      async function typeInputPrompt(promptText, className, handler = handleAuth) {
-        const wrapper = document.createElement('div');
-        wrapper.className = `input-wrapper history-line ${className}`.trim();
-
-        const prompt = document.createElement('span');
-        prompt.className = 'prompt';
-        wrapper.appendChild(prompt);
-
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'user-input-line';
-        input.autocomplete = 'off';
-        input.spellcheck = false;
-        input.autocapitalize = 'characters';
-        input.autocorrect = 'off';
-        wrapper.appendChild(input);
-
-        log.appendChild(wrapper);
-
-        for (let i = 0; i < promptText.length; i++) {
-          prompt.textContent += promptText[i];
-          await sleep(12);
-        }
-
-        setTimeout(() => input.focus(), 0);
-        await waitForEnter(input, handler);
-      }
-
-      function showModeMenu() {
-        addToQueue('Select mode:', 'system-msg');
-        addToQueue('PR - private red', 'system-msg');
-        addToQueue('PB - private blue', 'system-msg');
-        addToQueue('R  - public red', 'system-msg');
-        addToQueue('B  - public blue', 'system-msg');
-        addToQueue('ENTER MODE:', '', true, handleModeSelection);
-      }
-
-      async function handleAuth(val) {
-        const savedUser = localStorage.getItem(KEY_USER);
-        const savedPass = localStorage.getItem(KEY_PASS);
-
-        if (!savedUser) {
-          if (!val) {
-            addToQueue('USERNAME REQUIRED:', 'error-msg', true, handleAuth);
-            return;
-          }
-          localStorage.setItem(KEY_USER, val);
-          addToQueue(`USER SAVED: ${val}`, 'success-msg');
-          addToQueue('User set.', 'highlight');
-          await bootSequence();
-          return;
-        }
-
-        if (!savedPass) {
-          if (!val) {
-            addToQueue('PASSKEY REQUIRED:', 'error-msg', true, handleAuth);
-            return;
-          }
-          localStorage.setItem(KEY_PASS, val);
-          addToQueue('PASSKEY SAVED.', 'success-msg');
-          addToQueue('Auth set.', 'highlight');
-          await bootSequence();
-        }
-      }
-
-      function buildMatchRequest(mode) {
-        const user = localStorage.getItem(KEY_USER) || '';
-        const pass = localStorage.getItem(KEY_PASS) || '';
-
-        const intentMap = {
-          PR: { mode: 'PR', type: 'private', side: 'red' },
-          PB: { mode: 'PB', type: 'private', side: 'blue' },
-          R:  { mode: 'R',  type: 'public',  side: 'red' },
-          B:  { mode: 'B',  type: 'public',  side: 'blue' }
-        };
-
-        return {
-          requestId: crypto.randomUUID(),
-          intent: intentMap[mode] || null,
-          auth: {
-            user,
-            pass
-          },
-          client: {
-            platform: 'web',
-            mode
-          }
-        };
-      }
-
-      async function handleModeSelection(val) {
-        if (!val) {
-          addToQueue('MODE REQUIRED:', 'error-msg', true, handleModeSelection);
-          return;
-        }
-
-        if (!['PR', 'PB', 'R', 'B'].includes(val)) {
-          addToQueue('INVALID MODE. USE PR / PB / R / B', 'error-msg');
-          addToQueue('Mode rejected.', 'error-msg');
-          showModeMenu();
-          return;
-        }
-
-        const requestObject = buildMatchRequest(val);
-
-        addToQueue(`MODE: ${val}`, 'success-msg');
-        addToQueue('Attempting.', 'system-msg');
-        addToQueue('Building request.', 'system-msg');
-        addToQueue('Sending.', 'system-msg');
-
-        try {
-          const res = await fetch(WORKER_URL, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestObject)
-          });
-
-          const data = await res.json();
-          const status = String(data?.status || '').toUpperCase();
-
-          if (!res.ok) {
-            throw new Error(data?.error || 'UNKNOWN ERROR');
-          }
-
-          if (data.matchId) {
-            localStorage.setItem(KEY_REQUEST, data.matchId);
-            addToQueue(`MATCH CREATED: ${data.matchId}`, 'success-msg');
-            addToQueue('Created.', 'highlight');
-            addToQueue('Waiting.', 'highlight');
-          } else if (data.joinedMatchId) {
-            localStorage.setItem(KEY_REQUEST, data.joinedMatchId);
-            addToQueue(`MATCH JOINED: ${data.joinedMatchId}`, 'success-msg');
-            addToQueue('Joined.', 'highlight');
-            addToQueue('Starting.', 'highlight');
-          } else if (status === 'QUEUED' || data.queued === true) {
-            if (data.queueId) {
-              localStorage.setItem(KEY_REQUEST, String(data.queueId));
-            }
-            addToQueue('Queued.', 'success-msg');
-            if (data.queuePosition !== undefined && data.queuePosition !== null) {
-              addToQueue(`Pos: ${data.queuePosition}`, 'system-msg');
-            }
-            addToQueue('Waiting.', 'highlight');
-          } else if (status === 'DENIED' || status === 'REJECTED' || status === 'ERROR') {
-            addToQueue('Denied.', 'error-msg');
-            if (data.message) {
-              addToQueue(String(data.message), 'error-msg');
-            }
-            showModeMenu();
-          } else {
-            addToQueue('Unexpected response.', 'error-msg');
-          }
-        } catch (err) {
-          console.error(err);
-          addToQueue('Match engine failure.', 'error-msg');
-          addToQueue('Retry.', 'error-msg');
-        }
-      }
-
-      async function readQueueHeadIntent() {
-        addToQueue('QUERY MODE: KEY_SORT + LIMIT_1', 'system-msg');
-
-        try {
-          const snap = await db.ref(PATH_QUEUE).orderByKey().limitToFirst(1).once('value');
-
-          if (!snap.exists()) {
-            addToQueue('NO ACTIVE REQUESTS FOUND.', 'system-msg');
-            addToQueue('READY FOR MATCH CREATION.', 'highlight');
-            showModeMenu();
-            return;
-          }
-
-          let firstKey = null;
-          let firstValue = null;
-
-          snap.forEach((child) => {
-            if (!firstKey) {
-              firstKey = child.key;
-              firstValue = child.val();
-            }
-          });
-
-          if (!firstKey) {
-            addToQueue('NO ACTIVE REQUESTS FOUND.', 'system-msg');
-            addToQueue('READY FOR MATCH CREATION.', 'highlight');
-            showModeMenu();
-            return;
-          }
-
-          addToQueue(`ACTIVE QUEUE NODE DETECTED: ${firstKey}`, 'success-msg');
-
-          if (firstValue && typeof firstValue === 'object' && firstValue.m) {
-            addToQueue(`MATCH REFERENCE PRESENT: ${firstValue.m}`, 'system-msg');
-          }
-
-          addToQueue('QUEUE STATUS READ ONLY — ADOPTION DISABLED.', 'highlight');
-          addToQueue('READY FOR MATCH CREATION.', 'highlight');
-          showModeMenu();
-        } catch (e) {
-          console.error('Queue Read Error:', e);
-          addToQueue('CRITICAL: QUEUE ACCESS FAILED.', 'error-msg');
-          addToQueue('CHECK SECURITY RULE INTEGRATION.', 'error-msg');
-        }
-      }
-
-      async function checkExistingRequest() {
-        const requestId = localStorage.getItem(KEY_REQUEST);
-
-        addToQueue('================================', 'system-msg');
-        addToQueue('REQUEST SESSION CHECK STARTED.', 'highlight');
-        addToQueue('CHECKING MATCH DATABASE...', 'system-msg');
-
-        try {
-          if (requestId) {
-            addToQueue(`SAVED REQUEST DETECTED: ${requestId}`, 'system-msg');
-            addToQueue('QUERY MODE: DIRECT PATH', 'system-msg');
-
-            const snap = await db.ref(`${PATH_REQUESTS}/${requestId}`).once('value');
-
-            if (snap.exists()) {
-              addToQueue(`MATCH LINKED: ${requestId}`, 'success-msg');
-              addToQueue('ACTIVE REQUEST CONFIRMED.', 'highlight');
-              addToQueue('READ COMPLETE — ACTIVE REQUEST LOADED.', 'highlight');
-            } else {
-              addToQueue('SAVED REQUEST EXPIRED.', 'error-msg');
-              localStorage.removeItem(KEY_REQUEST);
-              addToQueue('REQUEST CLEARED. SEEKING QUEUE HEAD...', 'system-msg');
-              await readQueueHeadIntent();
-            }
-          } else {
-            addToQueue('NO SAVED REQUEST FLAG FOUND.', 'system-msg');
-            addToQueue('SEEKING QUEUE HEAD...', 'system-msg');
-            await readQueueHeadIntent();
-          }
-
-          addToQueue('================================', 'system-msg');
-        } catch (e) {
-          console.error('Firebase Read Error:', e);
-          addToQueue('CRITICAL: DATABASE ACCESS FAILED.', 'error-msg');
-          addToQueue('CHECK SECURITY RULE INTEGRATION.', 'error-msg');
-          addToQueue('================================', 'system-msg');
-        }
-      }
-
-      async function bootSequence() {
-        const user = localStorage.getItem(KEY_USER);
-        const pass = localStorage.getItem(KEY_PASS);
-
-        if (!user) {
-          addToQueue('LASER CHESS STANDARD VARIANT(THINKFUN) - CORE EDITION(BETA η- Version) v1.0.6', 'highlight');
-          addToQueue('IDENTIFY USER:', '', true, handleAuth);
-          return;
-        }
-
-        if (!pass) {
-          addToQueue(`WELCOME BACK, ${user}.`, 'highlight');
-          addToQueue('ENTER PASSKEY:', '', true, handleAuth);
-          return;
-        }
-
-        addToQueue('AUTH COMPLETE. GAME READY.', 'success-msg');
-        addToQueue('SESSION CONFIRMED.', 'highlight');
-        await checkExistingRequest();
-      }
-
-      window.addEventListener('DOMContentLoaded', async () => {
-        try {
-          if (document.fonts?.load) {
-            await document.fonts.load('16px Unifont');
-            await document.fonts.ready;
-          }
-        } catch (e) {
-          console.log('Font load issue:', e);
-        }
-        bootSequence();
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') submit();
       });
-    })();
-  </script>
+    });
+  }
+
+  async function prompt(text, cls, handler) {
+    const wrap = document.createElement('div');
+    wrap.className = 'input-wrapper history-line';
+
+    const p = document.createElement('span');
+    p.className = 'prompt';
+    wrap.appendChild(p);
+
+    const input = document.createElement('input');
+    input.className = 'user-input-line';
+    wrap.appendChild(input);
+
+    log.appendChild(wrap);
+
+    for (let c of text) {
+      p.textContent += c;
+      await sleep(8);
+    }
+
+    setTimeout(() => input.focus(), 0);
+    await waitEnter(input, handler);
+  }
+
+  function showMode() {
+    add('Select mode:', 'system-msg');
+    add('PR / PB / R / B', 'system-msg');
+    add('ENTER MODE:', '', true, handleMode);
+  }
+
+  async function handleMode(val) {
+    if (!val) return add('Mode required.', 'error-msg', true, handleMode);
+    if (!['PR','PB','R','B'].includes(val)) {
+      add('Invalid mode.', 'error-msg');
+      return showMode();
+    }
+
+    add(`Mode: ${val}`, 'success-msg');
+    add('Attempting.', 'system-msg');
+
+    try {
+      const res = await fetch(WORKER_URL, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ mode: val })
+      });
+
+      const data = await res.json().catch(()=> ({}));
+
+      // ✅ QUOTA HANDLING
+      if (res.status === 429 || data?.error?.toLowerCase?.().includes('quota')) {
+        add('Out of quota.', 'error-msg');
+        add('Come back tomorrow.', 'error-msg');
+        return showMode();
+      }
+
+      if (!res.ok) throw new Error('fail');
+
+      if (data.matchId) {
+        add('Match created.', 'success-msg');
+        add('Waiting.', 'highlight');
+      } else if (data.joinedMatchId) {
+        add('Match joined.', 'success-msg');
+        add('Starting.', 'highlight');
+      } else {
+        add('Unexpected response.', 'error-msg');
+      }
+
+    } catch (e) {
+      // ✅ FAIL SAFE
+      add('Failed.', 'error-msg');
+      add('Try again.', 'error-msg');
+    }
+  }
+
+  async function handleAuth(v) {
+    const u = localStorage.getItem(KEY_USER);
+    const p = localStorage.getItem(KEY_PASS);
+
+    if (!u) {
+      if (!v) return add('Username required.', 'error-msg', true, handleAuth);
+      localStorage.setItem(KEY_USER, v);
+      add('User set.', 'success-msg');
+      return boot();
+    }
+
+    if (!p) {
+      if (!v) return add('Pass required.', 'error-msg', true, handleAuth);
+      localStorage.setItem(KEY_PASS, v);
+      add('Auth set.', 'success-msg');
+      return boot();
+    }
+  }
+
+  async function boot() {
+    const u = localStorage.getItem(KEY_USER);
+    const p = localStorage.getItem(KEY_PASS);
+
+    if (!u) return add('User:', '', true, handleAuth);
+    if (!p) return add(`Welcome ${u}`, 'highlight'), add('Pass:', '', true, handleAuth);
+
+    add('Ready.', 'success-msg');
+    showMode();
+  }
+
+  window.addEventListener('DOMContentLoaded', boot);
+
+})();
+</script>
 </body>
 </html>
