@@ -95,7 +95,6 @@
   const db = firebase.database(app);
 
   const KEY_USER = 'ls_user';
-  const KEY_PASS = 'ls_pass';
   const KEY_REQUEST = 'ls_request';
 
   const PATH_REQUESTS = 'R';
@@ -195,6 +194,9 @@
       return showMode();
     }
 
+    const username = localStorage.getItem(KEY_USER) || '';
+    const lastActivity = Date.now();
+
     add(`Mode: ${val}`, 'success-msg');
     add('Attempting.', 'system-msg');
 
@@ -202,7 +204,11 @@
       const res = await fetch(WORKER_URL, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ mode: val })
+        body: JSON.stringify({
+          mode: val,
+          username,
+          lastActivity
+        })
       });
 
       const data = await res.json().catch(()=> ({}));
@@ -235,7 +241,6 @@
 
   async function handleAuth(v) {
     const u = localStorage.getItem(KEY_USER);
-    const p = localStorage.getItem(KEY_PASS);
 
     if (!u) {
       if (!v) return add('Username required.', 'error-msg', true, handleAuth);
@@ -243,22 +248,14 @@
       add('User set.', 'success-msg');
       return boot();
     }
-
-    if (!p) {
-      if (!v) return add('Pass required.', 'error-msg', true, handleAuth);
-      localStorage.setItem(KEY_PASS, v);
-      add('Auth set.', 'success-msg');
-      return boot();
-    }
   }
 
   async function boot() {
     const u = localStorage.getItem(KEY_USER);
-    const p = localStorage.getItem(KEY_PASS);
 
     if (!u) return add('User:', '', true, handleAuth);
-    if (!p) return add(`Welcome ${u}`, 'highlight'), add('Pass:', '', true, handleAuth);
 
+    add(`Welcome ${u}`, 'highlight');
     add('Ready.', 'success-msg');
     showMode();
   }
@@ -269,4 +266,3 @@
 </script>
 </body>
 </html>
-
