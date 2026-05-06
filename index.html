@@ -88,17 +88,13 @@
     appId: "1:28090691314:web:e8c8ae5b0fd437038b6a6b"
   };
 
-  // ✅ YOUR WORKER
   const WORKER_URL = 'https://laserchessnexus-matchmanager-v-alpha.later5143.workers.dev/match';
 
   const app = firebase.apps?.length ? firebase.app() : firebase.initializeApp(matchFirebaseConfig);
   const db = firebase.database(app);
 
   const KEY_USER = 'ls_user';
-  const KEY_REQUEST = 'ls_request';
-
-  const PATH_REQUESTS = 'R';
-  const PATH_QUEUE = 'RQ';
+  const KEY_PASS = 'ls_pass';
 
   const log = document.getElementById('terminal-log');
   const queue = [];
@@ -195,6 +191,7 @@
     }
 
     const username = localStorage.getItem(KEY_USER) || '';
+    const password = localStorage.getItem(KEY_PASS) || '';
     const lastActivity = Date.now();
 
     add(`Mode: ${val}`, 'success-msg');
@@ -207,13 +204,13 @@
         body: JSON.stringify({
           mode: val,
           username,
+          password,
           lastActivity
         })
       });
 
       const data = await res.json().catch(()=> ({}));
 
-      // ✅ QUOTA HANDLING
       if (res.status === 429 || data?.error?.toLowerCase?.().includes('quota')) {
         add('Out of quota.', 'error-msg');
         add('Come back tomorrow.', 'error-msg');
@@ -233,7 +230,6 @@
       }
 
     } catch (e) {
-      // ✅ FAIL SAFE
       add('Failed.', 'error-msg');
       add('Try again.', 'error-msg');
     }
@@ -241,6 +237,7 @@
 
   async function handleAuth(v) {
     const u = localStorage.getItem(KEY_USER);
+    const p = localStorage.getItem(KEY_PASS);
 
     if (!u) {
       if (!v) return add('Username required.', 'error-msg', true, handleAuth);
@@ -248,14 +245,22 @@
       add('User set.', 'success-msg');
       return boot();
     }
+
+    if (!p) {
+      if (!v) return add('Pass required.', 'error-msg', true, handleAuth);
+      localStorage.setItem(KEY_PASS, v);
+      add('Auth set.', 'success-msg');
+      return boot();
+    }
   }
 
   async function boot() {
     const u = localStorage.getItem(KEY_USER);
+    const p = localStorage.getItem(KEY_PASS);
 
     if (!u) return add('User:', '', true, handleAuth);
+    if (!p) return add(`Welcome ${u}`, 'highlight'), add('Pass:', '', true, handleAuth);
 
-    add(`Welcome ${u}`, 'highlight');
     add('Ready.', 'success-msg');
     showMode();
   }
