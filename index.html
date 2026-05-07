@@ -36,9 +36,7 @@
     }
 
     .history-line { white-space: pre-wrap; }
-
     .input-wrapper { display:flex; gap:8px; }
-
     .prompt { white-space: pre; }
 
     .user-input-line {
@@ -88,7 +86,6 @@
   const log = document.getElementById('terminal-log');
   const queue = [];
   let processing = false;
-
   let lockedMatchId = null;
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -128,17 +125,13 @@
       const submit = () => {
         const v = input.value.trim().toUpperCase();
         input.disabled = true;
-
         const wrap = input.parentElement;
         const p = wrap?.querySelector('.prompt')?.textContent ?? '';
-
         line('highlight').textContent = p + v;
-
         wrap.remove();
         cb(v);
         resolve();
       };
-
       input.addEventListener('keydown', e => {
         if (e.key === 'Enter') submit();
       });
@@ -148,59 +141,55 @@
   async function prompt(text, cls, handler) {
     const wrap = document.createElement('div');
     wrap.className = 'input-wrapper history-line';
-
     const p = document.createElement('span');
     p.className = 'prompt';
     wrap.appendChild(p);
-
     const input = document.createElement('input');
     input.className = 'user-input-line';
     wrap.appendChild(input);
-
     log.appendChild(wrap);
-
     for (const c of text) {
       p.textContent += c;
       await sleep(8);
     }
-
     setTimeout(() => input.focus(), 0);
     await waitEnter(input, handler);
   }
 
-  // 🔒 MATCH LOCK SYSTEM
+  // 🔒 OPTIMIZED MATCH LOCK SYSTEM
   function startMatchListener() {
     const username = localStorage.getItem(KEY_USER);
     if (!username) return;
 
-    const ref = db.ref('/');
+    // Listen only to the most recent entries to save bandwidth
+    const ref = db.ref('/').orderByKey().limitToLast(20);
 
     ref.on('value', snap => {
       const data = snap.val();
       if (!data) return;
 
-      for (const key of Object.keys(data)) {
-        if (key === 'P') continue;
+      // Sort keys descending to find the NEWEST match first
+      const keys = Object.keys(data)
+        .filter(k => k !== 'P')
+        .sort((a, b) => Number(b) - Number(a));
 
+      for (const key of keys) {
         const entry = data[key];
-        if (!entry) continue;
-
-        if (entry.username === username) {
-          lockOntoMatch(key, entry);
-          break;
+        if (entry && entry.username === username) {
+          if (lockedMatchId !== key) {
+            lockOntoMatch(key, entry);
+          }
+          break; // Found newest match, stop searching
         }
       }
     });
   }
 
   function lockOntoMatch(id, entry) {
-    if (lockedMatchId === id) return;
-
     lockedMatchId = id;
-
     add(`MATCH FOUND → ${id}`, 'success-msg');
     add(`LOCKING ONTO GAME`, 'highlight');
-    add(`Color: ${entry.color}`, 'system-msg');
+    add(`Color: ${entry.color === 0 ? 'RED' : 'BLUE'}`, 'system-msg');
   }
 
   function showMode() {
@@ -211,7 +200,6 @@
 
   async function handleMode(val) {
     if (!val) return add('Mode required.', 'error-msg', true, handleMode);
-
     if (!['PR','PB','R','B'].includes(val)) {
       add('Invalid mode.', 'error-msg');
       return showMode();
@@ -222,7 +210,7 @@
     const lastActivity = Date.now();
 
     add(`Mode: ${val}`, 'success-msg');
-    add('Attempting.', 'system-msg');
+    add('Attempting registration...', 'system-msg');
 
     try {
       const res = await fetch(WORKER_URL, {
@@ -231,17 +219,12 @@
         body: JSON.stringify({ username, color, lastActivity })
       });
 
-      const data = await res.json().catch(()=>({}));
-
       if (!res.ok) throw new Error();
-
-      if (data.timestamp) {
-        add('Match registered.', 'success-msg');
-        add('Synced.', 'highlight');
-      }
+      add('Match registered.', 'success-msg');
+      add('Synced.', 'highlight');
 
     } catch {
-      add('Failed.', 'error-msg');
+      add('Sync failed.', 'error-msg');
     }
   }
 
@@ -254,7 +237,6 @@
       localStorage.setItem(KEY_USER, v);
       return boot();
     }
-
     if (!p) {
       if (!v) return add('Pass required.', 'error-msg', true, handleAuth);
       localStorage.setItem(KEY_PASS, v);
@@ -269,16 +251,13 @@
     if (!u) return add('User:', '', true, handleAuth);
     if (!p) return add(`Welcome ${u}`, 'highlight'), add('Pass:', '', true, handleAuth);
 
-    add('Ready.', 'success-msg');
+    add('System Ready.', 'success-msg');
     showMode();
-
-    // 🔥 START LISTENER HERE
     startMatchListener();
   }
 
   window.addEventListener('DOMContentLoaded', boot);
 })();
 </script>
-
 </body>
 </html>
