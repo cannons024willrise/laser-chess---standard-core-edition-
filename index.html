@@ -88,7 +88,7 @@
     appId: "1:28090691314:web:e8c8ae5b0fd437038b6a6b"
   };
 
-  const WORKER_URL = 'https://laserchessnexus-matchmanager-v-alpha.later5143.workers.dev/match';
+  const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
 
   const app = firebase.apps?.length ? firebase.app() : firebase.initializeApp(matchFirebaseConfig);
   const db = firebase.database(app);
@@ -185,6 +185,7 @@
 
   async function handleMode(val) {
     if (!val) return add('Mode required.', 'error-msg', true, handleMode);
+
     if (!['PR','PB','R','B'].includes(val)) {
       add('Invalid mode.', 'error-msg');
       return showMode();
@@ -192,6 +193,7 @@
 
     const username = localStorage.getItem(KEY_USER) || '';
     const password = localStorage.getItem(KEY_PASS) || '';
+    const color = (val === 'PR' || val === 'R') ? 0 : 1;
     const lastActivity = Date.now();
 
     add(`Mode: ${val}`, 'success-msg');
@@ -199,17 +201,16 @@
 
     try {
       const res = await fetch(WORKER_URL, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mode: val,
           username,
-          password,
+          color,
           lastActivity
         })
       });
 
-      const data = await res.json().catch(()=> ({}));
+      const data = await res.json().catch(() => ({}));
 
       if (res.status === 429 || data?.error?.toLowerCase?.().includes('quota')) {
         add('Out of quota.', 'error-msg');
@@ -219,12 +220,9 @@
 
       if (!res.ok) throw new Error('fail');
 
-      if (data.matchId) {
-        add('Match created.', 'success-msg');
-        add('Waiting.', 'highlight');
-      } else if (data.joinedMatchId) {
-        add('Match joined.', 'success-msg');
-        add('Starting.', 'highlight');
+      if (data.timestamp) {
+        add('Match registered.', 'success-msg');
+        add('Synced.', 'highlight');
       } else {
         add('Unexpected response.', 'error-msg');
       }
