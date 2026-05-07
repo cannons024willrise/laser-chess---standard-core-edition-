@@ -4,13 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LASER CHESS STANDARD VARIANT (THINKFUN) - CORE EDITION (BETA η- Version)</title>
+
   <style>
     @font-face {
       font-family: 'Unifont';
       src: url('unifont-15.0.01.ttf') format('truetype');
-      font-weight: normal;
-      font-style: normal;
-      font-display: block;
     }
 
     :root {
@@ -27,11 +25,7 @@
       padding: 30px;
       color: var(--text);
       font-family: 'Unifont', monospace;
-      font-size: 16px;
-      line-height: 1.6;
-      background: radial-gradient(circle at center, var(--bg1) 0%, var(--bg0) 100%);
-      image-rendering: pixelated;
-      font-variant-ligatures: none;
+      background: radial-gradient(circle at center, var(--bg1), var(--bg0));
     }
 
     #terminal-log {
@@ -41,24 +35,19 @@
       max-width: 1100px;
     }
 
-    .history-line { min-height: 1.6em; white-space: pre-wrap; }
+    .history-line { white-space: pre-wrap; }
 
-    .input-wrapper {
-      display: flex;
-      gap: 8px;
-      align-items: baseline;
-    }
+    .input-wrapper { display:flex; gap:8px; }
 
     .prompt { white-space: pre; }
 
     .user-input-line {
-      flex: 1;
+      flex:1;
       background: transparent;
       border: none;
-      outline: none;
       color: var(--bright);
       font: inherit;
-      font-family: 'Unifont', monospace;
+      outline: none;
     }
 
     .system-msg { color: var(--muted); }
@@ -100,23 +89,25 @@
   const queue = [];
   let processing = false;
 
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  let lockedMatchId = null;
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   function line(cls='') {
     const d = document.createElement('div');
-    d.className = `history-line ${cls}`.trim();
+    d.className = `history-line ${cls}`;
     log.appendChild(d);
     return d;
   }
 
   function add(text, cls='', req=false, handler=null) {
-    queue.push({ text, cls, req, handler });
+    queue.push({text,cls,req,handler});
     if (!processing) run();
   }
 
   async function run() {
     processing = true;
-    while (queue.length) {
+    while(queue.length) {
       const i = queue.shift();
       if (i.req) await prompt(i.text, i.cls, i.handler || handleAuth);
       else await type(i.text, i.cls);
@@ -143,7 +134,7 @@
 
         line('highlight').textContent = p + v;
 
-        wrap?.remove();
+        wrap.remove();
         cb(v);
         resolve();
       };
@@ -177,6 +168,41 @@
     await waitEnter(input, handler);
   }
 
+  // 🔒 MATCH LOCK SYSTEM
+  function startMatchListener() {
+    const username = localStorage.getItem(KEY_USER);
+    if (!username) return;
+
+    const ref = db.ref('/');
+
+    ref.on('value', snap => {
+      const data = snap.val();
+      if (!data) return;
+
+      for (const key of Object.keys(data)) {
+        if (key === 'P') continue;
+
+        const entry = data[key];
+        if (!entry) continue;
+
+        if (entry.username === username) {
+          lockOntoMatch(key, entry);
+          break;
+        }
+      }
+    });
+  }
+
+  function lockOntoMatch(id, entry) {
+    if (lockedMatchId === id) return;
+
+    lockedMatchId = id;
+
+    add(`MATCH FOUND → ${id}`, 'success-msg');
+    add(`LOCKING ONTO GAME`, 'highlight');
+    add(`Color: ${entry.color}`, 'system-msg');
+  }
+
   function showMode() {
     add('Select mode:', 'system-msg');
     add('PR / PB / R / B', 'system-msg');
@@ -186,7 +212,7 @@
   async function handleMode(val) {
     if (!val) return add('Mode required.', 'error-msg', true, handleMode);
 
-    if (!['PR', 'PB', 'R', 'B'].includes(val)) {
+    if (!['PR','PB','R','B'].includes(val)) {
       add('Invalid mode.', 'error-msg');
       return showMode();
     }
@@ -200,34 +226,22 @@
 
     try {
       const res = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          username,
-          color,
-          lastActivity
-        })
+        method:'POST',
+        headers:{'Content-Type':'text/plain'},
+        body: JSON.stringify({ username, color, lastActivity })
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(()=>({}));
 
-      if (res.status === 429 || data?.error?.toLowerCase?.().includes('quota')) {
-        add('Out of quota.', 'error-msg');
-        add('Come back tomorrow.', 'error-msg');
-        return showMode();
-      }
-
-      if (!res.ok) throw new Error('fail');
+      if (!res.ok) throw new Error();
 
       if (data.timestamp) {
         add('Match registered.', 'success-msg');
         add('Synced.', 'highlight');
-      } else {
-        add('Unexpected response.', 'error-msg');
       }
-    } catch (e) {
+
+    } catch {
       add('Failed.', 'error-msg');
-      add('Try again.', 'error-msg');
     }
   }
 
@@ -238,14 +252,12 @@
     if (!u) {
       if (!v) return add('Username required.', 'error-msg', true, handleAuth);
       localStorage.setItem(KEY_USER, v);
-      add('User set.', 'success-msg');
       return boot();
     }
 
     if (!p) {
       if (!v) return add('Pass required.', 'error-msg', true, handleAuth);
       localStorage.setItem(KEY_PASS, v);
-      add('Auth set.', 'success-msg');
       return boot();
     }
   }
@@ -259,10 +271,14 @@
 
     add('Ready.', 'success-msg');
     showMode();
+
+    // 🔥 START LISTENER HERE
+    startMatchListener();
   }
 
   window.addEventListener('DOMContentLoaded', boot);
 })();
 </script>
+
 </body>
 </html>
