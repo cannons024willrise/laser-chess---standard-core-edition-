@@ -82,6 +82,7 @@
 
   const KEY_USER = 'ls_user';
   const KEY_PASS = 'ls_pass';
+  const KEY_RID  = 'ls_request_id';
 
   const log = document.getElementById('terminal-log');
   const queue = [];
@@ -156,19 +157,43 @@
     await waitEnter(input, handler);
   }
 
+  // 🔍 READ FIRST OBJECT (For fresh signups/sessions)
+  async function readFirstMatch() {
+    add('Analyzing database head...', 'system-msg');
+    try {
+      const snapshot = await db.ref('/').orderByKey().limitToFirst(5).once('value');
+      const data = snapshot.val();
+      if (!data) return add('Database clear.', 'system-msg');
+
+      const keys = Object.keys(data).filter(k => k !== 'P').sort((a,b) => Number(a) - Number(b));
+      if (keys.length > 0) {
+        const firstKey = keys[0];
+        add(`BASE OBJECT: [${firstKey}] - OWNER: ${data[firstKey].username}`, 'success-msg');
+      }
+    } catch (e) {
+      add('Err: Read sequence failed.', 'error-msg');
+    }
+  }
+
   // 🔒 OPTIMIZED MATCH LOCK SYSTEM
   function startMatchListener() {
     const username = localStorage.getItem(KEY_USER);
+    const savedRid = localStorage.getItem(KEY_RID);
     if (!username) return;
 
-    // Listen only to the most recent entries to save bandwidth
     const ref = db.ref('/').orderByKey().limitToLast(20);
 
     ref.on('value', snap => {
       const data = snap.val();
       if (!data) return;
 
-      // Sort keys descending to find the NEWEST match first
+      // PRIORITY 1: Restore specific session from localStorage
+      if (savedRid && data[savedRid] && lockedMatchId !== savedRid) {
+        lockOntoMatch(savedRid, data[savedRid], true);
+        return;
+      }
+
+      // PRIORITY 2: Auto-lock onto newest match for user
       const keys = Object.keys(data)
         .filter(k => k !== 'P')
         .sort((a, b) => Number(b) - Number(a));
@@ -179,15 +204,17 @@
           if (lockedMatchId !== key) {
             lockOntoMatch(key, entry);
           }
-          break; // Found newest match, stop searching
+          break; 
         }
       }
     });
   }
 
-  function lockOntoMatch(id, entry) {
+  function lockOntoMatch(id, entry, isRecovery = false) {
     lockedMatchId = id;
-    add(`MATCH FOUND → ${id}`, 'success-msg');
+    localStorage.setItem(KEY_RID, id); 
+    
+    add(isRecovery ? `SESSION RESTORED → ${id}` : `MATCH FOUND → ${id}`, 'success-msg');
     add(`LOCKING ONTO GAME`, 'highlight');
     add(`Color: ${entry.color === 0 ? 'RED' : 'BLUE'}`, 'system-msg');
   }
@@ -220,8 +247,13 @@
       });
 
       if (!res.ok) throw new Error();
-      add('Match registered.', 'success-msg');
-      add('Synced.', 'highlight');
+      
+      const data = await res.json();
+      if (data.timestamp) {
+        localStorage.setItem(KEY_RID, data.timestamp); // Persist request ID
+        add('Match registered.', 'success-msg');
+        add(`Synced ID: ${data.timestamp}`, 'highlight');
+      }
 
     } catch {
       add('Sync failed.', 'error-msg');
@@ -247,11 +279,20 @@
   async function boot() {
     const u = localStorage.getItem(KEY_USER);
     const p = localStorage.getItem(KEY_PASS);
+    const rid = localStorage.getItem(KEY_RID);
 
     if (!u) return add('User:', '', true, handleAuth);
     if (!p) return add(`Welcome ${u}`, 'highlight'), add('Pass:', '', true, handleAuth);
 
     add('System Ready.', 'success-msg');
+
+    // Logic: Read DB head only if we don't already have an active request ID
+    if (rid) {
+      add(`Active Session: ${rid}`, 'system-msg');
+    } else {
+      await readFirstMatch();
+    }
+
     showMode();
     startMatchListener();
   }
