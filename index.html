@@ -110,13 +110,13 @@
   }
 
   function add(text, cls='', req=false, handler=null) {
-    queue.push({text,cls,req,handler});
+    queue.push({ text, cls, req, handler });
     if (!processing) run();
   }
 
   async function run() {
     processing = true;
-    while(queue.length) {
+    while (queue.length) {
       const i = queue.shift();
       if (i.req) await prompt(i.text, i.cls, i.handler || handleAuth);
       else await type(i.text, i.cls);
@@ -126,7 +126,7 @@
 
   async function type(text, cls) {
     const l = line(cls);
-    for (let c of text) {
+    for (const c of text) {
       l.textContent += c;
       await sleep(10);
     }
@@ -168,7 +168,7 @@
 
     log.appendChild(wrap);
 
-    for (let c of text) {
+    for (const c of text) {
       p.textContent += c;
       await sleep(8);
     }
@@ -186,13 +186,12 @@
   async function handleMode(val) {
     if (!val) return add('Mode required.', 'error-msg', true, handleMode);
 
-    if (!['PR','PB','R','B'].includes(val)) {
+    if (!['PR', 'PB', 'R', 'B'].includes(val)) {
       add('Invalid mode.', 'error-msg');
       return showMode();
     }
 
     const username = localStorage.getItem(KEY_USER) || '';
-    const password = localStorage.getItem(KEY_PASS) || '';
     const color = (val === 'PR' || val === 'R') ? 0 : 1;
     const lastActivity = Date.now();
 
@@ -226,7 +225,6 @@
       } else {
         add('Unexpected response.', 'error-msg');
       }
-
     } catch (e) {
       add('Failed.', 'error-msg');
       add('Try again.', 'error-msg');
@@ -264,7 +262,6 @@
   }
 
   window.addEventListener('DOMContentLoaded', boot);
-
 })();
 </script>
 </body>
