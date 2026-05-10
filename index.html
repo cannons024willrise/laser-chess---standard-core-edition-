@@ -18,6 +18,7 @@
       --bright: #ffffff;
       --error: #ff5555;
       --muted: #999999;
+      --waiting: #00ff00;
     }
 
     body {
@@ -52,6 +53,7 @@
     .success-msg { color: var(--bright); font-weight: 700; }
     .error-msg { color: var(--error); }
     .highlight { color: var(--bright); font-weight: 700; }
+    .wait-msg { color: var(--waiting); }
   </style>
 </head>
 
@@ -89,6 +91,7 @@
   let processing = false;
   let lockedMatchId = null;
   let rqPollInterval = null;
+  let waitAnimationInterval = null;
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -120,6 +123,7 @@
       l.textContent += c;
       await sleep(10);
     }
+    return l;
   }
 
   function waitEnter(input, cb) {
@@ -177,7 +181,7 @@
 
   function startPolling() {
     if (rqPollInterval) clearInterval(rqPollInterval);
-    add('Initiating RQ Buffer Polling (5s interval)...', 'system-msg');
+    add('Initiating RQ Buffer Polling...', 'system-msg');
     pollFirstMatch(); 
     rqPollInterval = setInterval(pollFirstMatch, 5000);
   }
@@ -190,16 +194,34 @@
     }
   }
 
+  // --- WAITING STATUS ---
+  function toggleWaiting(active) {
+    if (active) {
+      if (waitAnimationInterval) return;
+      const l = line('wait-msg');
+      let dots = 0;
+      waitAnimationInterval = setInterval(() => {
+        dots = (dots + 1) % 4;
+        l.textContent = "Waiting for match data" + ".".repeat(dots);
+      }, 500);
+    } else {
+      clearInterval(waitAnimationInterval);
+      waitAnimationInterval = null;
+    }
+  }
+
   // --- MATCH SYSTEM ---
   function startMatchListener() {
     const savedRid = localStorage.getItem(KEY_RID);
     if (!savedRid) return;
 
+    toggleWaiting(true);
     const ref = db.ref(`/R/${savedRid}`);
     ref.on('value', snap => {
       const data = snap.val();
       if (!data) return;
       if (lockedMatchId !== savedRid) {
+        toggleWaiting(false);
         lockOntoMatch(savedRid, data, true);
       }
     });
@@ -216,18 +238,15 @@
   }
 
   function showMode() {
-    // Only show if no session exists
     if (localStorage.getItem(KEY_RID)) return; 
-    
     add('Select mode:', 'system-msg');
     add('PR / PB / R / B', 'system-msg');
     add('ENTER MODE:', '', true, handleMode);
   }
 
   async function handleMode(val) {
-    // Safety check to prevent UI bypass
     if (localStorage.getItem(KEY_RID)) {
-      add('Err: Session already exists. Registration blocked.', 'error-msg');
+      add('Err: Session exists.', 'error-msg');
       return;
     }
 
@@ -296,7 +315,6 @@
     if (rid) {
       add(`Active Session Locked: ${rid}`, 'success-msg');
       startMatchListener();
-      // Notice: showMode() is NOT called here, preventing new match creation.
     } else {
       startPolling();
       showMode();
