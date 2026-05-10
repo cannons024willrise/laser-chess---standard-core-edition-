@@ -93,6 +93,7 @@
   let lockedMatchId = null;
   let rqPollInterval = null;
   let waitAnimationInterval = null;
+  let lastQueueState = 'INIT'; // Tracking variable for spam protection
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -107,10 +108,9 @@
     return d;
   }
 
-  // UPDATED: Logs bypass the queue lock to prevent blocking during prompts
   function add(text, cls='', req=false, handler=null) {
     if (!req && processing) {
-      type(text, cls, true); // Immediate type for logs
+      type(text, cls, true);
       return;
     }
     queue.push({text,cls,req,handler});
@@ -176,23 +176,33 @@
     });
   }
 
-  // --- POLLING LOGIC ---
+  // --- POLLING LOGIC WITH STATE TRACKING ---
   async function pollFirstMatch() {
     try {
       const snapshot = await db.ref('/RQ').orderByKey().limitToFirst(1).once('value');
       const data = snapshot.val();
+
       if (!data) {
+        if (lastQueueState !== 'EMPTY') {
           add('RQ Buffer: Empty', 'system-msg');
-          return;
+          lastQueueState = 'EMPTY';
+        }
+        return;
       }
 
-      const keys = Object.keys(data);
-      if (keys.length > 0) {
-        const firstKey = keys[0];
+      const firstKey = Object.keys(data)[0];
+      const currentState = `${firstKey}-${data[firstKey].username}`;
+
+      // Only print if the head of the queue actually changed
+      if (lastQueueState !== currentState) {
         add(`[QUEUE] Head: ${firstKey} | User: ${data[firstKey].username}`, 'success-msg');
+        lastQueueState = currentState;
       }
     } catch (e) {
-      add('Err: RQ Access Denied.', 'error-msg');
+      if (lastQueueState !== 'ERROR') {
+        add('Err: RQ Access Denied.', 'error-msg');
+        lastQueueState = 'ERROR';
+      }
     }
   }
 
@@ -238,7 +248,6 @@
       const data = snap.val();
       if (!data) return;
       
-      // If we found the match data, stop waiting and lock
       if (lockedMatchId !== savedRid) {
         toggleWaiting(false);
         lockOntoMatch(savedRid, data, true);
