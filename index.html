@@ -88,6 +88,7 @@
   const queue = [];
   let processing = false;
   let lockedMatchId = null;
+  let rqPollInterval = null;
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -157,13 +158,12 @@
     await waitEnter(input, handler);
   }
 
-  // 🔍 ADAPTED: READ FIRST OBJECT FROM /RQ (Allowed by rule: limitToFirst <= 1)
-  async function readFirstMatch() {
-    add('Analyzing RQ Buffer head...', 'system-msg');
+  // --- POLLING LOGIC ---
+  async function pollFirstMatch() {
     try {
       const snapshot = await db.ref('/RQ').orderByKey().limitToFirst(1).once('value');
       const data = snapshot.val();
-      if (!data) return add('RQ Buffer clear.', 'system-msg');
+      if (!data) return;
 
       const keys = Object.keys(data);
       if (keys.length > 0) {
@@ -175,17 +175,30 @@
     }
   }
 
-  // 🔒 ADAPTED: MATCH LOCK SYSTEM (Can only read /R/$requestId due to Rules)
+  function startPolling() {
+    if (rqPollInterval) clearInterval(rqPollInterval);
+    add('Initiating RQ Buffer Polling (5s interval)...', 'system-msg');
+    pollFirstMatch(); 
+    rqPollInterval = setInterval(pollFirstMatch, 5000);
+  }
+
+  function stopPolling() {
+    if (rqPollInterval) {
+      clearInterval(rqPollInterval);
+      rqPollInterval = null;
+      add('RQ Buffer Polling Terminated.', 'system-msg');
+    }
+  }
+
+  // --- MATCH SYSTEM ---
   function startMatchListener() {
     const savedRid = localStorage.getItem(KEY_RID);
-    if (!savedRid) return; // Without an ID, we cannot read /R
+    if (!savedRid) return;
 
     const ref = db.ref(`/R/${savedRid}`);
-
     ref.on('value', snap => {
       const data = snap.val();
       if (!data) return;
-
       if (lockedMatchId !== savedRid) {
         lockOntoMatch(savedRid, data, true);
       }
@@ -195,19 +208,29 @@
   function lockOntoMatch(id, entry, isRecovery = false) {
     lockedMatchId = id;
     localStorage.setItem(KEY_RID, id); 
-    
+    stopPolling(); 
+
     add(isRecovery ? `SESSION RESTORED → ${id}` : `MATCH FOUND → ${id}`, 'success-msg');
-    add(`LOCKING ONTO GAME`, 'highlight');
+    add(`SYSTEM LOCKED: SESSION ACTIVE`, 'highlight');
     add(`Color: ${entry.color === 0 ? 'RED' : 'BLUE'}`, 'system-msg');
   }
 
   function showMode() {
+    // Only show if no session exists
+    if (localStorage.getItem(KEY_RID)) return; 
+    
     add('Select mode:', 'system-msg');
     add('PR / PB / R / B', 'system-msg');
     add('ENTER MODE:', '', true, handleMode);
   }
 
   async function handleMode(val) {
+    // Safety check to prevent UI bypass
+    if (localStorage.getItem(KEY_RID)) {
+      add('Err: Session already exists. Registration blocked.', 'error-msg');
+      return;
+    }
+
     if (!val) return add('Mode required.', 'error-msg', true, handleMode);
     if (!['PR','PB','R','B'].includes(val)) {
       add('Invalid mode.', 'error-msg');
@@ -236,10 +259,9 @@
         add('Match registered.', 'success-msg');
         add(`Synced ID: ${data.timestamp}`, 'highlight');
         
-        // Start listening to the newly acquired Match ID
+        stopPolling();
         startMatchListener(); 
       }
-
     } catch {
       add('Sync failed.', 'error-msg');
     }
@@ -272,13 +294,13 @@
     add('System Ready.', 'success-msg');
 
     if (rid) {
-      add(`Active Session: ${rid}`, 'system-msg');
+      add(`Active Session Locked: ${rid}`, 'success-msg');
+      startMatchListener();
+      // Notice: showMode() is NOT called here, preventing new match creation.
     } else {
-      await readFirstMatch();
+      startPolling();
+      showMode();
     }
-
-    showMode();
-    startMatchListener();
   }
 
   window.addEventListener('DOMContentLoaded', boot);
