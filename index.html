@@ -86,23 +86,33 @@
   const KEY_PASS = 'ls_pass';
   const KEY_RID  = 'ls_request_id';
 
-  const log = document.getElementById('terminal-log');
+  const logContainer = document.getElementById('terminal-log');
   const queue = [];
   let processing = false;
+  let currentPromptWrap = null;
   let lockedMatchId = null;
   let rqPollInterval = null;
   let waitAnimationInterval = null;
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  function line(cls='') {
+  function createLine(cls='') {
     const d = document.createElement('div');
     d.className = `history-line ${cls}`;
-    log.appendChild(d);
+    if (currentPromptWrap) {
+      logContainer.insertBefore(d, currentPromptWrap);
+    } else {
+      logContainer.appendChild(d);
+    }
     return d;
   }
 
+  // UPDATED: Logs bypass the queue lock to prevent blocking during prompts
   function add(text, cls='', req=false, handler=null) {
+    if (!req && processing) {
+      type(text, cls, true); // Immediate type for logs
+      return;
+    }
     queue.push({text,cls,req,handler});
     if (!processing) run();
   }
@@ -117,31 +127,17 @@
     processing = false;
   }
 
-  async function type(text, cls) {
-    const l = line(cls);
+  async function type(text, cls, immediate=false) {
+    const l = createLine(cls);
+    if (immediate) {
+      l.textContent = text;
+      return l;
+    }
     for (const c of text) {
       l.textContent += c;
       await sleep(10);
     }
     return l;
-  }
-
-  function waitEnter(input, cb) {
-    return new Promise(resolve => {
-      const submit = () => {
-        const v = input.value.trim().toUpperCase();
-        input.disabled = true;
-        const wrap = input.parentElement;
-        const p = wrap?.querySelector('.prompt')?.textContent ?? '';
-        line('highlight').textContent = p + v;
-        wrap.remove();
-        cb(v);
-        resolve();
-      };
-      input.addEventListener('keydown', e => {
-        if (e.key === 'Enter') submit();
-      });
-    });
   }
 
   async function prompt(text, cls, handler) {
@@ -153,13 +149,31 @@
     const input = document.createElement('input');
     input.className = 'user-input-line';
     wrap.appendChild(input);
-    log.appendChild(wrap);
+    
+    logContainer.appendChild(wrap);
+    currentPromptWrap = wrap;
+
     for (const c of text) {
       p.textContent += c;
       await sleep(8);
     }
+    
     setTimeout(() => input.focus(), 0);
-    await waitEnter(input, handler);
+    
+    return new Promise(resolve => {
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          const v = input.value.trim().toUpperCase();
+          input.disabled = true;
+          const finalLine = createLine('highlight');
+          finalLine.textContent = p.textContent + v;
+          wrap.remove();
+          currentPromptWrap = null;
+          handler(v);
+          resolve();
+        }
+      });
+    });
   }
 
   // --- POLLING LOGIC ---
@@ -167,21 +181,24 @@
     try {
       const snapshot = await db.ref('/RQ').orderByKey().limitToFirst(1).once('value');
       const data = snapshot.val();
-      if (!data) return;
+      if (!data) {
+          add('RQ Buffer: Empty', 'system-msg');
+          return;
+      }
 
       const keys = Object.keys(data);
       if (keys.length > 0) {
         const firstKey = keys[0];
-        add(`BASE OBJECT IN RQ: [${firstKey}] - OWNER: ${data[firstKey].username}`, 'success-msg');
+        add(`[QUEUE] Head: ${firstKey} | User: ${data[firstKey].username}`, 'success-msg');
       }
     } catch (e) {
-      add('Err: RQ Read sequence denied.', 'error-msg');
+      add('Err: RQ Access Denied.', 'error-msg');
     }
   }
 
   function startPolling() {
     if (rqPollInterval) clearInterval(rqPollInterval);
-    add('Initiating RQ Buffer Polling...', 'system-msg');
+    add('Starting Queue Watcher...', 'system-msg');
     pollFirstMatch(); 
     rqPollInterval = setInterval(pollFirstMatch, 5000);
   }
@@ -190,7 +207,7 @@
     if (rqPollInterval) {
       clearInterval(rqPollInterval);
       rqPollInterval = null;
-      add('RQ Buffer Polling Terminated.', 'system-msg');
+      add('Queue Watcher Offline.', 'system-msg');
     }
   }
 
@@ -198,11 +215,11 @@
   function toggleWaiting(active) {
     if (active) {
       if (waitAnimationInterval) return;
-      const l = line('wait-msg');
+      const l = createLine('wait-msg');
       let dots = 0;
       waitAnimationInterval = setInterval(() => {
         dots = (dots + 1) % 4;
-        l.textContent = "Waiting for match data" + ".".repeat(dots);
+        l.textContent = "Waiting for match acknowledgement" + ".".repeat(dots);
       }, 500);
     } else {
       clearInterval(waitAnimationInterval);
@@ -220,6 +237,8 @@
     ref.on('value', snap => {
       const data = snap.val();
       if (!data) return;
+      
+      // If we found the match data, stop waiting and lock
       if (lockedMatchId !== savedRid) {
         toggleWaiting(false);
         lockOntoMatch(savedRid, data, true);
@@ -232,57 +251,46 @@
     localStorage.setItem(KEY_RID, id); 
     stopPolling(); 
 
-    add(isRecovery ? `SESSION RESTORED → ${id}` : `MATCH FOUND → ${id}`, 'success-msg');
-    add(`SYSTEM LOCKED: SESSION ACTIVE`, 'highlight');
-    add(`Color: ${entry.color === 0 ? 'RED' : 'BLUE'}`, 'system-msg');
+    add(isRecovery ? `SESSION RESTORED: ${id}` : `MATCH ESTABLISHED: ${id}`, 'success-msg');
+    add(`HARD-LOCK ACTIVE: ${entry.username}`, 'highlight');
+    add(`Color Assigned: ${entry.color === 0 ? 'RED' : 'BLUE'}`, 'system-msg');
   }
 
   function showMode() {
     if (localStorage.getItem(KEY_RID)) return; 
-    add('Select mode:', 'system-msg');
-    add('PR / PB / R / B', 'system-msg');
-    add('ENTER MODE:', '', true, handleMode);
+    add('Select sequence: [PR] Red | [PB] Blue', 'system-msg');
+    add('MODE:', '', true, handleMode);
   }
 
   async function handleMode(val) {
-    if (localStorage.getItem(KEY_RID)) {
-      add('Err: Session exists.', 'error-msg');
-      return;
-    }
+    if (localStorage.getItem(KEY_RID)) return;
 
-    if (!val) return add('Mode required.', 'error-msg', true, handleMode);
-    if (!['PR','PB','R','B'].includes(val)) {
-      add('Invalid mode.', 'error-msg');
+    if (!val || !['PR','PB','R','B'].includes(val)) {
+      add('Invalid input.', 'error-msg');
       return showMode();
     }
 
     const username = localStorage.getItem(KEY_USER) || '';
     const color = (val === 'PR' || val === 'R') ? 0 : 1;
-    const lastActivity = Date.now();
-
-    add(`Mode: ${val}`, 'success-msg');
-    add('Attempting registration...', 'system-msg');
+    
+    add('Registering with Worker...', 'system-msg');
 
     try {
       const res = await fetch(WORKER_URL, {
         method:'POST',
         headers:{'Content-Type':'text/plain'},
-        body: JSON.stringify({ username, color, lastActivity })
+        body: JSON.stringify({ username, color, lastActivity: Date.now() })
       });
 
-      if (!res.ok) throw new Error();
-      
       const data = await res.json();
       if (data.timestamp) {
         localStorage.setItem(KEY_RID, data.timestamp); 
-        add('Match registered.', 'success-msg');
-        add(`Synced ID: ${data.timestamp}`, 'highlight');
-        
+        add(`Registered ID: ${data.timestamp}`, 'success-msg');
         stopPolling();
         startMatchListener(); 
       }
     } catch {
-      add('Sync failed.', 'error-msg');
+      add('Worker sync failed.', 'error-msg');
     }
   }
 
@@ -291,12 +299,12 @@
     const p = localStorage.getItem(KEY_PASS);
 
     if (!u) {
-      if (!v) return add('Username required.', 'error-msg', true, handleAuth);
+      if (!v) return add('User ID:', '', true, handleAuth);
       localStorage.setItem(KEY_USER, v);
       return boot();
     }
     if (!p) {
-      if (!v) return add('Pass required.', 'error-msg', true, handleAuth);
+      if (!v) return add('Access Key:', '', true, handleAuth);
       localStorage.setItem(KEY_PASS, v);
       return boot();
     }
@@ -307,13 +315,13 @@
     const p = localStorage.getItem(KEY_PASS);
     const rid = localStorage.getItem(KEY_RID);
 
-    if (!u) return add('User:', '', true, handleAuth);
-    if (!p) return add(`Welcome ${u}`, 'highlight'), add('Pass:', '', true, handleAuth);
+    if (!u) return add('TERMINAL ACCESS: LOGIN REQUIRED', 'system-msg'), add('User ID:', '', true, handleAuth);
+    if (!p) return add(`Identity: ${u}`, 'highlight'), add('Access Key:', '', true, handleAuth);
 
-    add('System Ready.', 'success-msg');
+    add('Core Protocol: Online.', 'success-msg');
 
     if (rid) {
-      add(`Active Session Locked: ${rid}`, 'success-msg');
+      add(`Existing Lock Detected: ${rid}`, 'success-msg');
       startMatchListener();
     } else {
       startPolling();
