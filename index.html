@@ -157,55 +157,37 @@
     await waitEnter(input, handler);
   }
 
-  // 🔍 READ FIRST OBJECT (For fresh signups/sessions)
+  // 🔍 ADAPTED: READ FIRST OBJECT FROM /RQ (Allowed by rule: limitToFirst <= 1)
   async function readFirstMatch() {
-    add('Analyzing database head...', 'system-msg');
+    add('Analyzing RQ Buffer head...', 'system-msg');
     try {
-      const snapshot = await db.ref('/').orderByKey().limitToFirst(5).once('value');
+      const snapshot = await db.ref('/RQ').orderByKey().limitToFirst(1).once('value');
       const data = snapshot.val();
-      if (!data) return add('Database clear.', 'system-msg');
+      if (!data) return add('RQ Buffer clear.', 'system-msg');
 
-      const keys = Object.keys(data).filter(k => k !== 'P').sort((a,b) => Number(a) - Number(b));
+      const keys = Object.keys(data);
       if (keys.length > 0) {
         const firstKey = keys[0];
-        add(`BASE OBJECT: [${firstKey}] - OWNER: ${data[firstKey].username}`, 'success-msg');
+        add(`BASE OBJECT IN RQ: [${firstKey}] - OWNER: ${data[firstKey].username}`, 'success-msg');
       }
     } catch (e) {
-      add('Err: Read sequence failed.', 'error-msg');
+      add('Err: RQ Read sequence denied.', 'error-msg');
     }
   }
 
-  // 🔒 OPTIMIZED MATCH LOCK SYSTEM
+  // 🔒 ADAPTED: MATCH LOCK SYSTEM (Can only read /R/$requestId due to Rules)
   function startMatchListener() {
-    const username = localStorage.getItem(KEY_USER);
     const savedRid = localStorage.getItem(KEY_RID);
-    if (!username) return;
+    if (!savedRid) return; // Without an ID, we cannot read /R
 
-    const ref = db.ref('/').orderByKey().limitToLast(20);
+    const ref = db.ref(`/R/${savedRid}`);
 
     ref.on('value', snap => {
       const data = snap.val();
       if (!data) return;
 
-      // PRIORITY 1: Restore specific session from localStorage
-      if (savedRid && data[savedRid] && lockedMatchId !== savedRid) {
-        lockOntoMatch(savedRid, data[savedRid], true);
-        return;
-      }
-
-      // PRIORITY 2: Auto-lock onto newest match for user
-      const keys = Object.keys(data)
-        .filter(k => k !== 'P')
-        .sort((a, b) => Number(b) - Number(a));
-
-      for (const key of keys) {
-        const entry = data[key];
-        if (entry && entry.username === username) {
-          if (lockedMatchId !== key) {
-            lockOntoMatch(key, entry);
-          }
-          break; 
-        }
+      if (lockedMatchId !== savedRid) {
+        lockOntoMatch(savedRid, data, true);
       }
     });
   }
@@ -250,9 +232,12 @@
       
       const data = await res.json();
       if (data.timestamp) {
-        localStorage.setItem(KEY_RID, data.timestamp); // Persist request ID
+        localStorage.setItem(KEY_RID, data.timestamp); 
         add('Match registered.', 'success-msg');
         add(`Synced ID: ${data.timestamp}`, 'highlight');
+        
+        // Start listening to the newly acquired Match ID
+        startMatchListener(); 
       }
 
     } catch {
@@ -286,7 +271,6 @@
 
     add('System Ready.', 'success-msg');
 
-    // Logic: Read DB head only if we don't already have an active request ID
     if (rid) {
       add(`Active Session: ${rid}`, 'system-msg');
     } else {
