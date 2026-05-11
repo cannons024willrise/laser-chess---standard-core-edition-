@@ -93,7 +93,7 @@
   let lockedMatchId = null;
   let rqPollInterval = null;
   let waitAnimationInterval = null;
-  let lastQueueState = 'INIT'; // Tracking variable for spam protection
+  let lastQueueState = 'INIT'; 
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -176,7 +176,7 @@
     });
   }
 
-  // --- POLLING LOGIC WITH STATE TRACKING ---
+  // --- POLLING LOGIC ---
   async function pollFirstMatch() {
     try {
       const snapshot = await db.ref('/RQ').orderByKey().limitToFirst(1).once('value');
@@ -193,7 +193,6 @@
       const firstKey = Object.keys(data)[0];
       const currentState = `${firstKey}-${data[firstKey].username}`;
 
-      // Only print if the head of the queue actually changed
       if (lastQueueState !== currentState) {
         add(`[QUEUE] Head: ${firstKey} | User: ${data[firstKey].username}`, 'success-msg');
         lastQueueState = currentState;
@@ -218,6 +217,105 @@
       clearInterval(rqPollInterval);
       rqPollInterval = null;
       add('Queue Watcher Offline.', 'system-msg');
+    }
+  }
+
+  // --- JOIN LOGIC (TRIGGER A) ---
+  async function scanForMatch() {
+    const currentUser = localStorage.getItem(KEY_USER);
+    add('Executing wide-spectrum scan...', 'system-msg');
+    
+    try {
+      const snapshot = await db.ref('/RQ').orderByKey().once('value');
+      const data = snapshot.val();
+
+      if (!data) {
+        add('SCAN FAIL: Buffer empty.', 'error-msg');
+        return showMode();
+      }
+
+      let targetId = null;
+      let hostData = null;
+
+      // Find the first available match not hosted by self
+      for (const [id, entry] of Object.entries(data)) {
+        if (entry.username !== currentUser) {
+          targetId = id;
+          hostData = entry;
+          break;
+        }
+      }
+
+      if (!targetId) {
+        add('SCAN FAIL: No external signals detected.', 'error-msg');
+        return showMode();
+      }
+
+      add(`[A] TARGET LOCKED: ${targetId}`, 'success-msg');
+      add(`HOST: ${hostData.username} | SIG STRENGTH: STABLE`, 'highlight');
+      
+      return executeHandshake(targetId, hostData);
+
+    } catch (e) {
+      add('SYSTEM ERR: Scan interference.', 'error-msg');
+      showMode();
+    }
+  }
+
+  async function executeHandshake(matchId, hostData) {
+    const username = localStorage.getItem(KEY_USER);
+    const myColor = hostData.color === 0 ? 1 : 0; // Logic: Joiner takes the opposite seat
+
+    add(`INITIATING HANDSHAKE PROTOCOL...`, 'wait-msg');
+
+    try {
+      const res = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          action: 'join',
+          matchId: matchId,
+          joinerName: username,
+          joinerColor: myColor
+        })
+      });
+
+      if (!res.ok) throw new Error('Collision detected');
+
+      localStorage.setItem(KEY_RID, matchId);
+      add(`HANDSHAKE VERIFIED. UPLINK ESTABLISHED.`, 'success-msg');
+      
+      stopPolling();
+      startMatchListener();
+
+    } catch (err) {
+      add(`HANDSHAKE DENIED: ${err.message}`, 'error-msg');
+      showMode();
+    }
+  }
+
+  // --- HOSTING LOGIC ---
+  async function registerHost(color) {
+    const username = localStorage.getItem(KEY_USER);
+    add('Registering signal on RQ Buffer...', 'system-msg');
+
+    try {
+      const res = await fetch(WORKER_URL, {
+        method:'POST',
+        headers:{'Content-Type':'text/plain'},
+        body: JSON.stringify({ username, color, lastActivity: Date.now() })
+      });
+
+      const data = await res.json();
+      if (data.timestamp) {
+        localStorage.setItem(KEY_RID, data.timestamp); 
+        add(`Registered ID: ${data.timestamp}`, 'success-msg');
+        stopPolling();
+        startMatchListener(); 
+      }
+    } catch {
+      add('Worker sync failed.', 'error-msg');
+      showMode();
     }
   }
 
@@ -267,40 +365,24 @@
 
   function showMode() {
     if (localStorage.getItem(KEY_RID)) return; 
-    add('Select sequence: [PR] Red | [PB] Blue', 'system-msg');
+    add('Select: [PR] Red | [PB] Blue | [A] Active Scan', 'system-msg');
     add('MODE:', '', true, handleMode);
   }
 
   async function handleMode(val) {
     if (localStorage.getItem(KEY_RID)) return;
 
-    if (!val || !['PR','PB','R','B'].includes(val)) {
-      add('Invalid input.', 'error-msg');
-      return showMode();
+    if (val === 'A' || val === 'J') {
+      return scanForMatch();
     }
 
-    const username = localStorage.getItem(KEY_USER) || '';
-    const color = (val === 'PR' || val === 'R') ? 0 : 1;
-    
-    add('Registering with Worker...', 'system-msg');
-
-    try {
-      const res = await fetch(WORKER_URL, {
-        method:'POST',
-        headers:{'Content-Type':'text/plain'},
-        body: JSON.stringify({ username, color, lastActivity: Date.now() })
-      });
-
-      const data = await res.json();
-      if (data.timestamp) {
-        localStorage.setItem(KEY_RID, data.timestamp); 
-        add(`Registered ID: ${data.timestamp}`, 'success-msg');
-        stopPolling();
-        startMatchListener(); 
-      }
-    } catch {
-      add('Worker sync failed.', 'error-msg');
+    if (['PR','PB','R','B'].includes(val)) {
+      const color = (val === 'PR' || val === 'R') ? 0 : 1;
+      return registerHost(color);
     }
+
+    add('Invalid input.', 'error-msg');
+    return showMode();
   }
 
   async function handleAuth(v) {
