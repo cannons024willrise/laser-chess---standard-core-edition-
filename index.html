@@ -223,10 +223,11 @@
   // --- JOIN LOGIC (TRIGGER A) ---
   async function scanForMatch() {
     const currentUser = localStorage.getItem(KEY_USER);
-    add('Executing wide-spectrum scan...', 'system-msg');
+    add('Peeking at RQ Buffer head...', 'system-msg');
     
     try {
-      const snapshot = await db.ref('/RQ').orderByKey().once('value');
+      // Logic: Strictly limited to the first available signal
+      const snapshot = await db.ref('/RQ').orderByKey().limitToFirst(1).once('value');
       const data = snapshot.val();
 
       if (!data) {
@@ -234,20 +235,13 @@
         return showMode();
       }
 
-      let targetId = null;
-      let hostData = null;
+      const targetId = Object.keys(data)[0];
+      const hostData = data[targetId];
 
-      // Find the first available match not hosted by self
-      for (const [id, entry] of Object.entries(data)) {
-        if (entry.username !== currentUser) {
-          targetId = id;
-          hostData = entry;
-          break;
-        }
-      }
-
-      if (!targetId) {
-        add('SCAN FAIL: No external signals detected.', 'error-msg');
+      // Logic: Cannot join a session you are hosting
+      if (hostData.username === currentUser) {
+        add('SCAN FAIL: Detected own signal at Buffer head.', 'error-msg');
+        add('Suggestion: Await incoming connection.', 'system-msg');
         return showMode();
       }
 
@@ -257,14 +251,14 @@
       return executeHandshake(targetId, hostData);
 
     } catch (e) {
-      add('SYSTEM ERR: Scan interference.', 'error-msg');
+      add('SYSTEM ERR: Read permission denied.', 'error-msg');
       showMode();
     }
   }
 
   async function executeHandshake(matchId, hostData) {
     const username = localStorage.getItem(KEY_USER);
-    const myColor = hostData.color === 0 ? 1 : 0; // Logic: Joiner takes the opposite seat
+    const myColor = hostData.color === 0 ? 1 : 0; 
 
     add(`INITIATING HANDSHAKE PROTOCOL...`, 'wait-msg');
 
@@ -273,14 +267,14 @@
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
-          action: 'join',
-          matchId: matchId,
-          joinerName: username,
-          joinerColor: myColor
+          username: username,
+          color: myColor,
+          lastActivity: Date.now(),
+          matchId: matchId 
         })
       });
 
-      if (!res.ok) throw new Error('Collision detected');
+      if (!res.ok) throw new Error('Handshake collision');
 
       localStorage.setItem(KEY_RID, matchId);
       add(`HANDSHAKE VERIFIED. UPLINK ESTABLISHED.`, 'success-msg');
@@ -303,7 +297,11 @@
       const res = await fetch(WORKER_URL, {
         method:'POST',
         headers:{'Content-Type':'text/plain'},
-        body: JSON.stringify({ username, color, lastActivity: Date.now() })
+        body: JSON.stringify({ 
+          username: username, 
+          color: color, 
+          lastActivity: Date.now() 
+        })
       });
 
       const data = await res.json();
