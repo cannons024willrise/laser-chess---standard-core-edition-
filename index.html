@@ -220,13 +220,12 @@
     }
   }
 
-  // --- JOIN LOGIC (TRIGGER A) ---
+  // --- JOIN LOGIC ---
   async function scanForMatch() {
     const currentUser = localStorage.getItem(KEY_USER);
     add('Peeking at RQ Buffer head...', 'system-msg');
     
     try {
-      // Logic: Strictly limited to the first available signal
       const snapshot = await db.ref('/RQ').orderByKey().limitToFirst(1).once('value');
       const data = snapshot.val();
 
@@ -238,20 +237,16 @@
       const targetId = Object.keys(data)[0];
       const hostData = data[targetId];
 
-      // Logic: Cannot join a session you are hosting
       if (hostData.username === currentUser) {
-        add('SCAN FAIL: Detected own signal at Buffer head.', 'error-msg');
-        add('Suggestion: Await incoming connection.', 'system-msg');
+        add('SCAN FAIL: Detected own signal.', 'error-msg');
         return showMode();
       }
 
       add(`[A] TARGET LOCKED: ${targetId}`, 'success-msg');
-      add(`HOST: ${hostData.username} | SIG STRENGTH: STABLE`, 'highlight');
-      
       return executeHandshake(targetId, hostData);
 
     } catch (e) {
-      add('SYSTEM ERR: Read permission denied.', 'error-msg');
+      add('SYSTEM ERR: Read denied.', 'error-msg');
       showMode();
     }
   }
@@ -333,16 +328,45 @@
     }
   }
 
-  // --- MATCH SYSTEM ---
+  // --- MATCH SYSTEM & CLEANUP ---
+  async function verifySession(rid) {
+    // Probe R first
+    const rSnap = await db.ref(`/R/${rid}`).once('value');
+    if (rSnap.exists()) return { type: 'ACTIVE', data: rSnap.val() };
+    
+    // Probe RQ second
+    const rqSnap = await db.ref(`/RQ/${rid}`).once('value');
+    if (rqSnap.exists()) return { type: 'PENDING', data: rqSnap.val() };
+
+    return null; // Orphaned
+  }
+
   function startMatchListener() {
     const savedRid = localStorage.getItem(KEY_RID);
     if (!savedRid) return;
 
     toggleWaiting(true);
     const ref = db.ref(`/R/${savedRid}`);
+    
+    // Listener for match activation
     ref.on('value', snap => {
       const data = snap.val();
-      if (!data) return;
+      if (!data) {
+        // If we were waiting and the path is still empty, check if it's still in RQ
+        db.ref(`/RQ/${savedRid}`).once('value').then(rqSnap => {
+           if (!rqSnap.exists()) {
+             // Not in R and not in RQ = Session Gone
+             toggleWaiting(false);
+             add(`SESSION EXPIRED: ${savedRid}`, 'error-msg');
+             localStorage.removeItem(KEY_RID);
+             lockedMatchId = null;
+             ref.off();
+             startPolling();
+             showMode();
+           }
+        });
+        return;
+      }
       
       if (lockedMatchId !== savedRid) {
         toggleWaiting(false);
@@ -369,16 +393,11 @@
 
   async function handleMode(val) {
     if (localStorage.getItem(KEY_RID)) return;
-
-    if (val === 'A' || val === 'J') {
-      return scanForMatch();
-    }
-
+    if (val === 'A' || val === 'J') return scanForMatch();
     if (['PR','PB','R','B'].includes(val)) {
       const color = (val === 'PR' || val === 'R') ? 0 : 1;
       return registerHost(color);
     }
-
     add('Invalid input.', 'error-msg');
     return showMode();
   }
@@ -386,7 +405,6 @@
   async function handleAuth(v) {
     const u = localStorage.getItem(KEY_USER);
     const p = localStorage.getItem(KEY_PASS);
-
     if (!u) {
       if (!v) return add('User ID:', '', true, handleAuth);
       localStorage.setItem(KEY_USER, v);
@@ -410,8 +428,19 @@
     add('Core Protocol: Online.', 'success-msg');
 
     if (rid) {
-      add(`Existing Lock Detected: ${rid}`, 'success-msg');
-      startMatchListener();
+      add(`Verifying Session Lock: ${rid}`, 'system-msg');
+      const session = await verifySession(rid);
+      if (session) {
+        if (session.type === 'ACTIVE') {
+          lockOntoMatch(rid, session.data, true);
+        }
+        startMatchListener();
+      } else {
+        add(`ORPHANED ID DETECTED. PURGING...`, 'error-msg');
+        localStorage.removeItem(KEY_RID);
+        startPolling();
+        showMode();
+      }
     } else {
       startPolling();
       showMode();
