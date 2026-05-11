@@ -6,49 +6,14 @@
   <title>LASER CHESS STANDARD VARIANT (THINKFUN) - CORE EDITION (BETA η- Version)</title>
 
   <style>
-    @font-face {
-      font-family: 'Unifont';
-      src: url('unifont-15.0.01.ttf') format('truetype');
-    }
-
-    :root {
-      --bg0: #0a0a0a;
-      --bg1: #1a1a1a;
-      --text: #b0b0b0;
-      --bright: #ffffff;
-      --error: #ff5555;
-      --muted: #999999;
-      --waiting: #00ff00;
-    }
-
-    body {
-      margin: 0;
-      padding: 30px;
-      color: var(--text);
-      font-family: 'Unifont', monospace;
-      background: radial-gradient(circle at center, var(--bg1), var(--bg0));
-    }
-
-    #terminal-log {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      max-width: 1100px;
-    }
-
+    @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
+    :root { --bg0: #0a0a0a; --bg1: #1a1a1a; --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; --muted: #999999; --waiting: #00ff00; }
+    body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
+    #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
     .history-line { white-space: pre-wrap; }
     .input-wrapper { display:flex; gap:8px; }
     .prompt { white-space: pre; }
-
-    .user-input-line {
-      flex:1;
-      background: transparent;
-      border: none;
-      color: var(--bright);
-      font: inherit;
-      outline: none;
-    }
-
+    .user-input-line { flex:1; background: transparent; border: none; color: var(--bright); font: inherit; outline: none; }
     .system-msg { color: var(--muted); }
     .success-msg { color: var(--bright); font-weight: 700; }
     .error-msg { color: var(--error); }
@@ -78,7 +43,6 @@
   };
 
   const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
-
   const app = firebase.apps?.length ? firebase.app() : firebase.initializeApp(matchFirebaseConfig);
   const db = firebase.database(app);
 
@@ -88,31 +52,21 @@
 
   const logContainer = document.getElementById('terminal-log');
   const queue = [];
-  let processing = false;
-  let currentPromptWrap = null;
-  let lockedMatchId = null;
-  let rqPollInterval = null;
-  let waitAnimationInterval = null;
-  let lastQueueState = 'INIT'; 
+  let processing = false, currentPromptWrap = null, lockedMatchId = null;
+  let rqPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   function createLine(cls='') {
     const d = document.createElement('div');
     d.className = `history-line ${cls}`;
-    if (currentPromptWrap) {
-      logContainer.insertBefore(d, currentPromptWrap);
-    } else {
-      logContainer.appendChild(d);
-    }
+    if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap);
+    else logContainer.appendChild(d);
     return d;
   }
 
   function add(text, cls='', req=false, handler=null) {
-    if (!req && processing) {
-      type(text, cls, true);
-      return;
-    }
+    if (!req && processing) { type(text, cls, true); return; }
     queue.push({text,cls,req,handler});
     if (!processing) run();
   }
@@ -129,14 +83,8 @@
 
   async function type(text, cls, immediate=false) {
     const l = createLine(cls);
-    if (immediate) {
-      l.textContent = text;
-      return l;
-    }
-    for (const c of text) {
-      l.textContent += c;
-      await sleep(10);
-    }
+    if (immediate) { l.textContent = text; return l; }
+    for (const c of text) { l.textContent += c; await sleep(10); }
     return l;
   }
 
@@ -149,17 +97,10 @@
     const input = document.createElement('input');
     input.className = 'user-input-line';
     wrap.appendChild(input);
-    
     logContainer.appendChild(wrap);
     currentPromptWrap = wrap;
-
-    for (const c of text) {
-      p.textContent += c;
-      await sleep(8);
-    }
-    
+    for (const c of text) { p.textContent += c; await sleep(8); }
     setTimeout(() => input.focus(), 0);
-    
     return new Promise(resolve => {
       input.addEventListener('keydown', e => {
         if (e.key === 'Enter') {
@@ -176,32 +117,22 @@
     });
   }
 
-  // --- POLLING LOGIC ---
+  // --- POLLING LOGIC (BRANCH: RQ_Q) ---
   async function pollFirstMatch() {
     try {
-      const snapshot = await db.ref('/RQ').orderByKey().limitToFirst(1).once('value');
+      const snapshot = await db.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
       const data = snapshot.val();
-
       if (!data) {
-        if (lastQueueState !== 'EMPTY') {
-          add('RQ Buffer: Empty', 'system-msg');
-          lastQueueState = 'EMPTY';
-        }
+        if (lastQueueState !== 'EMPTY') { add('RQ Buffer: Empty', 'system-msg'); lastQueueState = 'EMPTY'; }
         return;
       }
-
       const firstKey = Object.keys(data)[0];
-      const currentState = `${firstKey}-${data[firstKey].username}`;
-
-      if (lastQueueState !== currentState) {
+      if (lastQueueState !== firstKey) {
         add(`[QUEUE] Head: ${firstKey} | User: ${data[firstKey].username}`, 'success-msg');
-        lastQueueState = currentState;
+        lastQueueState = firstKey;
       }
     } catch (e) {
-      if (lastQueueState !== 'ERROR') {
-        add('Err: RQ Access Denied.', 'error-msg');
-        lastQueueState = 'ERROR';
-      }
+      if (lastQueueState !== 'ERROR') { add('Err: RQ_Q Access Denied.', 'error-msg'); lastQueueState = 'ERROR'; }
     }
   }
 
@@ -213,164 +144,43 @@
   }
 
   function stopPolling() {
-    if (rqPollInterval) {
-      clearInterval(rqPollInterval);
-      rqPollInterval = null;
-      add('Queue Watcher Offline.', 'system-msg');
-    }
+    if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; add('Queue Watcher Offline.', 'system-msg'); }
   }
 
-  // --- JOIN LOGIC ---
-  async function scanForMatch() {
-    const currentUser = localStorage.getItem(KEY_USER);
-    add('Peeking at RQ Buffer head...', 'system-msg');
-    
-    try {
-      const snapshot = await db.ref('/RQ').orderByKey().limitToFirst(1).once('value');
-      const data = snapshot.val();
-
-      if (!data) {
-        add('SCAN FAIL: Buffer empty.', 'error-msg');
-        return showMode();
-      }
-
-      const targetId = Object.keys(data)[0];
-      const hostData = data[targetId];
-
-      if (hostData.username === currentUser) {
-        add('SCAN FAIL: Detected own signal.', 'error-msg');
-        return showMode();
-      }
-
-      add(`[A] TARGET LOCKED: ${targetId}`, 'success-msg');
-      return executeHandshake(targetId, hostData);
-
-    } catch (e) {
-      add('SYSTEM ERR: Read denied.', 'error-msg');
-      showMode();
-    }
-  }
-
-  async function executeHandshake(matchId, hostData) {
-    const username = localStorage.getItem(KEY_USER);
-    const myColor = hostData.color === 0 ? 1 : 0; 
-
-    add(`INITIATING HANDSHAKE PROTOCOL...`, 'wait-msg');
-
-    try {
-      const res = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          username: username,
-          color: myColor,
-          lastActivity: Date.now(),
-          matchId: matchId 
-        })
-      });
-
-      if (!res.ok) throw new Error('Handshake collision');
-
-      localStorage.setItem(KEY_RID, matchId);
-      add(`HANDSHAKE VERIFIED. UPLINK ESTABLISHED.`, 'success-msg');
-      
-      stopPolling();
-      startMatchListener();
-
-    } catch (err) {
-      add(`HANDSHAKE DENIED: ${err.message}`, 'error-msg');
-      showMode();
-    }
-  }
-
-  // --- HOSTING LOGIC ---
-  async function registerHost(color) {
-    const username = localStorage.getItem(KEY_USER);
-    add('Registering signal on RQ Buffer...', 'system-msg');
-
-    try {
-      const res = await fetch(WORKER_URL, {
-        method:'POST',
-        headers:{'Content-Type':'text/plain'},
-        body: JSON.stringify({ 
-          username: username, 
-          color: color, 
-          lastActivity: Date.now() 
-        })
-      });
-
-      const data = await res.json();
-      if (data.timestamp) {
-        localStorage.setItem(KEY_RID, data.timestamp); 
-        add(`Registered ID: ${data.timestamp}`, 'success-msg');
-        stopPolling();
-        startMatchListener(); 
-      }
-    } catch {
-      add('Worker sync failed.', 'error-msg');
-      showMode();
-    }
-  }
-
-  // --- WAITING STATUS ---
-  function toggleWaiting(active) {
-    if (active) {
-      if (waitAnimationInterval) return;
-      const l = createLine('wait-msg');
-      let dots = 0;
-      waitAnimationInterval = setInterval(() => {
-        dots = (dots + 1) % 4;
-        l.textContent = "Waiting for match acknowledgement" + ".".repeat(dots);
-      }, 500);
-    } else {
-      clearInterval(waitAnimationInterval);
-      waitAnimationInterval = null;
-    }
-  }
-
-  // --- MATCH SYSTEM & CLEANUP ---
+  // --- SESSION VERIFICATION (BRANCH: RQ_D) ---
   async function verifySession(rid) {
-    // Probe R first
-    const rSnap = await db.ref(`/R/${rid}`).once('value');
-    if (rSnap.exists()) return { type: 'ACTIVE', data: rSnap.val() };
-    
-    // Probe RQ second
-    const rqSnap = await db.ref(`/RQ/${rid}`).once('value');
-    if (rqSnap.exists()) return { type: 'PENDING', data: rqSnap.val() };
+    try {
+      const rSnap = await db.ref(`/R/${rid}`).once('value');
+      if (rSnap.exists()) return { type: 'ACTIVE', data: rSnap.val() };
+      
+      const rqSnap = await db.ref(`/RQ_D/${rid}`).once('value');
+      if (rqSnap.exists()) return { type: 'PENDING', data: rqSnap.val() };
 
-    return null; // Orphaned
+      return null; 
+    } catch (e) { return null; }
   }
 
   function startMatchListener() {
     const savedRid = localStorage.getItem(KEY_RID);
     if (!savedRid) return;
-
     toggleWaiting(true);
     const ref = db.ref(`/R/${savedRid}`);
-    
-    // Listener for match activation
     ref.on('value', snap => {
       const data = snap.val();
-      if (!data) {
-        // If we were waiting and the path is still empty, check if it's still in RQ
-        db.ref(`/RQ/${savedRid}`).once('value').then(rqSnap => {
-           if (!rqSnap.exists()) {
-             // Not in R and not in RQ = Session Gone
-             toggleWaiting(false);
-             add(`SESSION EXPIRED: ${savedRid}`, 'error-msg');
-             localStorage.removeItem(KEY_RID);
-             lockedMatchId = null;
-             ref.off();
-             startPolling();
-             showMode();
-           }
-        });
-        return;
-      }
-      
-      if (lockedMatchId !== savedRid) {
+      if (data && lockedMatchId !== savedRid) {
         toggleWaiting(false);
         lockOntoMatch(savedRid, data, true);
+      } else if (!data) {
+        db.ref(`/RQ_D/${savedRid}`).once('value').then(dSnap => {
+          if (!dSnap.exists()) {
+            toggleWaiting(false);
+            add(`SESSION EXPIRED: ${savedRid}`, 'error-msg');
+            localStorage.removeItem(KEY_RID);
+            ref.off();
+            startPolling();
+            showMode();
+          }
+        });
       }
     });
   }
@@ -379,72 +189,68 @@
     lockedMatchId = id;
     localStorage.setItem(KEY_RID, id); 
     stopPolling(); 
-
     add(isRecovery ? `SESSION RESTORED: ${id}` : `MATCH ESTABLISHED: ${id}`, 'success-msg');
     add(`HARD-LOCK ACTIVE: ${entry.username}`, 'highlight');
-    add(`Color Assigned: ${entry.color === 0 ? 'RED' : 'BLUE'}`, 'system-msg');
   }
 
-  function showMode() {
-    if (localStorage.getItem(KEY_RID)) return; 
-    add('Select: [PR] Red | [PB] Blue | [A] Active Scan', 'system-msg');
-    add('MODE:', '', true, handleMode);
+  async function registerHost(color) {
+    const username = localStorage.getItem(KEY_USER);
+    add('Synchronizing with Worker...', 'system-msg');
+    try {
+      const res = await fetch(WORKER_URL, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ username, color, lastActivity: Date.now() })
+      });
+      const data = await res.json();
+      if (data.timestamp) {
+        localStorage.setItem(KEY_RID, data.timestamp); 
+        add(`Registered ID: ${data.timestamp}`, 'success-msg');
+        stopPolling();
+        startMatchListener(); 
+      }
+    } catch { add('Worker sync failed.', 'error-msg'); showMode(); }
   }
+
+  function toggleWaiting(active) {
+    if (active) {
+      if (waitAnimationInterval) return;
+      const l = createLine('wait-msg');
+      let dots = 0;
+      waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = "Waiting for uplink" + ".".repeat(dots); }, 500);
+    } else { clearInterval(waitAnimationInterval); waitAnimationInterval = null; }
+  }
+
+  function showMode() { if (localStorage.getItem(KEY_RID)) return; add('Select: [PR] Red | [PB] Blue | [A] Scan', 'system-msg'); add('MODE:', '', true, handleMode); }
 
   async function handleMode(val) {
-    if (localStorage.getItem(KEY_RID)) return;
-    if (val === 'A' || val === 'J') return scanForMatch();
-    if (['PR','PB','R','B'].includes(val)) {
-      const color = (val === 'PR' || val === 'R') ? 0 : 1;
-      return registerHost(color);
-    }
-    add('Invalid input.', 'error-msg');
-    return showMode();
+    if (val === 'A') return pollFirstMatch();
+    if (['PR','PB'].includes(val)) return registerHost(val === 'PR' ? 0 : 1);
+    add('Invalid input.', 'error-msg'); return showMode();
   }
 
   async function handleAuth(v) {
-    const u = localStorage.getItem(KEY_USER);
-    const p = localStorage.getItem(KEY_PASS);
-    if (!u) {
-      if (!v) return add('User ID:', '', true, handleAuth);
-      localStorage.setItem(KEY_USER, v);
-      return boot();
-    }
-    if (!p) {
-      if (!v) return add('Access Key:', '', true, handleAuth);
-      localStorage.setItem(KEY_PASS, v);
-      return boot();
-    }
+    const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS);
+    if (!u) { if (!v) return add('User ID:', '', true, handleAuth); localStorage.setItem(KEY_USER, v); return boot(); }
+    if (!p) { if (!v) return add('Access Key:', '', true, handleAuth); localStorage.setItem(KEY_PASS, v); return boot(); }
   }
 
   async function boot() {
-    const u = localStorage.getItem(KEY_USER);
-    const p = localStorage.getItem(KEY_PASS);
-    const rid = localStorage.getItem(KEY_RID);
-
-    if (!u) return add('TERMINAL ACCESS: LOGIN REQUIRED', 'system-msg'), add('User ID:', '', true, handleAuth);
-    if (!p) return add(`Identity: ${u}`, 'highlight'), add('Access Key:', '', true, handleAuth);
-
+    const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
+    if (!u || !p) return add('TERMINAL ACCESS: LOGIN REQUIRED', 'system-msg'), add('User ID:', '', true, handleAuth);
     add('Core Protocol: Online.', 'success-msg');
-
     if (rid) {
-      add(`Verifying Session Lock: ${rid}`, 'system-msg');
+      add(`Checking Lock: ${rid}`, 'system-msg');
       const session = await verifySession(rid);
       if (session) {
-        if (session.type === 'ACTIVE') {
-          lockOntoMatch(rid, session.data, true);
-        }
+        if (session.type === 'ACTIVE') lockOntoMatch(rid, session.data, true);
         startMatchListener();
       } else {
-        add(`ORPHANED ID DETECTED. PURGING...`, 'error-msg');
+        add(`ORPHANED ID: PURGING...`, 'error-msg');
         localStorage.removeItem(KEY_RID);
-        startPolling();
-        showMode();
+        startPolling(); showMode();
       }
-    } else {
-      startPolling();
-      showMode();
-    }
+    } else { startPolling(); showMode(); }
   }
 
   window.addEventListener('DOMContentLoaded', boot);
