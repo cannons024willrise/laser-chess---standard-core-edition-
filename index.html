@@ -115,7 +115,6 @@
     });
   }
 
-  // --- AUTOMATIC BACKGROUND SCAN ---
   async function pollFirstMatch() {
     try {
       const snapshot = await db.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
@@ -152,10 +151,8 @@
     } catch (e) { return null; }
   }
 
-  // --- MODE HANDLING ---
   function showMode() {
     if (localStorage.getItem(KEY_RID)) return;
-    
     if (!currentHead) {
       add('Queue Empty. [R] Host Red | [B] Host Blue', 'system-msg');
     } else if (currentHead.data.color === 0) {
@@ -163,52 +160,57 @@
     } else {
       add(`BLUE at head. [A] Join as Red | [B] Host Blue`, 'system-msg');
     }
-    
     add('MODE:', '', true, handleMode);
   }
 
   async function handleMode(val) {
     const currentUser = localStorage.getItem(KEY_USER);
 
-    // [A] IS AUTO-JOIN FIRST IN QUEUE
     if (val === 'A') {
       if (!currentHead) {
-        add('JOIN FAILED: No active signals in buffer.', 'error-msg');
+        add('JOIN FAILED: No active signals.', 'error-msg');
         return showMode();
       }
       if (currentHead.data.username === currentUser) {
-        add('JOIN FAILED: Cannot join own signal.', 'error-msg');
+        add('JOIN FAILED: Self-intercept forbidden.', 'error-msg');
         return showMode();
       }
-      
       const targetColor = currentHead.data.color === 0 ? 1 : 0; 
-      add(`Intercepting ${currentHead.id} as ${targetColor === 0 ? 'RED' : 'BLUE'}...`, 'wait-msg');
-      return registerHost(targetColor);
+      add(`Intercepting ${currentHead.id}...`, 'wait-msg');
+      return registerHost(targetColor, true); // true = Intercept
     }
 
-    if (val === 'R') return registerHost(0); 
-    if (val === 'B') return registerHost(1);
+    if (val === 'R') return registerHost(0, false); 
+    if (val === 'B') return registerHost(1, false);
 
     add('Unknown Command.', 'error-msg');
     return showMode();
   }
 
-  async function registerHost(color) {
+  async function registerHost(color, isIntercept = false) {
     const username = localStorage.getItem(KEY_USER);
     try {
       const res = await fetch(WORKER_URL, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ username, color, lastActivity: Date.now() })
+        body: JSON.stringify({ 
+          username, 
+          color, 
+          isIntercept, 
+          lastActivity: Date.now() 
+        })
       });
       const data = await res.json();
       if (data.timestamp) {
         localStorage.setItem(KEY_RID, data.timestamp); 
-        add(`Uplink Success: ${data.timestamp}`, 'success-msg');
+        add(`${isIntercept ? 'Intercept' : 'Uplink'} Success: ${data.timestamp}`, 'success-msg');
         stopPolling();
         startMatchListener(); 
+      } else {
+        add(`Uplink Denied: ${data.error || 'Unknown'}`, 'error-msg');
+        showMode();
       }
-    } catch { add('Worker Error.', 'error-msg'); showMode(); }
+    } catch { add('Worker Connection Failed.', 'error-msg'); showMode(); }
   }
 
   function startMatchListener() {
@@ -250,7 +252,7 @@
       const l = createLine('wait-msg');
       let dots = 0;
       waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = "Awaiting Handshake" + ".".repeat(dots); }, 500);
-    } else { clearInterval(waitAnimationInterval); waitAnimationInterval = null; }
+    } else { if (waitAnimationInterval) { clearInterval(waitAnimationInterval); waitAnimationInterval = null; } }
   }
 
   async function handleAuth(v) {
