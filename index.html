@@ -30,19 +30,28 @@
 (() => {
   'use strict';
 
-  const matchFirebaseConfig = {
+  // --- CONFIGURATIONS ---
+  const matchConfig = {
     apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
     authDomain: "lasercheowefficiencymanager.firebaseapp.com",
     databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com",
-    projectId: "lasercheowefficiencymanager",
-    storageBucket: "lasercheowefficiencymanager.firebasestorage.app",
-    messagingSenderId: "28090691314",
-    appId: "1:28090691314:web:e8c8ae5b0fd437038b6a6b"
+    projectId: "lasercheowefficiencymanager"
+  };
+
+  const gameConfig = {
+    apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE",
+    authDomain: "laser-chess-low-efficiency.firebaseapp.com",
+    databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com",
+    projectId: "laser-chess-low-efficiency"
   };
 
   const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
-  const app = firebase.apps?.length ? firebase.app() : firebase.initializeApp(matchFirebaseConfig);
-  const db = firebase.database(app);
+  
+  // Initialize Dual DBs
+  const matchApp = firebase.initializeApp(matchConfig, "matchApp");
+  const gameApp = firebase.initializeApp(gameConfig, "gameApp");
+  const dbMatch = firebase.database(matchApp);
+  const dbGame = firebase.database(gameApp);
 
   const KEY_USER = 'ls_user', KEY_PASS = 'ls_pass', KEY_RID = 'ls_request_id';
   const logContainer = document.getElementById('terminal-log');
@@ -53,6 +62,7 @@
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+  // --- TERMINAL CORE ---
   function createLine(cls='') {
     const d = document.createElement('div');
     d.className = `history-line ${cls}`;
@@ -87,11 +97,9 @@
   async function prompt(text, cls, handler) {
     const wrap = document.createElement('div');
     wrap.className = 'input-wrapper history-line';
-    const p = document.createElement('span');
-    p.className = 'prompt';
+    const p = document.createElement('span'); p.className = 'prompt';
     wrap.appendChild(p);
-    const input = document.createElement('input');
-    input.className = 'user-input-line';
+    const input = document.createElement('input'); input.className = 'user-input-line';
     wrap.appendChild(input);
     logContainer.appendChild(wrap);
     currentPromptWrap = wrap;
@@ -104,18 +112,17 @@
           input.disabled = true;
           const finalLine = createLine('highlight');
           finalLine.textContent = p.textContent + v;
-          wrap.remove();
-          currentPromptWrap = null;
-          handler(v);
-          resolve();
+          wrap.remove(); currentPromptWrap = null;
+          handler(v); resolve();
         }
       });
     });
   }
 
+  // --- SIGNAL SCANNER (DB 1) ---
   async function pollFirstMatch() {
     try {
-      const snapshot = await db.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
+      const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
       const data = snapshot.val();
       if (!data) {
         currentHead = null;
@@ -139,14 +146,25 @@
 
   function stopPolling() { if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } }
 
-  async function verifySession(rid) {
+  // --- GAME DB SEARCH (THOUSAND IQ) ---
+  async function searchForGameDBMatch() {
+    const myName = localStorage.getItem(KEY_USER);
+    add(`Scanning Game DB for active sessions...`, 'system-msg');
+    
     try {
-      const rSnap = await db.ref(`/R/${rid}`).once('value');
-      if (rSnap.exists()) return { type: 'ACTIVE', data: rSnap.val() };
-      const rqSnap = await db.ref(`/RQ_D/${rid}`).once('value');
-      if (rqSnap.exists()) return { type: 'PENDING', data: rqSnap.val() };
-      return null; 
-    } catch (e) { return null; }
+      const snap = await dbGame.ref('G').once('value');
+      const games = snap.val();
+      if (!games) return false;
+
+      // Search keys for my username
+      const matchID = Object.keys(games).find(key => key.includes(myName));
+      if (matchID) {
+        add(`Match detected in Game Storage: ${matchID}`, 'success-msg');
+        lockOntoMatch(matchID, games[matchID]);
+        return true;
+      }
+    } catch (e) { console.error(e); }
+    return false;
   }
 
   function showMode() {
@@ -166,9 +184,8 @@
     if (val === 'A') {
       if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); return showMode(); }
       if (currentHead.data.username === currentUser) { add('JOIN FAILED: Self-intercept forbidden.', 'error-msg'); return showMode(); }
-      const targetColor = currentHead.data.color === 0 ? 1 : 0; 
       add(`Intercepting ${currentHead.id}...`, 'wait-msg');
-      return registerHost(targetColor, true); 
+      return registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
     }
     if (val === 'R') return registerHost(0, false); 
     if (val === 'B') return registerHost(1, false);
@@ -182,29 +199,17 @@
       const res = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ 
-          username, 
-          color, 
-          isIntercept, 
-          lastActivity: Date.now() 
-        })
+        body: JSON.stringify({ username, color, isIntercept, lastActivity: Date.now() })
       });
       const data = await res.json();
-      
-      // FIXED SUCCESS CHECK
       if (data.ok) {
         const idToStore = isIntercept ? data.matchName : data.timestamp;
         localStorage.setItem(KEY_RID, idToStore); 
         add(`${isIntercept ? 'Intercept' : 'Uplink'} Success!`, 'success-msg');
         stopPolling();
         
-        if (isIntercept) {
-            // Joiners already have the matchName, skip the handshake listener
-            lockOntoMatch(data.matchName, { username: "SYNCING..." });
-        } else {
-            // Hosts wait for the listener to pick up the matchName from /R/
-            startMatchListener(); 
-        }
+        if (isIntercept) lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        else startMatchListener(); 
       } else {
         add(`Uplink Denied: ${data.error || 'Unknown'}`, 'error-msg');
         showMode();
@@ -212,41 +217,56 @@
     } catch { add('Worker Connection Failed.', 'error-msg'); showMode(); }
   }
 
+  // --- HANDSHAKE LISTENER (DB 1) ---
   function startMatchListener() {
     const savedRid = localStorage.getItem(KEY_RID);
-    if (!savedRid) return;
+    if (!savedRid || savedRid.includes('_')) return; // Already a game ID
+    
     toggleWaiting(true);
-    const ref = db.ref(`/R/${savedRid}`);
-    ref.on('value', snap => {
+    const ref = dbMatch.ref(`/R/${savedRid}`);
+    
+    ref.on('value', async snap => {
       const data = snap.val();
-      // If data has a matchName, the Worker has linked us!
+      
+      // If signal is deleted or contains matchName
       if (data && data.matchName) {
         toggleWaiting(false);
-        const matchID = data.matchName;
-        ref.off(); // Kill signal listener
-        lockOntoMatch(matchID, data);
+        ref.off();
+        lockOntoMatch(data.matchName, data);
       } else if (!data) {
-        // If the RID is gone from /R/ and /RQ_D/, the session is dead
-        db.ref(`/RQ_D/${savedRid}`).once('value').then(dSnap => {
-          if (!dSnap.exists()) {
-            toggleWaiting(false);
-            add('SESSION EXPIRED.', 'error-msg');
-            localStorage.removeItem(KEY_RID);
-            ref.off();
-            startPolling();
-            showMode();
-          }
-        });
+        // HANDSHAKE DELETED: Search Game DB immediately
+        toggleWaiting(false);
+        ref.off();
+        const found = await searchForGameDBMatch();
+        if (!found) {
+          add('SIGNAL LOST. RETURNING TO LOBBY.', 'error-msg');
+          localStorage.removeItem(KEY_RID);
+          startPolling(); showMode();
+        }
       }
     });
   }
 
-  function lockOntoMatch(id, entry, isRecovery = false) {
+  // --- REAL-TIME GAME SYNC (DB 2) ---
+  function lockOntoMatch(id, entry) {
     lockedMatchId = id;
     localStorage.setItem(KEY_RID, id); 
     stopPolling(); 
-    add(isRecovery ? `LINK RESTORED: ${id}` : `LINK ESTABLISHED: ${id}`, 'success-msg');
-    if (entry.opponent) add(`OPPONENT: ${entry.opponent}`, 'highlight');
+    add(`LINK ESTABLISHED: ${id}`, 'success-msg');
+    
+    // START REAL-TIME READ FROM SECOND DB
+    const gameRef = dbGame.ref(`G/${id}`);
+    gameRef.on('value', snap => {
+        const state = snap.val();
+        if (state) {
+            add(`[GRID UPDATE] Turn: ${state.turn} | Board: ${state.board}`, 'system-msg');
+        } else {
+            add(`MATCH TERMINATED IN STORAGE.`, 'error-msg');
+            localStorage.removeItem(KEY_RID);
+            gameRef.off();
+            startPolling(); showMode();
+        }
+    });
   }
 
   function toggleWaiting(active) {
@@ -269,23 +289,19 @@
     if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
     
     add('System Online.', 'success-msg');
-    await pollFirstMatch();
     
-    if (rid) {
-      // Logic for recovering an alphabetical name match (Thousand IQ recovery)
-      if (rid.includes('_')) {
-        lockOntoMatch(rid, { opponent: "PREVIOUS" }, true);
-      } else {
-        const session = await verifySession(rid);
-        if (session) {
-          if (session.type === 'ACTIVE') lockOntoMatch(rid, session.data, true);
-          startMatchListener();
-        } else {
-          localStorage.removeItem(KEY_RID);
-          startPolling(); showMode();
-        }
-      }
-    } else { startPolling(); showMode(); }
+    // Check if we are already in a match saved in LS
+    if (rid && rid.includes('_')) {
+        const snap = await dbGame.ref(`G/${rid}`).once('value');
+        if (snap.exists()) return lockOntoMatch(rid, snap.val());
+    }
+
+    // Otherwise, perform a search scan
+    const foundInGameDB = await searchForGameDBMatch();
+    if (!foundInGameDB) {
+        startPolling();
+        showMode();
+    }
   }
 
   window.addEventListener('DOMContentLoaded', boot);
