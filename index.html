@@ -177,7 +177,7 @@
       }
       const targetColor = currentHead.data.color === 0 ? 1 : 0; 
       add(`Intercepting ${currentHead.id}...`, 'wait-msg');
-      return registerHost(targetColor, true); // true = Intercept
+      return registerHost(targetColor, true); 
     }
 
     if (val === 'R') return registerHost(0, false); 
@@ -191,8 +191,9 @@
     const username = localStorage.getItem(KEY_USER);
     try {
       const res = await fetch(WORKER_URL, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
+        method: 'POST',
+        // USING text/plain TO BYPASS CORS PREFLIGHT (OPTIONS)
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ 
           username, 
           color, 
