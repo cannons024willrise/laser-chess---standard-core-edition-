@@ -3,17 +3,49 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LASER CHESS STANDARD VARIANT (THINKFUN) - CORE EDITION (BETA η- Version)</title>
+  <title>LASER CHESS STANDARD VARIANT - CORE EDITION (BETA η)</title>
 
   <style>
     @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
-    :root { --bg0: #0a0a0a; --bg1: #1a1a1a; --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; --muted: #999999; --waiting: #00ff00; }
-    body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
-    #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
-    .history-line { white-space: pre-wrap; }
+
+    :root {
+      --bg0: #0a0a0a;
+      --bg1: #1a1a1a;
+      --text: #b0b0b0;
+      --bright: #ffffff;
+      --error: #ff5555;
+      --muted: #999999;
+      --waiting: #00ff00;
+    }
+
+    body {
+      margin: 0;
+      padding: 30px;
+      color: var(--text);
+      font-family: 'Unifont', monospace;
+      background: radial-gradient(circle at center, var(--bg1), var(--bg0));
+    }
+
+    #terminal-log {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-width: 1100px;
+    }
+
+    .history-line { white-space: pre-wrap; word-break: break-all; }
     .input-wrapper { display:flex; gap:8px; }
     .prompt { white-space: pre; }
-    .user-input-line { flex:1; background: transparent; border: none; color: var(--bright); font: inherit; outline: none; }
+
+    .user-input-line {
+      flex:1;
+      background: transparent;
+      border: none;
+      color: var(--bright);
+      font: inherit;
+      outline: none;
+    }
+
     .system-msg { color: var(--muted); }
     .success-msg { color: var(--bright); font-weight: 700; }
     .error-msg { color: var(--error); }
@@ -25,6 +57,7 @@
 <body>
 <div id="terminal-log"></div>
 
+<!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
 
@@ -32,6 +65,7 @@
 (() => {
   'use strict';
 
+  // --- CONFIGURATION ---
   const matchFirebaseConfig = {
     apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
     authDomain: "lasercheowefficiencymanager.firebaseapp.com",
@@ -46,17 +80,17 @@
   const app = firebase.apps?.length ? firebase.app() : firebase.initializeApp(matchFirebaseConfig);
   const db = firebase.database(app);
 
-  const KEY_USER = 'ls_user';
-  const KEY_PASS = 'ls_pass';
-  const KEY_RID  = 'ls_request_id';
+  const KEY_USER = 'ls_user', KEY_PASS = 'ls_pass', KEY_RID = 'ls_request_id';
 
   const logContainer = document.getElementById('terminal-log');
   const queue = [];
   let processing = false, currentPromptWrap = null, lockedMatchId = null;
   let rqPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
+  let currentHead = null; 
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+  // --- UI CORE ---
   function createLine(cls='') {
     const d = document.createElement('div');
     d.className = `history-line ${cls}`;
@@ -117,37 +151,34 @@
     });
   }
 
-  // --- POLLING LOGIC (BRANCH: RQ_Q) ---
+  // --- SCANNING (BRANCH: RQ_Q) ---
   async function pollFirstMatch() {
     try {
       const snapshot = await db.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
       const data = snapshot.val();
       if (!data) {
-        if (lastQueueState !== 'EMPTY') { add('RQ Buffer: Empty', 'system-msg'); lastQueueState = 'EMPTY'; }
+        currentHead = null;
+        if (lastQueueState !== 'EMPTY') { add('RQ_Q Buffer: Empty', 'system-msg'); lastQueueState = 'EMPTY'; }
         return;
       }
       const firstKey = Object.keys(data)[0];
+      currentHead = { id: firstKey, data: data[firstKey] };
       if (lastQueueState !== firstKey) {
-        add(`[QUEUE] Head: ${firstKey} | User: ${data[firstKey].username}`, 'success-msg');
+        add(`[SIGNAL DETECTED] ID: ${firstKey} | User: ${data[firstKey].username}`, 'success-msg');
         lastQueueState = firstKey;
       }
-    } catch (e) {
-      if (lastQueueState !== 'ERROR') { add('Err: RQ_Q Access Denied.', 'error-msg'); lastQueueState = 'ERROR'; }
-    }
+    } catch (e) { currentHead = null; }
   }
 
   function startPolling() {
     if (rqPollInterval) clearInterval(rqPollInterval);
-    add('Starting Queue Watcher...', 'system-msg');
     pollFirstMatch(); 
-    rqPollInterval = setInterval(pollFirstMatch, 5000);
+    rqPollInterval = setInterval(pollFirstMatch, 8000);
   }
 
-  function stopPolling() {
-    if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; add('Queue Watcher Offline.', 'system-msg'); }
-  }
+  function stopPolling() { if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } }
 
-  // --- SESSION VERIFICATION (BRANCH: RQ_D) ---
+  // --- VERIFICATION (BRANCH: RQ_D) ---
   async function verifySession(rid) {
     try {
       const rSnap = await db.ref(`/R/${rid}`).once('value');
@@ -155,16 +186,96 @@
       
       const rqSnap = await db.ref(`/RQ_D/${rid}`).once('value');
       if (rqSnap.exists()) return { type: 'PENDING', data: rqSnap.val() };
-
+      
       return null; 
     } catch (e) { return null; }
   }
 
+  // --- STATE-BASED NAVIGATION ---
+  function showMode() {
+    if (localStorage.getItem(KEY_RID)) return;
+    
+    if (!currentHead) {
+      // Empty: Allow R or B
+      add('Queue Empty. Modes: [PR] Host Red | [PB] Host Blue | [A] Scan', 'system-msg');
+    } else if (currentHead.data.color === 0) {
+      // Red at head: Allow A(Join Blue) or R
+      add(`RED Signal at Head. Modes: [A] Scan/Join Info | [PR] Host Red`, 'system-msg');
+    } else {
+      // Blue at head: Allow A(Join Red) or B
+      add(`BLUE Signal at Head. Modes: [A] Scan/Join Info | [PB] Host Blue`, 'system-msg');
+    }
+    
+    add('MODE:', '', true, handleMode);
+  }
+
+  async function handleMode(val) {
+    const currentUser = localStorage.getItem(KEY_USER);
+
+    // [A] MANUAL SCAN ONLY - NO AUTO TRIGGER
+    if (val === 'A') {
+      add('Initiating manual probe of RQ_Q head...', 'system-msg');
+      await pollFirstMatch();
+      
+      if (!currentHead) {
+        add('SCAN RESULT: Buffer clear. No active signals.', 'system-msg');
+      } else {
+        const h = currentHead.data;
+        const colorLabel = h.color === 0 ? 'RED' : 'BLUE';
+        add(`SCAN RESULT: [ID: ${currentHead.id}]`, 'highlight');
+        add(`User: ${h.username} | Frequency: ${colorLabel}`, 'highlight');
+        
+        if (h.username === currentUser) {
+          add('Status: Own signal detected.', 'error-msg');
+        } else {
+          const opposite = h.color === 0 ? 'PB (Join Blue)' : 'PR (Join Red)';
+          add(`Recommended Action: Execute ${opposite}`, 'success-msg');
+        }
+      }
+      return showMode(); 
+    }
+
+    // [PR/PB] EXPLICIT UPLINK
+    if (val === 'PR') return registerHost(0); 
+    if (val === 'PB') return registerHost(1);
+
+    add('Invalid Protocol.', 'error-msg');
+    return showMode();
+  }
+
+  // --- WORKER UPLINK ---
+  async function registerHost(color) {
+    const username = localStorage.getItem(KEY_USER);
+    add(`Broadcasting ${color === 0 ? 'RED' : 'BLUE'} frequency to RQ...`, 'system-msg');
+    
+    try {
+      const res = await fetch(WORKER_URL, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ username, color, lastActivity: Date.now() })
+      });
+      const data = await res.json();
+      
+      if (data.timestamp) {
+        localStorage.setItem(KEY_RID, data.timestamp); 
+        add(`Signal Registered: ${data.timestamp}`, 'success-msg');
+        stopPolling();
+        startMatchListener(); 
+      }
+    } catch { 
+      add('Uplink failed. Worker unreachable.', 'error-msg'); 
+      showMode(); 
+    }
+  }
+
+  // --- MATCH LISTENER ---
   function startMatchListener() {
     const savedRid = localStorage.getItem(KEY_RID);
     if (!savedRid) return;
+
     toggleWaiting(true);
     const ref = db.ref(`/R/${savedRid}`);
+    
     ref.on('value', snap => {
       const data = snap.val();
       if (data && lockedMatchId !== savedRid) {
@@ -193,64 +304,63 @@
     add(`HARD-LOCK ACTIVE: ${entry.username}`, 'highlight');
   }
 
-  async function registerHost(color) {
-    const username = localStorage.getItem(KEY_USER);
-    add('Synchronizing with Worker...', 'system-msg');
-    try {
-      const res = await fetch(WORKER_URL, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ username, color, lastActivity: Date.now() })
-      });
-      const data = await res.json();
-      if (data.timestamp) {
-        localStorage.setItem(KEY_RID, data.timestamp); 
-        add(`Registered ID: ${data.timestamp}`, 'success-msg');
-        stopPolling();
-        startMatchListener(); 
-      }
-    } catch { add('Worker sync failed.', 'error-msg'); showMode(); }
-  }
-
   function toggleWaiting(active) {
     if (active) {
       if (waitAnimationInterval) return;
       const l = createLine('wait-msg');
       let dots = 0;
-      waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = "Waiting for uplink" + ".".repeat(dots); }, 500);
-    } else { clearInterval(waitAnimationInterval); waitAnimationInterval = null; }
+      waitAnimationInterval = setInterval(() => { 
+        dots = (dots + 1) % 4; 
+        l.textContent = "Awaiting match acknowledgement" + ".".repeat(dots); 
+      }, 500);
+    } else { 
+      clearInterval(waitAnimationInterval); 
+      waitAnimationInterval = null; 
+    }
   }
 
-  function showMode() { if (localStorage.getItem(KEY_RID)) return; add('Select: [PR] Red | [PB] Blue | [A] Scan', 'system-msg'); add('MODE:', '', true, handleMode); }
-
-  async function handleMode(val) {
-    if (val === 'A') return pollFirstMatch();
-    if (['PR','PB'].includes(val)) return registerHost(val === 'PR' ? 0 : 1);
-    add('Invalid input.', 'error-msg'); return showMode();
-  }
-
+  // --- AUTH & BOOT ---
   async function handleAuth(v) {
     const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS);
-    if (!u) { if (!v) return add('User ID:', '', true, handleAuth); localStorage.setItem(KEY_USER, v); return boot(); }
-    if (!p) { if (!v) return add('Access Key:', '', true, handleAuth); localStorage.setItem(KEY_PASS, v); return boot(); }
+    if (!u) { 
+      if (!v) return add('User ID:', '', true, handleAuth); 
+      localStorage.setItem(KEY_USER, v); 
+      return boot(); 
+    }
+    if (!p) { 
+      if (!v) return add('Access Key:', '', true, handleAuth); 
+      localStorage.setItem(KEY_PASS, v); 
+      return boot(); 
+    }
   }
 
   async function boot() {
     const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
-    if (!u || !p) return add('TERMINAL ACCESS: LOGIN REQUIRED', 'system-msg'), add('User ID:', '', true, handleAuth);
+    
+    if (!u || !p) {
+      add('TERMINAL ACCESS: LOGIN REQUIRED', 'system-msg');
+      return add('User ID:', '', true, handleAuth);
+    }
+
     add('Core Protocol: Online.', 'success-msg');
+    await pollFirstMatch(); // Initial scan
+
     if (rid) {
-      add(`Checking Lock: ${rid}`, 'system-msg');
+      add(`Validating Session Integrity: ${rid}`, 'system-msg');
       const session = await verifySession(rid);
       if (session) {
         if (session.type === 'ACTIVE') lockOntoMatch(rid, session.data, true);
         startMatchListener();
       } else {
-        add(`ORPHANED ID: PURGING...`, 'error-msg');
+        add(`ORPHANED SESSION DETECTED. PURGING...`, 'error-msg');
         localStorage.removeItem(KEY_RID);
-        startPolling(); showMode();
+        startPolling(); 
+        showMode();
       }
-    } else { startPolling(); showMode(); }
+    } else { 
+      startPolling(); 
+      showMode(); 
+    }
   }
 
   window.addEventListener('DOMContentLoaded', boot);
