@@ -1,27 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LASER CHESS - CORE EDITION (BETA η)</title>
-
-  <style>
-    @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
-    :root { --bg0: #0a0a0a; --bg1: #1a1a1a; --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; --muted: #999999; --waiting: #00ff00; }
-    body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
-    #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
-    .history-line { white-space: pre-wrap; word-break: break-all; }
-    .input-wrapper { display:flex; gap:8px; }
-    .prompt { white-space: pre; }
-    .user-input-line { flex:1; background: transparent; border: none; color: var(--bright); font: inherit; outline: none; }
-    .system-msg { color: var(--muted); }
-    .success-msg { color: var(--bright); font-weight: 700; }
-    .error-msg { color: var(--error); }
-    .highlight { color: var(--bright); font-weight: 700; }
-    .wait-msg { color: var(--waiting); }
-  </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LASER CHESS - CORE EDITION (BETA η)</title>
+    <style>
+        @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
+        :root { --bg0: #0a0a0a; --bg1: #1a1a1a; --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; --muted: #999999; --waiting: #00ff00; }
+        body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
+        #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
+        .history-line { white-space: pre-wrap; word-break: break-all; }
+        .input-wrapper { display:flex; gap:8px; }
+        .prompt { white-space: pre; }
+        .user-input-line { flex:1; background: transparent; border: none; color: var(--bright); font: inherit; outline: none; }
+        .system-msg { color: var(--muted); }
+        .success-msg { color: var(--bright); font-weight: 700; }
+        .error-msg { color: var(--error); }
+        .highlight { color: var(--bright); font-weight: 700; }
+        .wait-msg { color: var(--waiting); }
+    </style>
 </head>
-
 <body>
 <div id="terminal-log"></div>
 
@@ -165,24 +163,15 @@
 
   async function handleMode(val) {
     const currentUser = localStorage.getItem(KEY_USER);
-
     if (val === 'A') {
-      if (!currentHead) {
-        add('JOIN FAILED: No active signals.', 'error-msg');
-        return showMode();
-      }
-      if (currentHead.data.username === currentUser) {
-        add('JOIN FAILED: Self-intercept forbidden.', 'error-msg');
-        return showMode();
-      }
+      if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); return showMode(); }
+      if (currentHead.data.username === currentUser) { add('JOIN FAILED: Self-intercept forbidden.', 'error-msg'); return showMode(); }
       const targetColor = currentHead.data.color === 0 ? 1 : 0; 
       add(`Intercepting ${currentHead.id}...`, 'wait-msg');
       return registerHost(targetColor, true); 
     }
-
     if (val === 'R') return registerHost(0, false); 
     if (val === 'B') return registerHost(1, false);
-
     add('Unknown Command.', 'error-msg');
     return showMode();
   }
@@ -192,7 +181,6 @@
     try {
       const res = await fetch(WORKER_URL, {
         method: 'POST',
-        // USING text/plain TO BYPASS CORS PREFLIGHT (OPTIONS)
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ 
           username, 
@@ -202,11 +190,21 @@
         })
       });
       const data = await res.json();
-      if (data.timestamp) {
-        localStorage.setItem(KEY_RID, data.timestamp); 
-        add(`${isIntercept ? 'Intercept' : 'Uplink'} Success: ${data.timestamp}`, 'success-msg');
+      
+      // FIXED SUCCESS CHECK
+      if (data.ok) {
+        const idToStore = isIntercept ? data.matchName : data.timestamp;
+        localStorage.setItem(KEY_RID, idToStore); 
+        add(`${isIntercept ? 'Intercept' : 'Uplink'} Success!`, 'success-msg');
         stopPolling();
-        startMatchListener(); 
+        
+        if (isIntercept) {
+            // Joiners already have the matchName, skip the handshake listener
+            lockOntoMatch(data.matchName, { username: "SYNCING..." });
+        } else {
+            // Hosts wait for the listener to pick up the matchName from /R/
+            startMatchListener(); 
+        }
       } else {
         add(`Uplink Denied: ${data.error || 'Unknown'}`, 'error-msg');
         showMode();
@@ -221,10 +219,14 @@
     const ref = db.ref(`/R/${savedRid}`);
     ref.on('value', snap => {
       const data = snap.val();
-      if (data && lockedMatchId !== savedRid) {
+      // If data has a matchName, the Worker has linked us!
+      if (data && data.matchName) {
         toggleWaiting(false);
-        lockOntoMatch(savedRid, data, true);
+        const matchID = data.matchName;
+        ref.off(); // Kill signal listener
+        lockOntoMatch(matchID, data);
       } else if (!data) {
+        // If the RID is gone from /R/ and /RQ_D/, the session is dead
         db.ref(`/RQ_D/${savedRid}`).once('value').then(dSnap => {
           if (!dSnap.exists()) {
             toggleWaiting(false);
@@ -244,7 +246,7 @@
     localStorage.setItem(KEY_RID, id); 
     stopPolling(); 
     add(isRecovery ? `LINK RESTORED: ${id}` : `LINK ESTABLISHED: ${id}`, 'success-msg');
-    add(`OPPONENT: ${entry.username}`, 'highlight');
+    if (entry.opponent) add(`OPPONENT: ${entry.opponent}`, 'highlight');
   }
 
   function toggleWaiting(active) {
@@ -270,13 +272,18 @@
     await pollFirstMatch();
     
     if (rid) {
-      const session = await verifySession(rid);
-      if (session) {
-        if (session.type === 'ACTIVE') lockOntoMatch(rid, session.data, true);
-        startMatchListener();
+      // Logic for recovering an alphabetical name match (Thousand IQ recovery)
+      if (rid.includes('_')) {
+        lockOntoMatch(rid, { opponent: "PREVIOUS" }, true);
       } else {
-        localStorage.removeItem(KEY_RID);
-        startPolling(); showMode();
+        const session = await verifySession(rid);
+        if (session) {
+          if (session.type === 'ACTIVE') lockOntoMatch(rid, session.data, true);
+          startMatchListener();
+        } else {
+          localStorage.removeItem(KEY_RID);
+          startPolling(); showMode();
+        }
       }
     } else { startPolling(); showMode(); }
   }
