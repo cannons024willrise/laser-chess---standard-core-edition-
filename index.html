@@ -30,7 +30,6 @@
 (() => {
   'use strict';
 
-  // --- CONFIGURATIONS ---
   const matchConfig = {
     apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
     authDomain: "lasercheowefficiencymanager.firebaseapp.com",
@@ -118,6 +117,9 @@
   }
 
   async function pollFirstMatch() {
+    // GUARD: Don't poll if we have an active Request ID or are locked
+    if (localStorage.getItem(KEY_RID) || lockedMatchId) return;
+
     try {
       const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
       const data = snapshot.val();
@@ -141,11 +143,13 @@
     rqPollInterval = setInterval(pollFirstMatch, 6000);
   }
 
-  function stopPolling() { if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } }
+  function stopPolling() { 
+    if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } 
+    lastQueueState = 'STOPPED';
+  }
 
   async function searchForGameDBMatch() {
     const myName = localStorage.getItem(KEY_USER);
-    add(`Scanning Game Storage for active session...`, 'system-msg');
     try {
       const snap = await dbGame.ref('G').once('value');
       const games = snap.val();
@@ -185,49 +189,45 @@
 
   async function registerHost(color, isIntercept = false) {
     const username = localStorage.getItem(KEY_USER);
-    const password = localStorage.getItem(KEY_PASS); // Spliced: Send password
+    const password = localStorage.getItem(KEY_PASS);
     try {
       const res = await fetch(WORKER_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ username, password, color, isIntercept, lastActivity: Date.now() })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, color, isIntercept })
       });
       const data = await res.json();
       if (data.ok) {
         const idToStore = isIntercept ? data.matchName : data.timestamp;
         localStorage.setItem(KEY_RID, idToStore); 
-        add(`${isIntercept ? 'Intercept' : 'Uplink'} Success!`, 'success-msg');
         stopPolling();
+        add(`${isIntercept ? 'Intercept' : 'Uplink'} Success!`, 'success-msg');
         if (isIntercept) lockOntoMatch(data.matchName, { status: 'SYNCING' });
         else startMatchListener(); 
       } else {
-        add(`Uplink Denied: ${data.error || 'Unknown'}`, 'error-msg');
+        add(`Uplink Denied: ${data.error}`, 'error-msg');
         showMode();
       }
-    } catch { add('Worker Connection Failed.', 'error-msg'); showMode(); }
+    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); showMode(); }
   }
 
   function startMatchListener() {
     const savedRid = localStorage.getItem(KEY_RID);
-    if (!savedRid || savedRid.includes('_')) return;
+    if (!savedRid || savedRid.toString().includes('_')) return;
+    
     toggleWaiting(true);
     const ref = dbMatch.ref(`/R/${savedRid}`);
+    
+    // Listen for the opponent to write the matchName
     ref.on('value', async snap => {
       const data = snap.val();
       if (data && data.matchName) {
         toggleWaiting(false);
         ref.off();
         lockOntoMatch(data.matchName, data);
-      } else if (!data) {
-        toggleWaiting(false);
-        ref.off();
-        const found = await searchForGameDBMatch();
-        if (!found) {
-          add('SIGNAL LOST.', 'error-msg');
-          localStorage.removeItem(KEY_RID);
-          startPolling(); showMode();
-        }
       }
+      // Note: We no longer trigger "SIGNAL LOST" on null here, 
+      // because it starts as null until a joiner arrives.
     });
   }
 
@@ -235,9 +235,9 @@
     lockedMatchId = id;
     localStorage.setItem(KEY_RID, id); 
     stopPolling(); 
+    toggleWaiting(false);
     add(`LINK ESTABLISHED: ${id}`, 'success-msg');
     
-    // Real-time monitor of Game DB
     const gameRef = dbGame.ref(`G/${id}`);
     gameRef.on('value', snap => {
         const state = snap.val();
@@ -246,6 +246,7 @@
         } else {
             add(`MATCH TERMINATED.`, 'error-msg');
             localStorage.removeItem(KEY_RID);
+            lockedMatchId = null;
             gameRef.off();
             startPolling(); showMode();
         }
@@ -257,23 +258,50 @@
       if (waitAnimationInterval) return;
       const l = createLine('wait-msg');
       let dots = 0;
-      waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = "Awaiting Handshake" + ".".repeat(dots); }, 500);
-    } else { if (waitAnimationInterval) { clearInterval(waitAnimationInterval); waitAnimationInterval = null; } }
+      waitAnimationInterval = setInterval(() => { 
+        dots = (dots + 1) % 4; 
+        l.textContent = "Awaiting Handshake" + ".".repeat(dots); 
+      }, 500);
+    } else { 
+      if (waitAnimationInterval) { 
+        clearInterval(waitAnimationInterval); 
+        waitAnimationInterval = null; 
+      } 
+    }
   }
 
   async function handleAuth(v) {
-    if (!localStorage.getItem(KEY_USER)) { if (!v) return add('User ID:', '', true, handleAuth); localStorage.setItem(KEY_USER, v); return boot(); }
-    if (!localStorage.getItem(KEY_PASS)) { if (!v) return add('Access Key:', '', true, handleAuth); localStorage.setItem(KEY_PASS, v); return boot(); }
+    if (!localStorage.getItem(KEY_USER)) { 
+      if (!v) return add('User ID:', '', true, handleAuth); 
+      localStorage.setItem(KEY_USER, v); 
+      return boot(); 
+    }
+    if (!localStorage.getItem(KEY_PASS)) { 
+      if (!v) return add('Access Key:', '', true, handleAuth); 
+      localStorage.setItem(KEY_PASS, v); 
+      return boot(); 
+    }
   }
 
   async function boot() {
     const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
     if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
+    
     add('System Online.', 'success-msg');
-    if (rid && rid.includes('_')) {
+    
+    // Check if we are already in a match
+    if (rid && rid.toString().includes('_')) {
         const snap = await dbGame.ref(`G/${rid}`).once('value');
         if (snap.exists()) return lockOntoMatch(rid, snap.val());
     }
+    
+    // Check if we are a host waiting for a match
+    if (rid && !rid.toString().includes('_')) {
+        add('Recovering uplink...', 'system-msg');
+        startMatchListener();
+        return;
+    }
+
     const foundInGameDB = await searchForGameDBMatch();
     if (!foundInGameDB) { startPolling(); showMode(); }
   }
