@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LASER CHESS - CORE EDITION (BETA η)</title>
+    <title>LASER CHESS - STANDARD VARIANT- CORE EDITION (BETA η-)</title>
     <style>
         @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
         :root { --bg0: #0a0a0a; --bg1: #1a1a1a; --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; --muted: #999999; --waiting: #00ff00; }
@@ -56,7 +56,8 @@
   const queue = [];
   let processing = false, currentPromptWrap = null, lockedMatchId = null;
   let rqPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
-  let currentHead = null; 
+  let currentHead = null;
+  let initialQueueScanDone = false;
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -116,31 +117,57 @@
     });
   }
 
-  async function pollFirstMatch() {
+  async function pollFirstMatch({ silentEmpty = false } = {}) {
     // GUARD: Don't poll if we have an active Request ID or are locked
-    if (localStorage.getItem(KEY_RID) || lockedMatchId) return;
+    if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
 
     try {
       const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
       const data = snapshot.val();
+
       if (!data) {
         currentHead = null;
-        if (lastQueueState !== 'EMPTY') { add('RQ_Q: Empty (Idle)', 'system-msg'); lastQueueState = 'EMPTY'; }
-        return;
+
+        // Only announce empty after the first real scan, and only if not silent
+        if (!silentEmpty && initialQueueScanDone && lastQueueState !== 'EMPTY') {
+          add('RQ_Q: Empty (Idle)', 'system-msg');
+          lastQueueState = 'EMPTY';
+        }
+
+        return false;
       }
+
+      initialQueueScanDone = true;
+
       const firstKey = Object.keys(data)[0];
       currentHead = { id: firstKey, data: data[firstKey] };
+
       if (lastQueueState !== firstKey) {
         add(`[AUTO-SCAN] Head detected: ${data[firstKey].username} (${data[firstKey].color === 0 ? 'RED' : 'BLUE'})`, 'success-msg');
         lastQueueState = firstKey;
       }
-    } catch (e) { currentHead = null; }
+
+      return true;
+    } catch (e) {
+      currentHead = null;
+      return false;
+    }
   }
 
-  function startPolling() {
+  async function startPolling() {
     if (rqPollInterval) clearInterval(rqPollInterval);
-    pollFirstMatch(); 
-    rqPollInterval = setInterval(pollFirstMatch, 6000);
+
+    // Prime the first scan silently so you don't print "empty" too early
+    await pollFirstMatch({ silentEmpty: true });
+
+    if (!currentHead) {
+      add('Queue Empty. [R] Host Red | [B] Host Blue', 'system-msg');
+      lastQueueState = 'EMPTY';
+    } else {
+      showMode();
+    }
+
+    rqPollInterval = setInterval(() => pollFirstMatch({ silentEmpty: false }), 6000);
   }
 
   function stopPolling() { 
@@ -226,7 +253,7 @@
         ref.off();
         lockOntoMatch(data.matchName, data);
       }
-      // Note: We no longer trigger "SIGNAL LOST" on null here, 
+      // Note: We no longer trigger "SIGNAL LOST" on null here,
       // because it starts as null until a joiner arrives.
     });
   }
@@ -303,10 +330,14 @@
     }
 
     const foundInGameDB = await searchForGameDBMatch();
-    if (!foundInGameDB) { startPolling(); showMode(); }
+    if (!foundInGameDB) {
+      await startPolling();
+    }
   }
 
-  window.addEventListener('DOMContentLoaded', boot);
+  window.addEventListener('DOMContentLoaded', async () => {
+    await boot();
+  });
 })();
 </script>
 </body>
