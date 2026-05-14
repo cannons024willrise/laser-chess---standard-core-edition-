@@ -10,9 +10,23 @@
         body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
         #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
         .history-line { white-space: pre-wrap; word-break: break-all; }
-        .input-wrapper { display:flex; gap:8px; }
+        .input-wrapper { display:flex; gap:8px; align-items:flex-start; }
         .prompt { white-space: pre; }
-        .user-input-line { flex:1; background: transparent; border: none; color: var(--bright); font: inherit; outline: none; }
+        .user-input-line {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--bright);
+            font: inherit;
+            outline: none;
+            resize: none;
+            overflow: hidden;
+            min-height: 1.2em;
+            line-height: 1.2;
+            padding: 0;
+            margin: 0;
+            white-space: pre-wrap;
+        }
         .system-msg { color: var(--muted); }
         .success-msg { color: var(--bright); font-weight: 700; }
         .error-msg { color: var(--error); }
@@ -95,23 +109,56 @@
   async function prompt(text, cls, handler) {
     const wrap = document.createElement('div');
     wrap.className = 'input-wrapper history-line';
-    const p = document.createElement('span'); p.className = 'prompt';
+
+    const p = document.createElement('span');
+    p.className = 'prompt';
     wrap.appendChild(p);
-    const input = document.createElement('input'); input.className = 'user-input-line';
+
+    const input = document.createElement('textarea');
+    input.className = 'user-input-line';
+    input.rows = 1;
+    input.spellcheck = false;
+    input.autocapitalize = 'off';
+    input.autocomplete = 'off';
+    input.autocorrect = 'off';
     wrap.appendChild(input);
+
     logContainer.appendChild(wrap);
     currentPromptWrap = wrap;
+
     for (const c of text) { p.textContent += c; await sleep(8); }
-    setTimeout(() => input.focus(), 0);
+
+    const resize = () => {
+      input.style.height = 'auto';
+      input.style.height = input.scrollHeight + 'px';
+    };
+
+    const autoSentenceBreak = () => {
+      let v = input.value;
+      v = v.replace(/([.!?])\s+/g, '$1\n');
+      input.value = v;
+      resize();
+    };
+
+    setTimeout(() => {
+      input.focus();
+      resize();
+    }, 0);
+
+    input.addEventListener('input', autoSentenceBreak);
+
     return new Promise(resolve => {
       input.addEventListener('keydown', e => {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
           const v = input.value.trim().toUpperCase();
           input.disabled = true;
           const finalLine = createLine('highlight');
           finalLine.textContent = p.textContent + v;
-          wrap.remove(); currentPromptWrap = null;
-          handler(v); resolve();
+          wrap.remove();
+          currentPromptWrap = null;
+          handler(v);
+          resolve();
         }
       });
     });
