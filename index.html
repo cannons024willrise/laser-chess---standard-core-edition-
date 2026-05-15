@@ -72,6 +72,7 @@
   let rqPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
   let currentHead = null;
   let initialQueueScanDone = false;
+  let modeShown = false;
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -201,19 +202,34 @@
     }
   }
 
+  async function showMode() {
+    if (localStorage.getItem(KEY_RID)) return;
+
+    while (processing) {
+      await sleep(10);
+    }
+
+    if (modeShown) return;
+    modeShown = true;
+
+    if (!currentHead) {
+      add('Queue Empty. [R] Host Red | [B] Host Blue', 'system-msg');
+    } else if (currentHead.data.color === 0) {
+      add(`RED at head. [A] Join as Blue | [R] Host Red`, 'system-msg');
+    } else {
+      add(`BLUE at head. [A] Join as Red | [B] Host Blue`, 'system-msg');
+    }
+    add('MODE:', '', true, handleMode);
+  }
+
   async function startPolling() {
     if (rqPollInterval) clearInterval(rqPollInterval);
 
     // Prime the first scan silently so you don't print "empty" too early
     await pollFirstMatch({ silentEmpty: true });
 
-    if (!currentHead) {
-      add('Queue Empty. [R] Host Red | [B] Host Blue', 'system-msg');
-      lastQueueState = 'EMPTY';
-      showMode(); // FIX: queue-empty needs the command prompt, not just the status line
-    } else {
-      showMode();
-    }
+    modeShown = false;
+    await showMode();
 
     rqPollInterval = setInterval(() => pollFirstMatch({ silentEmpty: false }), 6000);
   }
@@ -238,27 +254,16 @@
     return false;
   }
 
-  function showMode() {
-    if (localStorage.getItem(KEY_RID)) return;
-    if (!currentHead) {
-      add('Queue Empty. [R] Host Red | [B] Host Blue', 'system-msg');
-    } else if (currentHead.data.color === 0) {
-      add(`RED at head. [A] Join as Blue | [R] Host Red`, 'system-msg');
-    } else {
-      add(`BLUE at head. [A] Join as Red | [B] Host Blue`, 'system-msg');
-    }
-    add('MODE:', '', true, handleMode);
-  }
-
   async function handleMode(val) {
     if (val === 'A') {
-      if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); return showMode(); }
+      if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); modeShown = false; return showMode(); }
       add(`Intercepting ${currentHead.id}...`, 'wait-msg');
       return registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
     }
     if (val === 'R') return registerHost(0, false); 
     if (val === 'B') return registerHost(1, false);
     add('Unknown Command.', 'error-msg');
+    modeShown = false;
     return showMode();
   }
 
@@ -281,9 +286,10 @@
         else startMatchListener(); 
       } else {
         add(`Uplink Denied: ${data.error}`, 'error-msg');
+        modeShown = false;
         showMode();
       }
-    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); showMode(); }
+    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; showMode(); }
   }
 
   function startMatchListener() {
@@ -311,6 +317,7 @@
     localStorage.setItem(KEY_RID, id); 
     stopPolling(); 
     toggleWaiting(false);
+    modeShown = false;
     add(`LINK ESTABLISHED: ${id}`, 'success-msg');
     
     const gameRef = dbGame.ref(`G/${id}`);
@@ -323,7 +330,8 @@
             localStorage.removeItem(KEY_RID);
             lockedMatchId = null;
             gameRef.off();
-            startPolling(); showMode();
+            modeShown = false;
+            startPolling();
         }
     });
   }
