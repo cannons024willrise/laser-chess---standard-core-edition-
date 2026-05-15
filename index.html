@@ -254,6 +254,17 @@
     return false;
   }
 
+  async function verifyRequestIdByRQD(requestId) {
+    if (!requestId) return false;
+    try {
+      const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value');
+      return snap.exists() ? snap.val() : false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  }
+
   async function handleMode(val) {
     if (val === 'A') {
       if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); modeShown = false; return showMode(); }
@@ -377,12 +388,16 @@
         const snap = await dbGame.ref(`G/${rid}`).once('value');
         if (snap.exists()) return lockOntoMatch(rid, snap.val());
     }
-    
-    // Check if we are a host waiting for a match
+
+    // Check if we are a host waiting for a match, but only trust RID after verifying RQ_D path
     if (rid && !rid.toString().includes('_')) {
-        add('Recovering uplink...', 'system-msg');
-        startMatchListener();
-        return;
+        const rqdEntry = await verifyRequestIdByRQD(rid);
+        if (rqdEntry) {
+            add('Recovering uplink...', 'system-msg');
+            startMatchListener();
+            return;
+        }
+        localStorage.removeItem(KEY_RID);
     }
 
     const foundInGameDB = await searchForGameDBMatch();
