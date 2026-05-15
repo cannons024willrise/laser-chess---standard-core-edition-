@@ -265,6 +265,17 @@
     }
   }
 
+  async function isUsernameOccupied(username) {
+    if (!username) return true;
+    try {
+      const snap = await dbMatch.ref(`P/${username}`).once('value');
+      return snap.exists();
+    } catch (e) {
+      console.error(e);
+      return true;
+    }
+  }
+
   async function verifyRecoveryPath(requestId) {
     if (!requestId) return { state: 'missing', data: null };
 
@@ -438,15 +449,28 @@
   }
 
   async function handleAuth(v) {
-    if (!localStorage.getItem(KEY_USER)) { 
-      if (!v) return add('User ID:', '', true, handleAuth); 
-      localStorage.setItem(KEY_USER, v); 
-      return boot(); 
+    if (!localStorage.getItem(KEY_USER)) {
+      if (!v) return add('User ID:', '', true, handleAuth);
+
+      const candidate = v.trim().toUpperCase();
+      if (!candidate) {
+        add('INVALID USER ID.', 'error-msg');
+        return add('User ID:', '', true, handleAuth);
+      }
+
+      const occupied = await isUsernameOccupied(candidate);
+      if (occupied) {
+        add('USER ID ALREADY OCCUPIED.', 'error-msg');
+        return add('User ID:', '', true, handleAuth);
+      }
+
+      localStorage.setItem(KEY_USER, candidate);
+      return boot();
     }
-    if (!localStorage.getItem(KEY_PASS)) { 
-      if (!v) return add('Access Key:', '', true, handleAuth); 
-      localStorage.setItem(KEY_PASS, v); 
-      return boot(); 
+    if (!localStorage.getItem(KEY_PASS)) {
+      if (!v) return add('Access Key:', '', true, handleAuth);
+      localStorage.setItem(KEY_PASS, v);
+      return boot();
     }
   }
 
