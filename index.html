@@ -69,7 +69,7 @@
   const logContainer = document.getElementById('terminal-log');
   const queue = [];
   let processing = false, currentPromptWrap = null, lockedMatchId = null;
-  let rqPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
+  let rqPollInterval = null, recoveryPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
   let currentHead = null;
   let initialQueueScanDone = false;
   let modeShown = false;
@@ -263,6 +263,79 @@
       console.error(e);
       return false;
     }
+  }
+
+  async function verifyRecoveryPath(requestId) {
+    if (!requestId) return { state: 'missing', data: null };
+
+    // Primary check: confirm the stored request ID still exists in RQ_D.
+    const qd = await verifyRequestIdByRQD(requestId);
+    if (qd) return { state: 'queued', data: qd };
+
+    // Fallback: the Worker may have already promoted the request into R.
+    const rSnap = await dbMatch.ref(`R/${requestId}`).once('value');
+    if (rSnap.exists()) {
+      const rData = rSnap.val() || {};
+      if (rData.matchName) return { state: 'matched', data: rData };
+      return { state: 'waiting', data: rData };
+    }
+
+    return { state: 'missing', data: null };
+  }
+
+  function stopRecoveryPolling() {
+    if (recoveryPollInterval) {
+      clearInterval(recoveryPollInterval);
+      recoveryPollInterval = null;
+    }
+  }
+
+  function startRecoveryPolling(requestId) {
+    stopRecoveryPolling();
+    toggleWaiting(true);
+
+    let attempts = 0;
+    const maxAttempts = 18;
+
+    const tick = async () => {
+      if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId) {
+        stopRecoveryPolling();
+        toggleWaiting(false);
+        return;
+      }
+
+      const recovered = await verifyRecoveryPath(requestId);
+
+      if (recovered.state === 'matched') {
+        stopRecoveryPolling();
+        toggleWaiting(false);
+        add('Recovering uplink...', 'system-msg');
+        lockOntoMatch(recovered.data.matchName, recovered.data);
+        return;
+      }
+
+      if (recovered.state === 'waiting') {
+        stopRecoveryPolling();
+        toggleWaiting(false);
+        add('Recovering uplink...', 'system-msg');
+        startMatchListener();
+        return;
+      }
+
+      attempts += 1;
+      if (attempts === 1) add('Recovering uplink...', 'system-msg');
+
+      if (attempts >= maxAttempts) {
+        stopRecoveryPolling();
+        toggleWaiting(false);
+        localStorage.removeItem(KEY_RID);
+        modeShown = false;
+        await startPolling();
+      }
+    };
+
+    tick();
+    recoveryPollInterval = setInterval(tick, 4000);
   }
 
   async function handleMode(val) {
