@@ -394,7 +394,7 @@
       if (!raw) {
         privateState.target = null;
         privateState.step = 'COLOR';
-        return add('HOST COLOR: [R] RED | [B] BLUE', '', true, handlePrivateFlow);
+        return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
       }
 
       const target = raw.toUpperCase();
@@ -416,7 +416,7 @@
 
       privateState.target = target;
       privateState.step = 'COLOR';
-      return add('HOST COLOR: [R] RED | [B] BLUE', '', true, handlePrivateFlow);
+      return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
     }
 
     // STEP 2: COLOR
