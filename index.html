@@ -502,18 +502,23 @@
   async function registerPrivateRequest(color, privateTarget = null) {
     const username = localStorage.getItem(KEY_USER);
     const password = localStorage.getItem(KEY_PASS);
+
+    // Distinct payload object so the Worker can route it separately from public hosting.
+    const privateRequestPayload = {
+      intent: 'PRIVATE_REQUEST_CREATE',
+      requester: username,
+      secret: password,
+      request: {
+        color,
+        target: privateTarget
+      }
+    };
+
     try {
       const res = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username,
-          password,
-          color,
-          isPrivate: true,
-          privateMode: 'HOST',
-          privateTarget
-        })
+        body: JSON.stringify(privateRequestPayload)
       });
 
       const data = await res.json();
