@@ -367,7 +367,7 @@
 
     if (val === 'P') {
       privateState = { step: 'TARGET', target: null };
-      return add('TARGET USER:', '', true, handlePrivateFlow);
+      return add('TARGET USER (OPTIONAL - ENTER TO SKIP):', '', true, handlePrivateFlow);
     }
 
     if (val === 'J') {
@@ -387,9 +387,27 @@
     }
 
     if (privateState.step === 'TARGET') {
-      const target = v.trim().toUpperCase();
-      if (!target) {
-        add('INVALID TARGET.', 'error-msg');
+      const rawTarget = v.trim();
+
+      // Blank input means an untargeted private match.
+      if (!rawTarget) {
+        privateState.target = null;
+        privateState.step = 'COLOR';
+        return add('HOST COLOR: [R] RED | [B] BLUE', '', true, handlePrivateFlow);
+      }
+
+      const target = rawTarget.toUpperCase();
+
+      if (target === localStorage.getItem(KEY_USER)) {
+        add('CANNOT TARGET SELF.', 'error-msg');
+        privateState = null;
+        modeShown = false;
+        return showMode();
+      }
+
+      const exists = await isUsernameOccupied(target);
+      if (!exists) {
+        add('TARGET USER NOT FOUND.', 'error-msg');
         privateState = null;
         modeShown = false;
         return showMode();
@@ -414,7 +432,7 @@
       return registerHost(color, false, {
         isPrivate: true,
         privateMode: 'HOST',
-        privateTarget: target
+        privateTarget: privateState.target
       });
     }
 
