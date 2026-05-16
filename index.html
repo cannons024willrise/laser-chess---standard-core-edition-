@@ -437,7 +437,7 @@
       const target = privateState.target;
       privateState = null;
 
-      return registerPrivateRequest(color, target);
+      return createPrivateRequest(color, target);
     }
 
     // STEP 3: CODE JOIN
@@ -499,16 +499,16 @@
     }
   }
 
-  async function registerPrivateRequest(color, privateTarget = null) {
+  async function createPrivateRequest(color, privateTarget = null) {
     const username = localStorage.getItem(KEY_USER);
     const password = localStorage.getItem(KEY_PASS);
 
-    // Distinct payload object so the Worker can route it separately from public hosting.
+    // Private request uses a completely separate payload shape from public hosting.
     const privateRequestPayload = {
-      intent: 'PRIVATE_REQUEST_CREATE',
-      requester: username,
-      secret: password,
-      request: {
+      mode: 'PRIVATE_MATCH_REQUEST',
+      body: {
+        requester: username,
+        secret: password,
         color,
         target: privateTarget
       }
