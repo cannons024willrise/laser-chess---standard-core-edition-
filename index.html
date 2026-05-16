@@ -73,6 +73,7 @@
   let currentHead = null;
   let initialQueueScanDone = false;
   let modeShown = false;
+  let privateState = null;
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -212,12 +213,14 @@
     if (modeShown) return;
     modeShown = true;
 
+    const privateSuffix = ' | [P] Private Host | [J] Private Join';
+
     if (!currentHead) {
-      add('Queue Empty. [R] Host Red | [B] Host Blue', 'system-msg');
+      add(`Queue Empty. [R] Host Red | [B] Host Blue${privateSuffix}`, 'system-msg');
     } else if (currentHead.data.color === 0) {
-      add(`RED at head. [A] Join as Blue | [R] Host Red`, 'system-msg');
+      add(`RED at head. [A] Join as Blue | [R] Host Red${privateSuffix}`, 'system-msg');
     } else {
-      add(`BLUE at head. [A] Join as Red | [B] Host Blue`, 'system-msg');
+      add(`BLUE at head. [A] Join as Red | [B] Host Blue${privateSuffix}`, 'system-msg');
     }
     add('MODE:', '', true, handleMode);
   }
@@ -350,6 +353,10 @@
   }
 
   async function handleMode(val) {
+    if (privateState) {
+      return handlePrivateFlow(val);
+    }
+
     if (val === 'A') {
       if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); modeShown = false; return showMode(); }
       add(`Intercepting ${currentHead.id}...`, 'wait-msg');
@@ -357,34 +364,148 @@
     }
     if (val === 'R') return registerHost(0, false); 
     if (val === 'B') return registerHost(1, false);
+
+    if (val === 'P') {
+      privateState = { step: 'TARGET', target: null };
+      return add('TARGET USER:', '', true, handlePrivateFlow);
+    }
+
+    if (val === 'J') {
+      privateState = { step: 'CODE' };
+      return add('INVITE CODE:', '', true, handlePrivateFlow);
+    }
+
     add('Unknown Command.', 'error-msg');
     modeShown = false;
     return showMode();
   }
 
-  async function registerHost(color, isIntercept = false) {
+  async function handlePrivateFlow(v) {
+    if (!privateState) {
+      modeShown = false;
+      return showMode();
+    }
+
+    if (privateState.step === 'TARGET') {
+      const target = v.trim().toUpperCase();
+      if (!target) {
+        add('INVALID TARGET.', 'error-msg');
+        privateState = null;
+        modeShown = false;
+        return showMode();
+      }
+
+      privateState.target = target;
+      privateState.step = 'COLOR';
+      return add('HOST COLOR: [R] RED | [B] BLUE', '', true, handlePrivateFlow);
+    }
+
+    if (privateState.step === 'COLOR') {
+      const color = v === 'R' ? 0 : v === 'B' ? 1 : null;
+      if (color === null) {
+        add('Unknown Command.', 'error-msg');
+        privateState = null;
+        modeShown = false;
+        return showMode();
+      }
+
+      const target = privateState.target;
+      privateState = null;
+      return registerHost(color, false, {
+        isPrivate: true,
+        privateMode: 'HOST',
+        privateTarget: target
+      });
+    }
+
+    if (privateState.step === 'CODE') {
+      const inviteCode = v.trim().toUpperCase();
+      if (!inviteCode) {
+        add('INVALID CODE.', 'error-msg');
+        privateState = null;
+        modeShown = false;
+        return showMode();
+      }
+
+      privateState = null;
+      return joinPrivate(inviteCode);
+    }
+
+    privateState = null;
+    modeShown = false;
+    return showMode();
+  }
+
+  async function joinPrivate(inviteCode) {
+    const username = localStorage.getItem(KEY_USER);
+    const password = localStorage.getItem(KEY_PASS);
+
+    try {
+      const res = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          password,
+          isPrivate: true,
+          privateMode: 'JOIN',
+          inviteCode
+        })
+      });
+
+      const data = await res.json();
+      if (data.ok) {
+        const idToStore = data.matchName || data.matchId || data.requestId || data.timestamp;
+        if (idToStore) localStorage.setItem(KEY_RID, idToStore);
+        stopPolling();
+        add('Private Link Success!', 'success-msg');
+
+        if (data.matchName) {
+          lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        }
+        return;
+      }
+
+      add(`Private Join Denied: ${data.error}`, 'error-msg');
+      modeShown = false;
+      return showMode();
+    } catch (e) {
+      add(`Worker Error: ${e.message}`, 'error-msg');
+      modeShown = false;
+      return showMode();
+    }
+  }
+
+  async function registerHost(color, isIntercept = false, extra = {}) {
     const username = localStorage.getItem(KEY_USER);
     const password = localStorage.getItem(KEY_PASS);
     try {
       const res = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, color, isIntercept })
+        body: JSON.stringify({ username, password, color, isIntercept, ...extra })
       });
       const data = await res.json();
       if (data.ok) {
-        const idToStore = isIntercept ? data.matchName : data.timestamp;
-        localStorage.setItem(KEY_RID, idToStore); 
+        const idToStore = data.matchName || data.matchId || data.requestId || data.timestamp;
+        if (idToStore) localStorage.setItem(KEY_RID, idToStore);
         stopPolling();
-        add(`${isIntercept ? 'Intercept' : 'Uplink'} Success!`, 'success-msg');
-        if (isIntercept) lockOntoMatch(data.matchName, { status: 'SYNCING' });
-        else startMatchListener(); 
+        add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
+
+        if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        else if (!isIntercept && !extra.isPrivate) startMatchListener();
+
+        return;
       } else {
         add(`Uplink Denied: ${data.error}`, 'error-msg');
         modeShown = false;
-        showMode();
+        return showMode();
       }
-    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; showMode(); }
+    } catch (e) {
+      add(`Worker Error: ${e.message}`, 'error-msg');
+      modeShown = false;
+      return showMode();
+    }
   }
 
   function startMatchListener() {
