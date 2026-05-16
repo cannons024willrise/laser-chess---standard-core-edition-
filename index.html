@@ -65,7 +65,7 @@
   const dbMatch = firebase.database(matchApp);
   const dbGame = firebase.database(gameApp);
 
-  const KEY_USER = 'ls_user', KEY_PASS = 'ls_pass', KEY_RID = 'ls_request_id';
+  const KEY_USER = 'ls_user', KEY_PASS = 'ls_pass', KEY_RID = 'ls_request_id', KEY_PRIV = 'ls_private_request_id';
   const logContainer = document.getElementById('terminal-log');
   const queue = [];
   let processing = false, currentPromptWrap = null, lockedMatchId = null;
@@ -437,11 +437,7 @@
       const target = privateState.target;
       privateState = null;
 
-      return registerHost(color, false, {
-        isPrivate: true,
-        privateMode: 'HOST',
-        privateTarget: target
-      });
+      return registerPrivateRequest(color, target);
     }
 
     // STEP 3: CODE JOIN
@@ -494,6 +490,42 @@
       }
 
       add(`Private Join Denied: ${data.error}`, 'error-msg');
+      modeShown = false;
+      return showMode();
+    } catch (e) {
+      add(`Worker Error: ${e.message}`, 'error-msg');
+      modeShown = false;
+      return showMode();
+    }
+  }
+
+  async function registerPrivateRequest(color, privateTarget = null) {
+    const username = localStorage.getItem(KEY_USER);
+    const password = localStorage.getItem(KEY_PASS);
+    try {
+      const res = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          password,
+          color,
+          isPrivate: true,
+          privateMode: 'HOST',
+          privateTarget
+        })
+      });
+
+      const data = await res.json();
+      if (data.ok) {
+        const privateRequestId = data.requestId || data.inviteCode || data.timestamp;
+        if (privateRequestId) localStorage.setItem(KEY_PRIV, privateRequestId);
+        stopPolling();
+        add('Private Request Success!', 'success-msg');
+        return;
+      }
+
+      add(`Private Request Denied: ${data.error}`, 'error-msg');
       modeShown = false;
       return showMode();
     } catch (e) {
