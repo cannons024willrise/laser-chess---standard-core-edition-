@@ -461,7 +461,9 @@
     privateState = null;
     modeShown = false;
     return showMode();
-  }(inviteCode) {
+  }
+
+  async function joinPrivate(inviteCode) {
     const username = localStorage.getItem(KEY_USER);
     const password = localStorage.getItem(KEY_PASS);
 
