@@ -75,9 +75,9 @@
   let modeShown = false;
   let privateState = null;
   
-  // Memory Leak Prevention: Reference tracking for the handshake websocket
   let activeHandshakeRef = null; 
   let isPollingStarting = false;
+  let hostGamePollInterval = null; // Handler tracking host lookup polling inside dbGame
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -139,10 +139,7 @@
       input.style.height = input.scrollHeight + 'px';
     };
 
-    // FIXED: Removed formatting regex that breaks keys containing punctuation
-    const handleInput = () => {
-      resize();
-    };
+    const handleInput = () => { resize(); };
 
     setTimeout(() => {
       input.focus();
@@ -223,7 +220,6 @@
   }
 
   async function startPolling() {
-    // FIXED: Concurrency control layout to prevent asynchronous execution overlap
     if (isPollingStarting) return;
     isPollingStarting = true;
 
@@ -247,6 +243,7 @@
 
   async function searchForGameDBMatch() {
     const myName = localStorage.getItem(KEY_USER);
+    if (!myName) return false;
     try {
       const snap = await dbGame.ref('G').once('value');
       const games = snap.val();
@@ -258,6 +255,30 @@
       }
     } catch (e) { console.error(e); }
     return false;
+  }
+
+  // FIXED: Added active continuous game polling system loop for hosts checking keys matching their userID
+  function startHostGameDBPolling() {
+    stopHostGamePolling();
+    toggleWaiting(true);
+
+    hostGamePollInterval = setInterval(async () => {
+      if (lockedMatchId) {
+        stopHostGamePolling();
+        return;
+      }
+      const found = await searchForGameDBMatch();
+      if (found) {
+        stopHostGamePolling();
+      }
+    }, 3000);
+  }
+
+  function stopHostGamePolling() {
+    if (hostGamePollInterval) {
+      clearInterval(hostGamePollInterval);
+      hostGamePollInterval = null;
+    }
   }
 
   async function verifyRequestIdByRQD(requestId) {
@@ -334,6 +355,7 @@
         toggleWaiting(false);
         add('Recovering uplink...', 'system-msg');
         startMatchListener();
+        startHostGameDBPolling(); // Recover host scanning loop concurrently
         return;
       }
 
@@ -343,8 +365,8 @@
       if (attempts >= maxAttempts) {
         stopRecoveryPolling();
         toggleWaiting(false);
+        stopHostGamePolling();
         
-        // CLEANUP: Kill lingering active listeners when abandoning recovery paths
         if (activeHandshakeRef) {
           activeHandshakeRef.off();
           activeHandshakeRef = null;
@@ -525,15 +547,14 @@
 
       const data = await res.json();
       if (data.ok) {
-        // FIXED: Reassigned KEY_PRIV to unify into KEY_RID, allowing recovery matching engine tracking
         const privateRequestId = data.requestId || data.inviteCode || data.timestamp;
         if (privateRequestId) localStorage.setItem(KEY_RID, privateRequestId);
         
         stopPolling();
         add('Private Request Success!', 'success-msg');
         
-        // FIXED: Initialized listener immediately to await guest handshake
-        startMatchListener();
+        // FIXED: Enabled active game DB polling matching engine tracker for the private host
+        startHostGameDBPolling();
         return;
       }
 
@@ -563,8 +584,13 @@
         stopPolling();
         add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
 
-        if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' });
-        else if (!isIntercept && !extra.isPrivate) startMatchListener();
+        if (data.matchName) {
+          lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        } else if (!isIntercept && !extra.isPrivate) {
+          startMatchListener();
+          // FIXED: Appended proactive game key polling lookup verification loop alongside public handshake setup
+          startHostGameDBPolling();
+        }
 
         return;
       } else {
@@ -583,7 +609,6 @@
     const savedRid = localStorage.getItem(KEY_RID);
     if (!savedRid || savedRid.toString().includes('_')) return;
     
-    // CLEANUP: Close existing active reference connections before instantiating a replacement
     if (activeHandshakeRef) {
       activeHandshakeRef.off();
     }
@@ -609,7 +634,9 @@
     stopPolling(); 
     toggleWaiting(false);
     
-    // CLEANUP: Free handshake reference hooks on transition to confirmed sync state
+    // FIXED: Terminate active host matching lookup processes upon verified state lock
+    stopHostGamePolling();
+
     if (activeHandshakeRef) {
       activeHandshakeRef.off();
       activeHandshakeRef = null;
@@ -693,6 +720,7 @@
         if (rqdEntry) {
             add('Recovering uplink...', 'system-msg');
             startMatchListener();
+            startHostGameDBPolling(); // Reactivate host lookup loops during boot recoveries
             return;
         }
         localStorage.removeItem(KEY_RID);
