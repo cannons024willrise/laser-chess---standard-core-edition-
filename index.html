@@ -65,7 +65,7 @@
   const dbMatch = firebase.database(matchApp);
   const dbGame = firebase.database(gameApp);
 
-  const KEY_USER = 'ls_user', KEY_PASS = 'ls_pass', KEY_RID = 'ls_request_id', KEY_PRIV = 'ls_private_request_id';
+  const KEY_USER = 'ls_user', KEY_PASS = 'ls_pass', KEY_RID = 'ls_request_id';
   const logContainer = document.getElementById('terminal-log');
   const queue = [];
   let processing = false, currentPromptWrap = null, lockedMatchId = null;
@@ -74,6 +74,10 @@
   let initialQueueScanDone = false;
   let modeShown = false;
   let privateState = null;
+  
+  // Memory Leak Prevention: Reference tracking for the handshake websocket
+  let activeHandshakeRef = null; 
+  let isPollingStarting = false;
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -135,10 +139,8 @@
       input.style.height = input.scrollHeight + 'px';
     };
 
-    const autoSentenceBreak = () => {
-      let v = input.value;
-      v = v.replace(/([.!?])\s+/g, '$1\n');
-      input.value = v;
+    // FIXED: Removed formatting regex that breaks keys containing punctuation
+    const handleInput = () => {
       resize();
     };
 
@@ -147,7 +149,7 @@
       resize();
     }, 0);
 
-    input.addEventListener('input', autoSentenceBreak);
+    input.addEventListener('input', handleInput);
 
     return new Promise(resolve => {
       input.addEventListener('keydown', e => {
@@ -167,7 +169,6 @@
   }
 
   async function pollFirstMatch({ silentEmpty = false } = {}) {
-    // GUARD: Don't poll if we have an active Request ID or are locked
     if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
 
     try {
@@ -176,18 +177,14 @@
 
       if (!data) {
         currentHead = null;
-
-        // Only announce empty after the first real scan, and only if not silent
         if (!silentEmpty && initialQueueScanDone && lastQueueState !== 'EMPTY') {
           add('RQ_Q: Empty (Idle)', 'system-msg');
           lastQueueState = 'EMPTY';
         }
-
         return false;
       }
 
       initialQueueScanDone = true;
-
       const firstKey = Object.keys(data)[0];
       currentHead = { id: firstKey, data: data[firstKey] };
 
@@ -226,15 +223,21 @@
   }
 
   async function startPolling() {
+    // FIXED: Concurrency control layout to prevent asynchronous execution overlap
+    if (isPollingStarting) return;
+    isPollingStarting = true;
+
     if (rqPollInterval) clearInterval(rqPollInterval);
 
-    // Prime the first scan silently so you don't print "empty" too early
     await pollFirstMatch({ silentEmpty: true });
 
     modeShown = false;
     await showMode();
 
-    rqPollInterval = setInterval(() => pollFirstMatch({ silentEmpty: false }), 6000);
+    if (!localStorage.getItem(KEY_RID) && !lockedMatchId) {
+      rqPollInterval = setInterval(() => pollFirstMatch({ silentEmpty: false }), 6000);
+    }
+    isPollingStarting = false;
   }
 
   function stopPolling() { 
@@ -282,11 +285,9 @@
   async function verifyRecoveryPath(requestId) {
     if (!requestId) return { state: 'missing', data: null };
 
-    // Primary check: confirm the stored request ID still exists in RQ_D.
     const qd = await verifyRequestIdByRQD(requestId);
     if (qd) return { state: 'queued', data: qd };
 
-    // Fallback: the Worker may have already promoted the request into R.
     const rSnap = await dbMatch.ref(`R/${requestId}`).once('value');
     if (rSnap.exists()) {
       const rData = rSnap.val() || {};
@@ -342,6 +343,13 @@
       if (attempts >= maxAttempts) {
         stopRecoveryPolling();
         toggleWaiting(false);
+        
+        // CLEANUP: Kill lingering active listeners when abandoning recovery paths
+        if (activeHandshakeRef) {
+          activeHandshakeRef.off();
+          activeHandshakeRef = null;
+        }
+
         localStorage.removeItem(KEY_RID);
         modeShown = false;
         await startPolling();
@@ -386,11 +394,9 @@
       return showMode();
     }
 
-    // STEP 1: TARGET (optional)
     if (privateState.step === 'TARGET') {
       const raw = (v || '').trim();
 
-      // EMPTY = untargeted private match
       if (!raw) {
         privateState.target = null;
         privateState.step = 'COLOR';
@@ -422,7 +428,6 @@
     if (privateState.step === 'COLOR') {
       const input = (v || '').trim().toUpperCase();
 
-      // accept: "R", "B", "R : BLUE", etc.
       const colorChar = input.includes('R') ? 'R' : input.includes('B') ? 'B' : null;
       const color = colorChar === 'R' ? 0 : colorChar === 'B' ? 1 : null;
 
@@ -439,7 +444,6 @@
       return createPrivateRequest(color, target);
     }
 
-    // STEP 3: CODE JOIN
     if (privateState.step === 'CODE') {
       const code = (v || '').trim().toUpperCase();
       if (!code) {
@@ -502,7 +506,6 @@
     const username = localStorage.getItem(KEY_USER);
     const password = localStorage.getItem(KEY_PASS);
 
-    // Private request uses a completely separate payload shape from public hosting.
     const privateRequestPayload = {
       mode: 'PRIVATE_MATCH_REQUEST',
       body: {
@@ -522,10 +525,15 @@
 
       const data = await res.json();
       if (data.ok) {
+        // FIXED: Reassigned KEY_PRIV to unify into KEY_RID, allowing recovery matching engine tracking
         const privateRequestId = data.requestId || data.inviteCode || data.timestamp;
-        if (privateRequestId) localStorage.setItem(KEY_PRIV, privateRequestId);
+        if (privateRequestId) localStorage.setItem(KEY_RID, privateRequestId);
+        
         stopPolling();
         add('Private Request Success!', 'success-msg');
+        
+        // FIXED: Initialized listener immediately to await guest handshake
+        startMatchListener();
         return;
       }
 
@@ -575,19 +583,23 @@
     const savedRid = localStorage.getItem(KEY_RID);
     if (!savedRid || savedRid.toString().includes('_')) return;
     
+    // CLEANUP: Close existing active reference connections before instantiating a replacement
+    if (activeHandshakeRef) {
+      activeHandshakeRef.off();
+    }
+
     toggleWaiting(true);
     const ref = dbMatch.ref(`/R/${savedRid}`);
+    activeHandshakeRef = ref;
     
-    // Listen for the opponent to write the matchName
     ref.on('value', async snap => {
       const data = snap.val();
       if (data && data.matchName) {
         toggleWaiting(false);
         ref.off();
+        if (activeHandshakeRef === ref) activeHandshakeRef = null;
         lockOntoMatch(data.matchName, data);
       }
-      // Note: We no longer trigger "SIGNAL LOST" on null here,
-      // because it starts as null until a joiner arrives.
     });
   }
 
@@ -596,6 +608,13 @@
     localStorage.setItem(KEY_RID, id); 
     stopPolling(); 
     toggleWaiting(false);
+    
+    // CLEANUP: Free handshake reference hooks on transition to confirmed sync state
+    if (activeHandshakeRef) {
+      activeHandshakeRef.off();
+      activeHandshakeRef = null;
+    }
+
     modeShown = false;
     add(`LINK ESTABLISHED: ${id}`, 'success-msg');
     
@@ -664,13 +683,11 @@
     
     add('System Online.', 'success-msg');
     
-    // Check if we are already in a match
     if (rid && rid.toString().includes('_')) {
         const snap = await dbGame.ref(`G/${rid}`).once('value');
         if (snap.exists()) return lockOntoMatch(rid, snap.val());
     }
 
-    // Check if we are a host waiting for a match, but only trust RID after verifying RQ_D path
     if (rid && !rid.toString().includes('_')) {
         const rqdEntry = await verifyRequestIdByRQD(rid);
         if (rqdEntry) {
