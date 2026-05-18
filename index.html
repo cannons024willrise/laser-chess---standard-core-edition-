@@ -77,7 +77,7 @@
   
   let activeHandshakeRef = null; 
   let isPollingStarting = false;
-  let hostGamePollInterval = null; // Handler tracking host lookup polling inside dbGame
+  let hostGamePollInterval = null; 
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -257,10 +257,9 @@
     return false;
   }
 
-  // FIXED: Added active continuous game polling system loop for hosts checking keys matching their userID
-  function startHostGameDBPolling() {
+  function startHostGameDBPolling(contextMsg = "Awaiting Uplink") {
     stopHostGamePolling();
-    toggleWaiting(true);
+    toggleWaiting(true, contextMsg);
 
     hostGamePollInterval = setInterval(async () => {
       if (lockedMatchId) {
@@ -328,7 +327,7 @@
 
   function startRecoveryPolling(requestId) {
     stopRecoveryPolling();
-    toggleWaiting(true);
+    toggleWaiting(true, "Recovering Uplink Signal");
 
     let attempts = 0;
     const maxAttempts = 18;
@@ -355,7 +354,7 @@
         toggleWaiting(false);
         add('Recovering uplink...', 'system-msg');
         startMatchListener();
-        startHostGameDBPolling(); // Recover host scanning loop concurrently
+        startHostGameDBPolling("Re-establishing Search Protocol");
         return;
       }
 
@@ -389,7 +388,7 @@
 
     if (val === 'A') {
       if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); modeShown = false; return showMode(); }
-      add(`Intercepting ${currentHead.id}...`, 'wait-msg');
+      toggleWaiting(true, `Intercepting ${currentHead.id}`);
       return registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
     }
     if (val === 'R') return registerHost(0, false); 
@@ -551,10 +550,10 @@
         if (privateRequestId) localStorage.setItem(KEY_RID, privateRequestId);
         
         stopPolling();
-        add('Private Request Success!', 'success-msg');
+        add('Private Request Generated!', 'success-msg');
         
-        // FIXED: Enabled active game DB polling matching engine tracker for the private host
-        startHostGameDBPolling();
+        // Pass the invite code as the context so the polling log displays what the host is waiting for
+        startHostGameDBPolling(`Awaiting Private Join [CODE: ${data.inviteCode}]`);
         return;
       }
 
@@ -588,8 +587,8 @@
           lockOntoMatch(data.matchName, { status: 'SYNCING' });
         } else if (!isIntercept && !extra.isPrivate) {
           startMatchListener();
-          // FIXED: Appended proactive game key polling lookup verification loop alongside public handshake setup
-          startHostGameDBPolling();
+          // Contextual polling text for public match hosts
+          startHostGameDBPolling("Awaiting Public Match Intercept");
         }
 
         return;
@@ -613,7 +612,6 @@
       activeHandshakeRef.off();
     }
 
-    toggleWaiting(true);
     const ref = dbMatch.ref(`/R/${savedRid}`);
     activeHandshakeRef = ref;
     
@@ -634,7 +632,6 @@
     stopPolling(); 
     toggleWaiting(false);
     
-    // FIXED: Terminate active host matching lookup processes upon verified state lock
     stopHostGamePolling();
 
     if (activeHandshakeRef) {
@@ -661,14 +658,15 @@
     });
   }
 
-  function toggleWaiting(active) {
+  // Refactored to accept dynamic context payloads
+  function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
     if (active) {
       if (waitAnimationInterval) return;
       const l = createLine('wait-msg');
       let dots = 0;
       waitAnimationInterval = setInterval(() => { 
         dots = (dots + 1) % 4; 
-        l.textContent = "Awaiting Handshake" + ".".repeat(dots); 
+        l.textContent = contextMsg + ".".repeat(dots); 
       }, 500);
     } else { 
       if (waitAnimationInterval) { 
@@ -720,7 +718,12 @@
         if (rqdEntry) {
             add('Recovering uplink...', 'system-msg');
             startMatchListener();
-            startHostGameDBPolling(); // Reactivate host lookup loops during boot recoveries
+            
+            if (rqdEntry.isPrivate && rqdEntry.inviteCode) {
+                startHostGameDBPolling(`Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`);
+            } else {
+                startHostGameDBPolling("Awaiting Public Match Intercept");
+            }
             return;
         }
         localStorage.removeItem(KEY_RID);
