@@ -9,8 +9,8 @@
         :root { --bg0: #0a0a0a; --bg1: #1a1a1a; --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; --muted: #999999; --waiting: #00ff00; }
         body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
         #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
-        .history-line { white-space: pre-wrap; word-break: break-all; }
-        .input-wrapper { display:flex; gap:8px; align-items:flex-start; }
+        .history-line { white-space: pre-wrap; word-break: break-all; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .input-wrapper { display:flex; gap:8px; align-items:flex-start; width: 100%; }
         .prompt { white-space: pre; }
         .user-input-line {
             flex: 1;
@@ -32,6 +32,25 @@
         .error-msg { color: var(--error); }
         .highlight { color: var(--bright); font-weight: 700; }
         .wait-msg { color: var(--waiting); }
+        
+        .copy-btn {
+            background: #2a2a2a;
+            color: var(--waiting);
+            border: 1px solid var(--waiting);
+            font-family: 'Unifont', monospace;
+            font-size: 12px;
+            cursor: pointer;
+            padding: 2px 6px;
+            user-select: none;
+            display: inline-block;
+        }
+        .copy-btn:hover {
+            background: var(--waiting);
+            color: var(--bg0);
+        }
+        .copy-btn:active {
+            transform: scale(0.95);
+        }
     </style>
 </head>
 <body>
@@ -87,6 +106,36 @@
     if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap);
     else logContainer.appendChild(d);
     return d;
+  }
+
+  function createLineWithCopy(text, codeToCopy, cls='') {
+    const container = createLine(cls);
+    
+    const textSpan = document.createElement('span');
+    textSpan.textContent = text;
+    container.appendChild(textSpan);
+    
+    const btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.textContent = '[COPY CODE]';
+    btn.onclick = async () => {
+        try {
+            await navigator.clipboard.writeText(codeToCopy);
+            btn.textContent = '[COPIED!]';
+        } catch (err) {
+            const dummy = document.createElement('textarea');
+            dummy.value = codeToCopy;
+            document.body.appendChild(dummy);
+            dummy.select();
+            document.execCommand('copy');
+            document.body.removeChild(dummy);
+            btn.textContent = '[COPIED!]';
+        }
+        setTimeout(() => { btn.textContent = '[COPY CODE]'; }, 2000);
+    };
+    
+    container.appendChild(btn);
+    return container;
   }
 
   function add(text, cls='', req=false, handler=null) {
@@ -551,16 +600,9 @@
         
         stopPolling();
         
-        // AUTO-COPY FEATURE INTERACTION
         if (data.inviteCode) {
-          try {
-            await navigator.clipboard.writeText(data.inviteCode);
-            add(`Private Request Generated! [CODE: ${data.inviteCode}]`, 'success-msg');
-            add(`>> SUCCESS: COPIED TO CLIPBOARD <<`, 'success-msg');
-          } catch (clipErr) {
-            // Fallback warning text if browser strict system sandbox denies clipboard access before execution loops
-            add(`Private Request Generated! [CODE: ${data.inviteCode}]`, 'success-msg');
-          }
+          try { await navigator.clipboard.writeText(data.inviteCode); } catch(cErr){}
+          createLineWithCopy(`Private Request Generated! CODE: ${data.inviteCode} `, data.inviteCode, 'success-msg');
         } else {
           add('Private Request Generated!', 'success-msg');
         }
@@ -730,6 +772,7 @@
             startMatchListener();
             
             if (rqdEntry.isPrivate && rqdEntry.inviteCode) {
+                createLineWithCopy(`Re-asserted Private Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg');
                 startHostGameDBPolling(`Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`);
             } else {
                 startHostGameDBPolling("Awaiting Public Match Intercept");
