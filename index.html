@@ -94,7 +94,6 @@
   let modeShown = false;
   let privateState = null;
   
-  let activeHandshakeRef = null; 
   let isPollingStarting = false;
   let hostGamePollInterval = null; 
 
@@ -306,18 +305,40 @@
     return false;
   }
 
-  function startHostGameDBPolling(contextMsg = "Awaiting Uplink") {
+  // INTEGRATED: High-efficiency worker status polling loop
+  function startHostMatchWorkerPolling(requestId, contextMsg = "Awaiting Handshake") {
     stopHostGamePolling();
     toggleWaiting(true, contextMsg);
 
     hostGamePollInterval = setInterval(async () => {
-      if (lockedMatchId) {
+      if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId.toString()) {
         stopHostGamePolling();
+        toggleWaiting(false);
         return;
       }
-      const found = await searchForGameDBMatch();
-      if (found) {
-        stopHostGamePolling();
+
+      try {
+        const res = await fetch(WORKER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'POLL_MATCH_STATUS', requestId: requestId.toString() })
+        });
+        const data = await res.json();
+
+        if (data.status === 'MATCHED' && data.matchName) {
+          stopHostGamePolling();
+          toggleWaiting(false);
+          lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        } else if (data.status === 'NOT_FOUND') {
+          stopHostGamePolling();
+          toggleWaiting(false);
+          add('Match request expired or consumed.', 'error-msg');
+          localStorage.removeItem(KEY_RID);
+          modeShown = false;
+          await startPolling();
+        }
+      } catch (e) {
+        console.error("Worker match status polling error:", e);
       }
     }, 3000);
   }
@@ -355,13 +376,9 @@
     if (!requestId) return { state: 'missing', data: null };
 
     const qd = await verifyRequestIdByRQD(requestId);
-    if (qd) return { state: 'queued', data: qd };
-
-    const rSnap = await dbMatch.ref(`R/${requestId}`).once('value');
-    if (rSnap.exists()) {
-      const rData = rSnap.val() || {};
-      if (rData.matchName) return { state: 'matched', data: rData };
-      return { state: 'waiting', data: rData };
+    if (qd) {
+      if (qd.matchName) return { state: 'matched', data: qd };
+      return { state: 'waiting', data: qd };
     }
 
     return { state: 'missing', data: null };
@@ -402,8 +419,11 @@
         stopRecoveryPolling();
         toggleWaiting(false);
         add('Recovering uplink...', 'system-msg');
-        startMatchListener();
-        startHostGameDBPolling("Re-establishing Search Protocol");
+        if (recovered.data.isPrivate && recovered.data.inviteCode) {
+          startHostMatchWorkerPolling(requestId, `Awaiting Private Join [CODE: ${recovered.data.inviteCode}]`);
+        } else {
+          startHostMatchWorkerPolling(requestId, "Awaiting Public Match Intercept");
+        }
         return;
       }
 
@@ -414,11 +434,6 @@
         stopRecoveryPolling();
         toggleWaiting(false);
         stopHostGamePolling();
-        
-        if (activeHandshakeRef) {
-          activeHandshakeRef.off();
-          activeHandshakeRef = null;
-        }
 
         localStorage.removeItem(KEY_RID);
         modeShown = false;
@@ -558,6 +573,8 @@
 
         if (data.matchName) {
           lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        } else if (data.requestId) {
+          startHostMatchWorkerPolling(data.requestId, "Awaiting Private Handshake");
         }
         return;
       }
@@ -595,7 +612,7 @@
 
       const data = await res.json();
       if (data.ok) {
-        const privateRequestId = data.requestId || data.inviteCode || data.timestamp;
+        const privateRequestId = data.requestId;
         if (privateRequestId) localStorage.setItem(KEY_RID, privateRequestId);
         
         stopPolling();
@@ -607,7 +624,8 @@
           add('Private Request Generated!', 'success-msg');
         }
         
-        startHostGameDBPolling(`Awaiting Private Join [CODE: ${data.inviteCode}]`);
+        // INTEGRATED: Replaced legacy Realtime DB polling loop with Worker Polling loop
+        startHostMatchWorkerPolling(privateRequestId, `Awaiting Private Join [CODE: ${data.inviteCode}]`);
         return;
       }
 
@@ -632,16 +650,15 @@
       });
       const data = await res.json();
       if (data.ok) {
-        const idToStore = data.matchName || data.matchId || data.requestId || data.timestamp;
+        const idToStore = data.matchName || data.requestId || data.timestamp;
         if (idToStore) localStorage.setItem(KEY_RID, idToStore);
         stopPolling();
         add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
 
         if (data.matchName) {
           lockOntoMatch(data.matchName, { status: 'SYNCING' });
-        } else if (!isIntercept && !extra.isPrivate) {
-          startMatchListener();
-          startHostGameDBPolling("Awaiting Public Match Intercept");
+        } else if (data.requestId) {
+          startHostMatchWorkerPolling(data.requestId, isIntercept ? "Awaiting Intercept Handshake" : "Awaiting Public Match Intercept");
         }
 
         return;
@@ -657,28 +674,6 @@
     }
   }
 
-  function startMatchListener() {
-    const savedRid = localStorage.getItem(KEY_RID);
-    if (!savedRid || savedRid.toString().includes('_')) return;
-    
-    if (activeHandshakeRef) {
-      activeHandshakeRef.off();
-    }
-
-    const ref = dbMatch.ref(`/R/${savedRid}`);
-    activeHandshakeRef = ref;
-    
-    ref.on('value', async snap => {
-      const data = snap.val();
-      if (data && data.matchName) {
-        toggleWaiting(false);
-        ref.off();
-        if (activeHandshakeRef === ref) activeHandshakeRef = null;
-        lockOntoMatch(data.matchName, data);
-      }
-    });
-  }
-
   function lockOntoMatch(id, entry) {
     lockedMatchId = id;
     localStorage.setItem(KEY_RID, id); 
@@ -686,11 +681,6 @@
     toggleWaiting(false);
     
     stopHostGamePolling();
-
-    if (activeHandshakeRef) {
-      activeHandshakeRef.off();
-      activeHandshakeRef = null;
-    }
 
     modeShown = false;
     add(`LINK ESTABLISHED: ${id}`, 'success-msg');
@@ -769,13 +759,13 @@
         const rqdEntry = await verifyRequestIdByRQD(rid);
         if (rqdEntry) {
             add('Recovering uplink...', 'system-msg');
-            startMatchListener();
             
+            // INTEGRATED: Resumes polling via Worker architecture rather than legacy listeners
             if (rqdEntry.isPrivate && rqdEntry.inviteCode) {
                 createLineWithCopy(`Re-asserted Private Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg');
-                startHostGameDBPolling(`Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`);
+                startHostMatchWorkerPolling(rid, `Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`);
             } else {
-                startHostGameDBPolling("Awaiting Public Match Intercept");
+                startHostMatchWorkerPolling(rid, "Awaiting Public Match Intercept");
             }
             return;
         }
