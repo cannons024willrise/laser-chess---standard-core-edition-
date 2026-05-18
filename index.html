@@ -207,7 +207,7 @@
     if (modeShown) return;
     modeShown = true;
 
-    const privateSuffix = ' | [P] Private Host | [J] Private Join (ENTER = skip target)';
+    const privateSuffix = ' | [P] Private Host | [J] Private Join';
 
     if (!currentHead) {
       add(`Queue Empty. [R] Host Red | [B] Host Blue${privateSuffix}`, 'system-msg');
@@ -550,9 +550,21 @@
         if (privateRequestId) localStorage.setItem(KEY_RID, privateRequestId);
         
         stopPolling();
-        add('Private Request Generated!', 'success-msg');
         
-        // Pass the invite code as the context so the polling log displays what the host is waiting for
+        // AUTO-COPY FEATURE INTERACTION
+        if (data.inviteCode) {
+          try {
+            await navigator.clipboard.writeText(data.inviteCode);
+            add(`Private Request Generated! [CODE: ${data.inviteCode}]`, 'success-msg');
+            add(`>> SUCCESS: COPIED TO CLIPBOARD <<`, 'success-msg');
+          } catch (clipErr) {
+            // Fallback warning text if browser strict system sandbox denies clipboard access before execution loops
+            add(`Private Request Generated! [CODE: ${data.inviteCode}]`, 'success-msg');
+          }
+        } else {
+          add('Private Request Generated!', 'success-msg');
+        }
+        
         startHostGameDBPolling(`Awaiting Private Join [CODE: ${data.inviteCode}]`);
         return;
       }
@@ -587,7 +599,6 @@
           lockOntoMatch(data.matchName, { status: 'SYNCING' });
         } else if (!isIntercept && !extra.isPrivate) {
           startMatchListener();
-          // Contextual polling text for public match hosts
           startHostGameDBPolling("Awaiting Public Match Intercept");
         }
 
@@ -658,7 +669,6 @@
     });
   }
 
-  // Refactored to accept dynamic context payloads
   function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
     if (active) {
       if (waitAnimationInterval) return;
