@@ -753,6 +753,8 @@
     if (rid && rid.toString().includes('_')) {
         const snap = await dbGame.ref(`G/${rid}`).once('value');
         if (snap.exists()) return lockOntoMatch(rid, snap.val());
+
+        localStorage.removeItem(KEY_RID);
     }
 
     if (rid && !rid.toString().includes('_')) {
