@@ -3,233 +3,754 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LASER CHESS // OBJECT DEBUG CLI</title>
+  <title>LASER CHESS // KEYBOARD TEXTAREAS</title>
   <style>
     @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
-    :root { --bg0:#0a0a0a; --bg1:#1a1a1a; --text:#b0b0b0; --bright:#ffffff; --error:#ff5555; --muted:#999999; --waiting:#00ff00; }
+    :root {
+      --bg0:#0a0a0a;
+      --bg1:#1a1a1a;
+      --line:#2a2a2a;
+      --text:#b0b0b0;
+      --bright:#ffffff;
+      --error:#ff5555;
+      --muted:#999999;
+      --waiting:#00ff00;
+      --blue:#00d4ff;
+      --red:#ff3333;
+    }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 30px;
+      padding: 24px;
+      background: radial-gradient(circle at center, var(--bg1), var(--bg0));
       color: var(--text);
       font-family: 'Unifont', monospace;
-      background: radial-gradient(circle at center, var(--bg1), var(--bg0));
     }
-    #terminal-log { display:flex; flex-direction:column; gap:4px; max-width:1100px; }
-    .history-line { white-space:pre-wrap; word-break:break-all; display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
-    .input-wrapper { display:flex; gap:8px; align-items:flex-start; width:100%; }
-    .prompt { white-space:pre; }
-    .user-input-line {
-      flex:1; background:transparent; border:none; color:var(--bright); font:inherit; outline:none;
-      resize:none; overflow:hidden; min-height:1.2em; line-height:1.2; padding:0; margin:0; white-space:pre-wrap;
+    .topbar {
+      max-width: 1280px;
+      margin: 0 auto 14px auto;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.25);
+      box-shadow: 0 12px 30px rgba(0,0,0,.35);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
     }
-    .system-msg { color: var(--muted); }
-    .success-msg { color: var(--bright); font-weight:700; }
-    .error-msg { color: var(--error); }
-    .highlight { color: var(--bright); font-weight:700; }
-    .wait-msg { color: var(--waiting); }
-
-    pre.board {
-      margin: 8px 0 16px 0;
-      padding: 14px 16px;
-      border-left: 2px solid #222;
-      background: rgba(0,0,0,0.2);
-      line-height: 1.15;
-      letter-spacing: 1.5px;
+    .title { color: var(--bright); font-weight: 700; letter-spacing: .08em; }
+    .status { color: var(--muted); }
+    .hint { color: var(--waiting); }
+    .app {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: minmax(640px, 1fr) minmax(320px, 420px);
+      gap: 18px;
+      align-items: start;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.2);
+      box-shadow: 0 12px 30px rgba(0,0,0,.35);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .panel-head {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.02);
+      color: var(--bright);
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel-body { padding: 14px; }
+    
+    /* Absolute Grid Viewport Frame */
+    #boardText {
+      width: 100%;
+      min-height: 520px;
       font-size: 18px;
-      white-space: pre;
-      color: #222;
+      border: 1px solid #333;
+      background: #0f0f0f;
+      color: var(--bright);
+      padding: 16px;
+      border-radius: 8px;
+      outline: none;
+      font-family: 'Unifont', monospace;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    #boardText:focus {
+      border-color: var(--waiting);
+      box-shadow: 0 0 8px rgba(0, 255, 0, 0.15);
     }
 
-    .b { color:#00d4ff; }
-    .r { color:#ff3333; }
-    .l { color:#444; }
+    /* Core Matrix Lock Components */
+    .board-grid {
+      display: inline-block;
+      margin-bottom: 16px;
+      user-select: none;
+    }
+    .board-row {
+      display: flex;
+      height: 26px;
+      align-items: center;
+    }
+    .board-cell {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Unifont', monospace;
+      text-align: center;
+      box-sizing: border-box;
+    }
+    .board-lbl {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-family: 'Unifont', monospace;
+    }
+    .board-meta {
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+      font-family: 'Unifont', monospace;
+      color: var(--text);
+      white-space: pre;
+      line-height: 1.4;
+    }
+
+    /* Team Coloration Styles */
+    .p-blue { color: var(--blue); font-weight: bold; }
+    .p-red { color: var(--red); font-weight: bold; }
+    .p-selected { outline: 1px dashed var(--bright); background: rgba(255,255,255,0.08); }
+    .p-cursor { background: var(--waiting) !important; color: #000000 !important; }
+
+    textarea {
+      width: 100%;
+      border: 1px solid #333;
+      background: #0f0f0f;
+      color: var(--bright);
+      padding: 12px;
+      border-radius: 8px;
+      outline: none;
+      font: inherit;
+      resize: vertical;
+      white-space: pre;
+      line-height: 1.2;
+    }
+    #jsonBox {
+      min-height: 220px;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .stack { display: grid; gap: 10px; }
+    .group {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      background: rgba(255,255,255,.02);
+      display: grid;
+      gap: 10px;
+    }
+    .group-title {
+      color: var(--bright);
+      font-weight: 700;
+      letter-spacing: .05em;
+    }
+    .valueLine {
+      color: var(--bright);
+      font-size: 13px;
+      word-break: break-all;
+      line-height: 1.35;
+    }
+    .small { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .monoTag { color: var(--waiting); }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    select, input[type="text"] {
+      width: 100%;
+      border: 1px solid #333;
+      background: #0f0f0f;
+      color: var(--bright);
+      padding: 10px;
+      border-radius: 8px;
+      outline: none;
+      font: inherit;
+    }
+    .btnRow { display:flex; flex-wrap:wrap; gap:8px; }
+    button {
+      border: 1px solid #3a3a3a;
+      background: #1a1a1a;
+      color: var(--waiting);
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font: inherit;
+    }
+    button:hover { background:#232323; border-color:#555; }
+    button.active { outline: 1px solid var(--waiting); color: var(--bright); }
+    button.primary { color: var(--bright); }
+    button.danger { color: var(--error); }
+    .pieceSwatch {
+      display:inline-block;
+      min-width: 1.2em;
+      text-align:center;
+      margin-right: 6px;
+      font-size: 18px;
+      vertical-align: middle;
+    }
+    .callout {
+      border-left: 2px solid var(--waiting);
+      padding-left: 10px;
+      margin-top: 6px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
-  <div id="terminal-log"></div>
+  <div class="topbar">
+    <div class="title">LASER CHESS // KEYBOARD TEXTAREAS</div>
+    <div class="status" id="status">READY</div>
+    <div class="hint">arrows cursor &middot; enter select/place &middot; WASD release-move &middot; no mouse required</div>
+  </div>
+
+  <div class="app">
+    <div class="panel">
+      <div class="panel-head">
+        <div>BOARD</div>
+        <div class="small">This area always renders on load.</div>
+      </div>
+      <div class="panel-body">
+        <div id="boardText" tabindex="0"></div>
+        <div class="callout">
+          Move the cursor with the arrow keys. Press <span class="monoTag">Enter</span> on an empty square to add the currently selected build piece. Press <span class="monoTag">Enter</span> on a piece to select it. Use <span class="monoTag">WASD</span> to move the selected piece when keys are released. Delete or Backspace clears pieces cleanly.
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="group">
+        <div class="group-title">TEMP BUILD TOOLS</div>
+        <div class="small">These buttons choose the next piece to place. You can still use keyboard only: <span class="monoTag">1-5</span> type, <span class="monoTag">C</span> color, <span class="monoTag">O</span> rotation.</div>
+        <div id="typeButtons" class="btnRow"></div>
+        <div id="colorButtons" class="btnRow"></div>
+        <div id="rotButtons" class="btnRow"></div>
+        <div class="small" id="paletteInfo">Palette: KING / BLUE / rot 0</div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">SELECTION</div>
+        <div class="valueLine" id="selectedInfo">No piece selected.</div>
+        <div class="small">Selection follows the cursor. Press <span class="monoTag">Space</span> or <span class="monoTag">Enter</span> on a piece to select it.</div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">STATE</div>
+        <div class="split">
+          <div>
+            <div class="small" style="margin-bottom:6px;">Turn</div>
+            <select id="turnSelect">
+              <option>BLUE</option>
+              <option>RED</option>
+            </select>
+          </div>
+          <div>
+            <div class="small" style="margin-bottom:6px;">Phase</div>
+            <input id="phaseInput" type="text" placeholder="MOVE" />
+          </div>
+        </div>
+        <div>
+          <div class="small" style="margin-bottom:6px;">Move Number</div>
+          <input id="moveNumberInput" type="text" placeholder="12" />
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">EXPORT JSON</div>
+        <textarea id="jsonBox" spellcheck="false" readonly></textarea>
+        <div class="small">Export-only view. No manual JSON editing.</div>
+      </div>
+    </div>
+  </div>
 
   <script>
     (() => {
       'use strict';
 
-      const logContainer = document.getElementById('terminal-log');
-      const queue = [];
-      let processing = false, currentPromptWrap = null;
+      const boardText = document.getElementById('boardText');
+      const jsonBox = document.getElementById('jsonBox');
+      const statusEl = document.getElementById('status');
+      const selectedInfoEl = document.getElementById('selectedInfo');
+      const paletteInfoEl = document.getElementById('paletteInfo');
+      const turnSelect = document.getElementById('turnSelect');
+      const phaseInput = document.getElementById('phaseInput');
+      const moveNumberInput = document.getElementById('moveNumberInput');
+      const typeButtons = document.getElementById('typeButtons');
+      const colorButtons = document.getElementById('colorButtons');
+      const rotButtons = document.getElementById('rotButtons');
 
+      const PIECE_TYPES = ['KING', 'LASER', 'SWITCH', 'DEFENDER', 'DEFLECTOR'];
       const symbols = {
-        king: "◈",
-        laser: ["⫝", "⟜", "Ͳ", "Ð"],
-        switch: ["⟋", "⟍"],
-        defender: ["⬒", "◨", "⬓", "◧"],
-        deflector: ["◤", "◥", "◢", "◣"]
+        KING: '◈',
+        LASER: ['⫝', '⟜', 'Ͳ', 'Ð'],
+        SWITCH: ['⟋', '⟍'],
+        DEFENDER: ['⬒', '◨', '⬓', '◧'],
+        DEFLECTOR: ['◤', '◥', '◢', '◣']
       };
 
-      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const state = {
+        turn: 'BLUE',
+        phase: 'MOVE',
+        moveNumber: 1,
+        pieces: []
+      };
 
-      function createLine(cls='') {
-        const d = document.createElement('div');
-        d.className = `history-line ${cls}`;
-        if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap);
-        else logContainer.appendChild(d);
-        return d;
+      let cursor = { x: 4, y: 4 };
+      let selectedId = null;
+      let palette = { pieceType: 'KING', color: 'BLUE', rotation: 0 };
+      let idSeq = 1;
+      const pressedKeys = new Set();
+
+      function uid(prefix) {
+        return (prefix || 'p') + Date.now().toString(36) + (idSeq++).toString(36);
       }
 
-      function add(text, cls='', req=false, handler=null) {
-        if (!req && processing) { type(text, cls, true); return; }
-        queue.push({text, cls, req, handler});
-        if (!processing) run();
+      function setStatus(text, kind) {
+        statusEl.textContent = text;
+        statusEl.style.color = kind === 'error' ? 'var(--error)' : (kind === 'good' ? 'var(--waiting)' : 'var(--muted)');
       }
 
-      async function run() {
-        processing = true;
-        while (queue.length) {
-          const i = queue.shift();
-          if (i.req) await prompt(i.text, i.cls, i.handler || handleInput);
-          else await type(i.text, i.cls);
-        }
-        processing = false;
-      }
-
-      async function type(text, cls, immediate=false) {
-        const l = createLine(cls);
-        if (immediate) { l.textContent = text; return l; }
-        for (const c of text) { l.textContent += c; await sleep(10); }
-        return l;
-      }
-
-      async function prompt(text, cls, handler) {
-        const wrap = document.createElement('div');
-        wrap.className = 'input-wrapper history-line';
-
-        const p = document.createElement('span');
-        p.className = 'prompt';
-        wrap.appendChild(p);
-
-        const input = document.createElement('textarea');
-        input.className = 'user-input-line';
-        input.rows = 1;
-        input.spellcheck = false;
-        input.autocapitalize = 'off';
-        input.autocomplete = 'off';
-        input.autocorrect = 'off';
-        wrap.appendChild(input);
-
-        logContainer.appendChild(wrap);
-        currentPromptWrap = wrap;
-
-        for (const c of text) { p.textContent += c; await sleep(8); }
-
-        const resize = () => {
-          input.style.height = 'auto';
-          input.style.height = input.scrollHeight + 'px';
-        };
-
-        setTimeout(() => {
-          input.focus();
-          resize();
-        }, 0);
-
-        input.addEventListener('input', resize);
-
-        return new Promise(resolve => {
-          input.addEventListener('keydown', e => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              const v = input.value.trim();
-              input.disabled = true;
-
-              const finalLine = createLine('highlight');
-              finalLine.textContent = p.textContent + v;
-
-              wrap.remove();
-              currentPromptWrap = null;
-              handler(v);
-              resolve();
-            }
-          });
-        });
+      function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
       }
 
       function pieceChar(piece) {
-        if (!piece) return "?";
-
         const type = String(piece.pieceType || '').toUpperCase();
-        const rotation = Number(piece.rotation ?? 0);
-
-        switch (type) {
-          case 'KING': return symbols.king;
-          case 'LASER': return symbols.laser[rotation % 4];
-          case 'SWITCH': return (rotation === 1 || rotation === 3) ? symbols.switch[0] : symbols.switch[1];
-          case 'DEFENDER': return symbols.defender[rotation % 4];
-          case 'DEFLECTOR': return symbols.deflector[rotation % 4];
-          default: return piece.glyph || "?";
-        }
+        const rot = Number(piece.rotation !== undefined ? piece.rotation : 0) % 4;
+        
+        if (type === 'KING') return symbols.KING;
+        if (type === 'LASER') return symbols.LASER[rot];
+        if (type === 'SWITCH') return (rot === 1 || rot === 3) ? symbols.SWITCH[0] : symbols.SWITCH[1];
+        if (type === 'DEFENDER') return symbols.DEFENDER[rot];
+        if (type === 'DEFLECTOR') return symbols.DEFLECTOR[rot];
+        return '?';
       }
 
-      function normalizeBoard(state) {
+      function normalizePiece(piece) {
+        return {
+          id: String(piece.id || uid('p')),
+          pieceType: String(piece.pieceType || 'KING').toUpperCase(),
+          color: String(piece.color || 'BLUE').toUpperCase(),
+          rotation: Number(piece.rotation !== undefined ? piece.rotation : 0),
+          x: Number(piece.x),
+          y: Number(piece.y)
+        };
+      }
+
+      function getPieceById(id) {
+        return state.pieces.find(p => p.id === id) || null;
+      }
+
+      function getPieceAt(x, y) {
+        return state.pieces.find(p => Number(p.x) === x && Number(p.y) === y) || null;
+      }
+
+      // Rebuilt matrix loop utilizing explicit grid element sizing
+      function buildBoardHTML() {
         const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
-        for (const piece of (state.pieces || [])) {
-          if (!piece) continue;
-          const x = Number(piece.x);
-          const y = Number(piece.y);
-          if (Number.isNaN(x) || Number.isNaN(y)) continue;
-          if (x < 0 || x > 9 || y < 0 || y > 7) continue;
-          grid[y][x] = piece;
+        for (const piece of state.pieces) {
+          if (!Number.isFinite(piece.x) || !Number.isFinite(piece.y)) continue;
+          if (piece.x < 0 || piece.x > 9 || piece.y < 0 || piece.y > 7) continue;
+          grid[piece.y][piece.x] = piece;
         }
-        return grid;
-      }
 
-      function renderBoard(state) {
-        const grid = normalizeBoard(state);
+        let html = '<div class="board-grid">';
+        
+        // Horizontal Header Axis Axis
+        html += '<div class="board-row">';
+        html += '<span class="board-lbl">&nbsp;</span>';
+        for (let x = 0; x < 10; x++) {
+          html += `<span class="board-lbl">${x}</span>`;
+        }
+        html += '</div>';
 
-        let out = `<span class="l">  0 1 2 3 4 5 6 7 8 9</span>
-`;
+        // Main Matrix Engine
         for (let y = 7; y >= 0; y--) {
-          out += `<span class="l">${y}</span> `;
+          html += '<div class="board-row">';
+          html += `<span class="board-lbl">${y}</span>`;
+          
           for (let x = 0; x < 10; x++) {
             const p = grid[y][x];
-            const colorClass = String(p?.color || '').toUpperCase() === 'BLUE' ? 'b' : String(p?.color || '').toUpperCase() === 'RED' ? 'r' : 'l';
-            out += p ? `<span class="${colorClass}">${pieceChar(p)}</span> ` : `· `;
+            const isCursor = (cursor.x === x && cursor.y === y);
+            
+            let char = '·';
+            let classes = ['board-cell'];
+            
+            if (p) {
+              char = pieceChar(p);
+              classes.push(p.color === 'RED' ? 'p-red' : 'p-blue');
+              if (selectedId === p.id) {
+                classes.push('p-selected');
+              }
+            }
+            
+            if (isCursor) {
+              classes.push('p-cursor');
+            }
+            
+            html += `<span class="${classes.join(' ')}">${char}</span>`;
           }
-          out += `
-`;
+          html += '</div>';
         }
+        html += '</div>';
 
-        const turn = String(state.turn || 'UNKNOWN').toUpperCase();
-        out += `
-<span class="l">TURN:</span> <span class="${turn === 'BLUE' ? 'b' : turn === 'RED' ? 'r' : 'l'}">${turn}</span>
-`;
-
-        if (state.phase) {
-          out += `<span class="l">PHASE:</span> <span class="highlight">${String(state.phase).toUpperCase()}</span>
-`;
-        }
-
-        if (state.moveNumber != null) {
-          out += `<span class="l">MOVE:</span> <span class="highlight">${state.moveNumber}</span>
-`;
-        }
-
-        const entry = document.createElement('pre');
-        entry.className = 'board';
-        entry.innerHTML = out;
-        logContainer.appendChild(entry);
+        // Isolated Meta Block prevents overflow contamination
+        html += '<div class="board-meta">';
+        html += `CURSOR: ${cursor.x},${cursor.y}\n`;
+        html += `PALETTE: ${palette.pieceType} / ${palette.color} / rot ${palette.rotation}\n`;
+        
+        const active = selectedId ? getPieceById(selectedId) : null;
+        html += `ACTIVE: ${active ? `${active.color} ${active.pieceType} @ ${active.x},${active.y}` : 'NONE'}\n`;
+        html += `HELP: arrows move cursor, enter select/place, WASD move selected on keyup`;
+        html += '</div>';
+        
+        return html;
       }
 
-      function handleInput(raw) {
-        if (!raw) return;
+      function syncJson() {
+        jsonBox.value = JSON.stringify({
+          turn: state.turn,
+          phase: state.phase,
+          moveNumber: state.moveNumber,
+          pieces: state.pieces.map(p => ({
+            id: p.id,
+            pieceType: p.pieceType,
+            color: p.color,
+            rotation: Number(p.rotation !== undefined ? p.rotation : 0),
+            x: Number(p.x),
+            y: Number(p.y)
+          }))
+        }, null, 2);
+      }
 
+      function updateButtons() {
+        typeButtons.innerHTML = '';
+        colorButtons.innerHTML = '';
+        rotButtons.innerHTML = '';
+
+        for (const t of PIECE_TYPES) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = palette.pieceType === t ? 'active' : '';
+          btn.innerHTML = `<span class="pieceSwatch">${pieceChar({ pieceType: t, rotation: palette.rotation })}</span>${t}`;
+          btn.addEventListener('click', () => {
+            palette.pieceType = t;
+            setStatus(`Palette type: ${t}.`, 'good');
+            render();
+          });
+          typeButtons.appendChild(btn);
+        }
+
+        for (const c of ['BLUE', 'RED']) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = palette.color === c ? 'active' : '';
+          btn.textContent = c;
+          btn.style.color = c === 'BLUE' ? 'var(--blue)' : 'var(--red)';
+          btn.addEventListener('click', () => {
+            palette.color = c;
+            setStatus(`Palette color: ${c}.`, 'good');
+            render();
+          });
+          colorButtons.appendChild(btn);
+        }
+
+        for (let r = 0; r < 4; r++) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = palette.rotation === r ? 'active' : '';
+          btn.textContent = `ROT ${r}`;
+          btn.addEventListener('click', () => {
+            palette.rotation = r;
+            setStatus(`Palette rotation: ${r}.`, 'good');
+            render();
+          });
+          rotButtons.appendChild(btn);
+        }
+      }
+
+      function render() {
+        boardText.innerHTML = buildBoardHTML();
+        turnSelect.value = state.turn;
+        phaseInput.value = state.phase || '';
+        moveNumberInput.value = String(state.moveNumber || '');
+
+        const active = selectedId ? getPieceById(selectedId) : null;
+        selectedInfoEl.textContent = active
+          ? `Selected: ${active.id} | ${active.color} ${active.pieceType} | rot ${active.rotation} | x ${active.x} y ${active.y}`
+          : 'No piece selected.';
+        paletteInfoEl.textContent = `Palette: ${palette.pieceType} / ${palette.color} / rot ${palette.rotation}`;
+        syncJson();
+        updateButtons();
+      }
+
+      function moveCursor(dx, dy) {
+        cursor.x = clamp(cursor.x + dx, 0, 9);
+        cursor.y = clamp(cursor.y + dy, 0, 7);
+        render();
+      }
+
+      function selectAtCursor() {
+        const piece = getPieceAt(cursor.x, cursor.y);
+        if (!piece) {
+          selectedId = null;
+          setStatus('No piece at cursor.', 'error');
+          render();
+          return;
+        }
+        selectedId = piece.id;
+        cursor = { x: piece.x, y: piece.y };
+        setStatus(`Selected ${piece.color} ${piece.pieceType}.`, 'good');
+        render();
+      }
+
+      function deselect() {
+        selectedId = null;
+        setStatus('Selection cleared.', 'normal');
+        render();
+      }
+
+      function rotateSelected() {
+        const p = getPieceById(selectedId);
+        if (!p) return;
+        p.rotation = (Number(p.rotation || 0) + 1) % 4;
+        setStatus('Piece rotated.', 'good');
+        render();
+      }
+
+      function moveSelected(dx, dy) {
+        const p = getPieceById(selectedId);
+        if (!p) return;
+        const nx = clamp(Number(p.x) + dx, 0, 9);
+        const ny = clamp(Number(p.y) + dy, 0, 7);
+        const occupant = getPieceAt(nx, ny);
+        if (occupant && occupant.id !== p.id) {
+          occupant.x = Number(p.x);
+          occupant.y = Number(p.y);
+        }
+        p.x = nx;
+        p.y = ny;
+        cursor = { x: nx, y: ny };
+        setStatus(`Moved to ${nx}, ${ny}.`, 'good');
+        render();
+      }
+
+      function removeSelected() {
+        const pieceAtCursor = getPieceAt(cursor.x, cursor.y);
+        let idToRemove = pieceAtCursor ? pieceAtCursor.id : selectedId;
+        
+        if (!idToRemove) {
+          setStatus('No piece at cursor or selected to delete.', 'error');
+          return;
+        }
+        
+        const idx = state.pieces.findIndex(p => p.id === idToRemove);
+        if (idx >= 0) {
+          state.pieces.splice(idx, 1);
+          setStatus('Piece deleted cleanly.', 'good');
+        }
+        
+        if (selectedId === idToRemove) {
+          selectedId = null;
+        }
+        
+        render();
+      }
+
+      function placePaletteAtCursor() {
+        if (getPieceAt(cursor.x, cursor.y)) {
+          setStatus('Cell occupied.', 'error');
+          return;
+        }
+        const piece = normalizePiece({
+          id: uid('p'),
+          pieceType: palette.pieceType,
+          color: palette.color,
+          rotation: palette.rotation,
+          x: cursor.x,
+          y: cursor.y
+        });
+        state.pieces.push(piece);
+        selectedId = piece.id;
+        setStatus('Piece placed.', 'good');
+        render();
+      }
+
+      function applyJson() {
         try {
-          const state = JSON.parse(raw);
-          renderBoard(state);
-          add('STATE RENDERED.', 'success-msg');
+          const parsed = JSON.parse(jsonBox.value);
+          if (!parsed || typeof parsed !== 'object') throw new Error('Top-level JSON must be an object.');
+          if (!Array.isArray(parsed.pieces)) throw new Error('Missing pieces array.');
+          state.turn = String(parsed.turn || 'BLUE').toUpperCase();
+          
+          state.phase = parsed.phase !== undefined ? parsed.phase : '';
+          state.moveNumber = parsed.moveNumber !== undefined ? parsed.moveNumber : '';
+          
+          state.pieces = parsed.pieces.map(normalizePiece).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+          selectedId = null;
+          setStatus('JSON applied.', 'good');
+          render();
         } catch (err) {
-          add(`INVALID JSON: ${err.message}`, 'error-msg');
+          setStatus(`INVALID JSON: ${err.message}`, 'error');
         }
       }
 
-      add('KHET_OS OBJECT DEBUG CLI ONLINE.', 'system-msg');
-      add('PASTE JSON STATE AND PRESS ENTER:', '', true, handleInput);
+      function resetDemo() {
+        state.turn = 'BLUE';
+        state.phase = 'MOVE';
+        state.moveNumber = 1;
+        state.pieces = [];
+        cursor = { x: 4, y: 4 };
+        selectedId = null;
+        palette = { pieceType: 'KING', color: 'BLUE', rotation: 0 };
+        setStatus('Demo board loaded.', 'good');
+        render();
+      }
+
+      function handleBoardKeydown(e) {
+        if (document.activeElement !== boardText) return;
+        const key = e.key.toLowerCase();
+
+        if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab', ' ', 'enter', 'escape', 'delete', 'backspace', '1', '2', '3', '4', '5', 'c', 'o', 'r'].includes(key)) {
+          e.preventDefault();
+        }
+
+        if (e.ctrlKey && key === 'b') {
+          e.preventDefault();
+          boardText.focus();
+          return;
+        }
+
+        if (key === 'arrowup') return moveCursor(0, 1);
+        if (key === 'arrowdown') return moveCursor(0, -1);
+        if (key === 'arrowleft') return moveCursor(-1, 0);
+        if (key === 'arrowright') return moveCursor(1, 0);
+
+        if (key === 'enter') {
+          const piece = getPieceAt(cursor.x, cursor.y);
+          if (piece) return selectAtCursor();
+          return placePaletteAtCursor();
+        }
+
+        if (key === ' ') {
+          const piece = getPieceAt(cursor.x, cursor.y);
+          if (piece) return selectAtCursor();
+          setStatus('No piece to select.', 'error');
+          return;
+        }
+
+        if (key === 'escape') return deselect();
+        if (key === 'delete' || key === 'backspace') return removeSelected();
+
+        if (key === 'r') {
+          if (selectedId) return rotateSelected();
+          palette.rotation = (palette.rotation + 1) % 4;
+          setStatus(`Palette rotation: ${palette.rotation}.`, 'good');
+          render();
+          return;
+        }
+
+        if (key === 'c') {
+          palette.color = palette.color === 'BLUE' ? 'RED' : 'BLUE';
+          setStatus(`Palette color: ${palette.color}.`, 'good');
+          render();
+          return;
+        }
+
+        if (key === 'o') {
+          palette.rotation = (palette.rotation + 1) % 4;
+          setStatus(`Palette rotation: ${palette.rotation}.`, 'good');
+          render();
+          return;
+        }
+
+        if (key >= '1' && key <= '5') {
+          palette.pieceType = PIECE_TYPES[Number(key) - 1];
+          setStatus(`Palette type: ${palette.pieceType}.`, 'good');
+          render();
+          return;
+        }
+      }
+
+      function handleBoardKeydownForWASD(e) {
+        if (document.activeElement !== boardText) return;
+        const k = e.key.toLowerCase();
+        if (!['w', 'a', 's', 'd'].includes(k)) return;
+        e.preventDefault();
+        pressedKeys.add(k);
+      }
+
+      function handleBoardKeyup(e) {
+        if (document.activeElement !== boardText) return;
+        const k = e.key.toLowerCase();
+        if (!['w', 'a', 's', 'd'].includes(k)) return;
+        e.preventDefault();
+        const before = new Set(pressedKeys);
+        before.add(k);
+        pressedKeys.delete(k);
+        if (!selectedId) return;
+        const dx = (before.has('d') ? 1 : 0) + (before.has('a') ? -1 : 0);
+        const dy = (before.has('w') ? 1 : 0) + (before.has('s') ? -1 : 0);
+        if (dx !== 0 || dy !== 0) moveSelected(dx, dy);
+      }
+
+      document.addEventListener('keydown', e => {
+        if (e.ctrlKey && e.key.toLowerCase() === 'b') {
+          e.preventDefault();
+          boardText.focus();
+          return;
+        }
+      }, true);
+
+      boardText.addEventListener('keydown', handleBoardKeydownForWASD);
+      boardText.addEventListener('keydown', handleBoardKeydown);
+      boardText.addEventListener('keyup', handleBoardKeyup);
+
+      turnSelect.addEventListener('change', () => { state.turn = turnSelect.value; render(); });
+      phaseInput.addEventListener('input', () => { state.phase = phaseInput.value.trim(); render(); });
+      moveNumberInput.addEventListener('input', () => {
+        const v = moveNumberInput.value.trim();
+        state.moveNumber = v === '' ? '' : Number(v);
+        render();
+      });
+
+      // Launch sequence
+      updateButtons();
+      resetDemo();
+      boardText.focus();
+      setStatus('Keyboard editor ready.', 'good');
+
+      const exportTick = () => {
+        syncJson();
+        requestAnimationFrame(exportTick);
+      };
+      requestAnimationFrame(exportTick);
+
+      window.addEventListener('load', () => {
+        render();
+        boardText.focus();
+      });
     })();
   </script>
 </body>
