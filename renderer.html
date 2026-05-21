@@ -1,127 +1,88 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>KHET_CLI_LOOP</title>
-    <style>
-        /* GLOBAL NATURE CSS */
-        * { background: #000; color: #0c0; font-family: 'Courier New', monospace; box-sizing: border-box; }
-        
-        body { 
-            padding: 40px; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: flex-start; 
-        }
-
-        #log { width: 100%; }
-
-        /* RAW BOARD OUTPUT */
-        pre { 
-            line-height: 1.2; 
-            letter-spacing: 2px; 
-            font-size: 18px; 
-            color: #222; /* Dot Matrix */
-            margin: 20px 0;
-            padding-left: 10px;
-            border-left: 2px solid #111;
-        }
-
-        /* PIECE COLORS */
-        .b { color: #00d4ff; }
-        .r { color: #ff3333; }
-        .l { color: #444; } /* Axis */
-
-        /* CLI PROMPT */
-        .prompt-line { display: flex; width: 100%; align-items: center; }
-        .symbol { margin-right: 10px; color: #0f0; font-weight: bold; }
-        
-        input { 
-            flex: 1;
-            border: none; 
-            background: transparent;
-            color: #0c0; 
-            outline: none;
-            font-size: 18px;
-        }
-
-        .header { color: #444; margin-bottom: 20px; font-size: 12px; }
-    </style>
-</head>
-<body>
-
-<div class="header">KHET_OS v14.0.0 // ENTER STRING TO RENDER</div>
-<div id="log"></div>
-
-<div class="prompt-line">
-    <span class="symbol">></span>
-    <input type="text" id="cli-input" autofocus autocomplete="off" placeholder="PASTE STRING AND PRESS ENTER">
-</div>
-
 <script>
-    const log = document.getElementById('log');
-    const input = document.getElementById('cli-input');
+  const log = document.getElementById('log');
+  const input = document.getElementById('cli-input');
 
-    const symbols = {
-        king: "◈",
-        laser: ["⫝", "⟜", "Ͳ", "Ð"],
-        switch: ["⟋", "⟍"],
-        defender: ["⬒", "◨", "⬓", "◧"],
-        deflector: ["◤", "◥", "◢", "◣"]
-    };
+  const symbols = {
+    king: "◈",
+    laser: ["⫝", "⟜", "Ͳ", "Ð"],
+    switch: ["⟋", "⟍"],
+    defender: ["⬒", "◨", "⬓", "◧"],
+    deflector: ["◤", "◥", "◢", "◣"]
+  };
 
-    function getChar(t, r) {
-        if (t == 0 || t == 5) return symbols.king;
-        if (t == 1 || t == 6) return symbols.laser[r-1];
-        if (t == 2 || t == 7) return (r == 1 || r == 3) ? symbols.switch[0] : symbols.switch[1];
-        if (t == 3 || t == 8) return symbols.defender[r-1];
-        if (t == 4 || t == 9) return symbols.deflector[r-1];
+  function getChar(piece) {
+    if (!piece || !piece.alive) return "?";
+
+    switch (piece.type) {
+      case "king":
+        return symbols.king;
+      case "laser":
+        return symbols.laser[piece.rot % 4];
+      case "switch":
+        return (piece.rot === 1 || piece.rot === 3) ? symbols.switch[0] : symbols.switch[1];
+      case "defender":
+        return symbols.defender[piece.rot % 4];
+      case "deflector":
+        return symbols.deflector[piece.rot % 4];
+      default:
         return "?";
     }
+  }
 
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            const val = input.value.replace(/\s/g, '');
-            if (val) {
-                renderBoard(val);
-                input.value = ''; // Clear for next string
-                window.scrollTo(0, document.body.scrollHeight);
-            }
-        }
-    });
+  function normalizeBoard(state) {
+    const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
 
-    function renderBoard(raw) {
-        const grid = Array(8).fill(null).map(() => Array(10).fill(null));
-        const pieceCount = Math.floor(raw.length / 5);
-
-        for (let i = 0; i < pieceCount; i++) {
-            const b = raw.substr(i * 5, 5);
-            const t = parseInt(b[0]), x = parseInt(b[1]), y = parseInt(b[2]), r = parseInt(b[3]), s = parseInt(b[4]);
-            if (s === 1 && y < 8 && x < 10) {
-                grid[y][x] = { char: getChar(t, r), side: t <= 4 ? 'b' : 'r' };
-            }
-        }
-
-        let out = `<span class="l">  0 1 2 3 4 5 6 7 8 9</span>\n`;
-        for (let y = 7; y >= 0; y--) {
-            out += `<span class="l">${y}</span> `;
-            for (let x = 0; x < 10; x++) {
-                const p = grid[y][x];
-                out += p ? `<span class="${p.side}">${p.char}</span> ` : `· `;
-            }
-            out += "\n";
-        }
-
-        // Add Turn Info
-        if (raw.length % 5 === 1) {
-            const t = raw.slice(-1);
-            out += `\n<span class="l">STATUS:</span> <span class="${t==='0'?'b':'r'}">${t==='0'?'BLUE':'RED'}_TO_MOVE</span>\n`;
-        }
-
-        const entry = document.createElement('pre');
-        entry.innerHTML = out;
-        log.appendChild(entry);
+    for (const piece of state.pieces || []) {
+      if (!piece.alive) continue;
+      if (piece.x < 0 || piece.x > 9 || piece.y < 0 || piece.y > 7) continue;
+      grid[piece.y][piece.x] = piece;
     }
+
+    return grid;
+  }
+
+  function renderBoard(state) {
+    const grid = normalizeBoard(state);
+
+    let out = `<span class="l">  0 1 2 3 4 5 6 7 8 9</span>\n`;
+    for (let y = 7; y >= 0; y--) {
+      out += `<span class="l">${y}</span> `;
+      for (let x = 0; x < 10; x++) {
+        const p = grid[y][x];
+        out += p ? `<span class="${p.side}">${getChar(p)}</span> ` : `· `;
+      }
+      out += "\n";
+    }
+
+    if (state.turn) {
+      out += `\n<span class="l">STATUS:</span> <span class="${state.turn === 'BLUE' ? 'b' : 'r'}">${state.turn}_TO_MOVE</span>\n`;
+    }
+
+    const entry = document.createElement('pre');
+    entry.innerHTML = out;
+    log.appendChild(entry);
+  }
+
+  function parseState(raw) {
+    return JSON.parse(raw);
+  }
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const raw = input.value.trim();
+      if (!raw) return;
+
+      try {
+        const state = parseState(raw);
+        renderBoard(state);
+      } catch (err) {
+        const entry = document.createElement('pre');
+        entry.textContent = `INVALID JSON: ${err.message}`;
+        log.appendChild(entry);
+      }
+
+      input.value = '';
+      window.scrollTo(0, document.body.scrollHeight);
+    }
+  });
 </script>
-</body>
-</html>
