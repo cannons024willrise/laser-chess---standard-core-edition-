@@ -1,88 +1,236 @@
-<script>
-  const log = document.getElementById('log');
-  const input = document.getElementById('cli-input');
-
-  const symbols = {
-    king: "◈",
-    laser: ["⫝", "⟜", "Ͳ", "Ð"],
-    switch: ["⟋", "⟍"],
-    defender: ["⬒", "◨", "⬓", "◧"],
-    deflector: ["◤", "◥", "◢", "◣"]
-  };
-
-  function getChar(piece) {
-    if (!piece || !piece.alive) return "?";
-
-    switch (piece.type) {
-      case "king":
-        return symbols.king;
-      case "laser":
-        return symbols.laser[piece.rot % 4];
-      case "switch":
-        return (piece.rot === 1 || piece.rot === 3) ? symbols.switch[0] : symbols.switch[1];
-      case "defender":
-        return symbols.defender[piece.rot % 4];
-      case "deflector":
-        return symbols.deflector[piece.rot % 4];
-      default:
-        return "?";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LASER CHESS // OBJECT DEBUG CLI</title>
+  <style>
+    @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
+    :root { --bg0:#0a0a0a; --bg1:#1a1a1a; --text:#b0b0b0; --bright:#ffffff; --error:#ff5555; --muted:#999999; --waiting:#00ff00; }
+    body {
+      margin: 0;
+      padding: 30px;
+      color: var(--text);
+      font-family: 'Unifont', monospace;
+      background: radial-gradient(circle at center, var(--bg1), var(--bg0));
     }
-  }
+    #terminal-log { display:flex; flex-direction:column; gap:4px; max-width:1100px; }
+    .history-line { white-space:pre-wrap; word-break:break-all; display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+    .input-wrapper { display:flex; gap:8px; align-items:flex-start; width:100%; }
+    .prompt { white-space:pre; }
+    .user-input-line {
+      flex:1; background:transparent; border:none; color:var(--bright); font:inherit; outline:none;
+      resize:none; overflow:hidden; min-height:1.2em; line-height:1.2; padding:0; margin:0; white-space:pre-wrap;
+    }
+    .system-msg { color: var(--muted); }
+    .success-msg { color: var(--bright); font-weight:700; }
+    .error-msg { color: var(--error); }
+    .highlight { color: var(--bright); font-weight:700; }
+    .wait-msg { color: var(--waiting); }
 
-  function normalizeBoard(state) {
-    const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
-
-    for (const piece of state.pieces || []) {
-      if (!piece.alive) continue;
-      if (piece.x < 0 || piece.x > 9 || piece.y < 0 || piece.y > 7) continue;
-      grid[piece.y][piece.x] = piece;
+    pre.board {
+      margin: 8px 0 16px 0;
+      padding: 14px 16px;
+      border-left: 2px solid #222;
+      background: rgba(0,0,0,0.2);
+      line-height: 1.15;
+      letter-spacing: 1.5px;
+      font-size: 18px;
+      white-space: pre;
+      color: #222;
     }
 
-    return grid;
-  }
+    .b { color:#00d4ff; }
+    .r { color:#ff3333; }
+    .l { color:#444; }
+  </style>
+</head>
+<body>
+  <div id="terminal-log"></div>
 
-  function renderBoard(state) {
-    const grid = normalizeBoard(state);
+  <script>
+    (() => {
+      'use strict';
 
-    let out = `<span class="l">  0 1 2 3 4 5 6 7 8 9</span>\n`;
-    for (let y = 7; y >= 0; y--) {
-      out += `<span class="l">${y}</span> `;
-      for (let x = 0; x < 10; x++) {
-        const p = grid[y][x];
-        out += p ? `<span class="${p.side}">${getChar(p)}</span> ` : `· `;
+      const logContainer = document.getElementById('terminal-log');
+      const queue = [];
+      let processing = false, currentPromptWrap = null;
+
+      const symbols = {
+        king: "◈",
+        laser: ["⫝", "⟜", "Ͳ", "Ð"],
+        switch: ["⟋", "⟍"],
+        defender: ["⬒", "◨", "⬓", "◧"],
+        deflector: ["◤", "◥", "◢", "◣"]
+      };
+
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+      function createLine(cls='') {
+        const d = document.createElement('div');
+        d.className = `history-line ${cls}`;
+        if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap);
+        else logContainer.appendChild(d);
+        return d;
       }
-      out += "\n";
-    }
 
-    if (state.turn) {
-      out += `\n<span class="l">STATUS:</span> <span class="${state.turn === 'BLUE' ? 'b' : 'r'}">${state.turn}_TO_MOVE</span>\n`;
-    }
+      function add(text, cls='', req=false, handler=null) {
+        if (!req && processing) { type(text, cls, true); return; }
+        queue.push({text, cls, req, handler});
+        if (!processing) run();
+      }
 
-    const entry = document.createElement('pre');
-    entry.innerHTML = out;
-    log.appendChild(entry);
-  }
+      async function run() {
+        processing = true;
+        while (queue.length) {
+          const i = queue.shift();
+          if (i.req) await prompt(i.text, i.cls, i.handler || handleInput);
+          else await type(i.text, i.cls);
+        }
+        processing = false;
+      }
 
-  function parseState(raw) {
-    return JSON.parse(raw);
-  }
+      async function type(text, cls, immediate=false) {
+        const l = createLine(cls);
+        if (immediate) { l.textContent = text; return l; }
+        for (const c of text) { l.textContent += c; await sleep(10); }
+        return l;
+      }
 
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      const raw = input.value.trim();
-      if (!raw) return;
+      async function prompt(text, cls, handler) {
+        const wrap = document.createElement('div');
+        wrap.className = 'input-wrapper history-line';
 
-      try {
-        const state = parseState(raw);
-        renderBoard(state);
-      } catch (err) {
+        const p = document.createElement('span');
+        p.className = 'prompt';
+        wrap.appendChild(p);
+
+        const input = document.createElement('textarea');
+        input.className = 'user-input-line';
+        input.rows = 1;
+        input.spellcheck = false;
+        input.autocapitalize = 'off';
+        input.autocomplete = 'off';
+        input.autocorrect = 'off';
+        wrap.appendChild(input);
+
+        logContainer.appendChild(wrap);
+        currentPromptWrap = wrap;
+
+        for (const c of text) { p.textContent += c; await sleep(8); }
+
+        const resize = () => {
+          input.style.height = 'auto';
+          input.style.height = input.scrollHeight + 'px';
+        };
+
+        setTimeout(() => {
+          input.focus();
+          resize();
+        }, 0);
+
+        input.addEventListener('input', resize);
+
+        return new Promise(resolve => {
+          input.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              const v = input.value.trim();
+              input.disabled = true;
+
+              const finalLine = createLine('highlight');
+              finalLine.textContent = p.textContent + v;
+
+              wrap.remove();
+              currentPromptWrap = null;
+              handler(v);
+              resolve();
+            }
+          });
+        });
+      }
+
+      function pieceChar(piece) {
+        if (!piece) return "?";
+
+        const type = String(piece.pieceType || '').toUpperCase();
+        const rotation = Number(piece.rotation ?? 0);
+
+        switch (type) {
+          case 'KING': return symbols.king;
+          case 'LASER': return symbols.laser[rotation % 4];
+          case 'SWITCH': return (rotation === 1 || rotation === 3) ? symbols.switch[0] : symbols.switch[1];
+          case 'DEFENDER': return symbols.defender[rotation % 4];
+          case 'DEFLECTOR': return symbols.deflector[rotation % 4];
+          default: return piece.glyph || "?";
+        }
+      }
+
+      function normalizeBoard(state) {
+        const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
+        for (const piece of (state.pieces || [])) {
+          if (!piece) continue;
+          const x = Number(piece.x);
+          const y = Number(piece.y);
+          if (Number.isNaN(x) || Number.isNaN(y)) continue;
+          if (x < 0 || x > 9 || y < 0 || y > 7) continue;
+          grid[y][x] = piece;
+        }
+        return grid;
+      }
+
+      function renderBoard(state) {
+        const grid = normalizeBoard(state);
+
+        let out = `<span class="l">  0 1 2 3 4 5 6 7 8 9</span>
+`;
+        for (let y = 7; y >= 0; y--) {
+          out += `<span class="l">${y}</span> `;
+          for (let x = 0; x < 10; x++) {
+            const p = grid[y][x];
+            const colorClass = String(p?.color || '').toUpperCase() === 'BLUE' ? 'b' : String(p?.color || '').toUpperCase() === 'RED' ? 'r' : 'l';
+            out += p ? `<span class="${colorClass}">${pieceChar(p)}</span> ` : `· `;
+          }
+          out += `
+`;
+        }
+
+        const turn = String(state.turn || 'UNKNOWN').toUpperCase();
+        out += `
+<span class="l">TURN:</span> <span class="${turn === 'BLUE' ? 'b' : turn === 'RED' ? 'r' : 'l'}">${turn}</span>
+`;
+
+        if (state.phase) {
+          out += `<span class="l">PHASE:</span> <span class="highlight">${String(state.phase).toUpperCase()}</span>
+`;
+        }
+
+        if (state.moveNumber != null) {
+          out += `<span class="l">MOVE:</span> <span class="highlight">${state.moveNumber}</span>
+`;
+        }
+
         const entry = document.createElement('pre');
-        entry.textContent = `INVALID JSON: ${err.message}`;
-        log.appendChild(entry);
+        entry.className = 'board';
+        entry.innerHTML = out;
+        logContainer.appendChild(entry);
       }
 
-      input.value = '';
-      window.scrollTo(0, document.body.scrollHeight);
-    }
-  });
-</script>
+      function handleInput(raw) {
+        if (!raw) return;
+
+        try {
+          const state = JSON.parse(raw);
+          renderBoard(state);
+          add('STATE RENDERED.', 'success-msg');
+        } catch (err) {
+          add(`INVALID JSON: ${err.message}`, 'error-msg');
+        }
+      }
+
+      add('KHET_OS OBJECT DEBUG CLI ONLINE.', 'system-msg');
+      add('PASTE JSON STATE AND PRESS ENTER:', '', true, handleInput);
+    })();
+  </script>
+</body>
+</html>
