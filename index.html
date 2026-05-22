@@ -201,44 +201,51 @@
     #boardText {
       width: 100%;
       min-height: 520px;
-      font-size: 18px;
       border: 1px solid #333;
       background: #0f0f0f;
       color: var(--bright);
-      padding: 16px;
+      padding: 14px 16px;
       border-radius: 8px;
       outline: none;
       font-family: 'Unifont', monospace;
       overflow: auto;
-      display: flex;
-      flex-direction: column;
+      display: block;
+      font-size: 18px;
+      line-height: 1.1;
+      letter-spacing: 0;
+      white-space: normal;
     }
     #boardText:focus {
       border-color: var(--waiting);
       box-shadow: 0 0 8px rgba(0, 255, 0, 0.15);
     }
-    .board-grid { display: inline-block; margin-bottom: 16px; user-select: none; }
-    .board-row { display: flex; height: 26px; align-items: center; }
-    .board-cell {
-      width: 26px;
-      height: 26px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+    .raw-board {
+      margin: 0;
+      white-space: pre;
       font-family: 'Unifont', monospace;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+    .raw-row {
+      white-space: nowrap;
+      line-height: 1.1;
+    }
+    .raw-lbl,
+    .raw-cell {
+      display: inline-block;
+      width: 2ch;
       text-align: center;
-      box-sizing: border-box;
-    }
-    .board-lbl {
-      width: 26px;
-      height: 26px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--muted);
       font-family: 'Unifont', monospace;
+      vertical-align: top;
     }
-    .board-meta {
+    .raw-lbl {
+      color: var(--muted);
+    }
+    .raw-axis {
+      color: var(--muted);
+    }
+    .raw-meta {
+      margin-top: 12px;
       border-top: 1px solid var(--line);
       padding-top: 12px;
       font-family: 'Unifont', monospace;
@@ -272,10 +279,10 @@
 
     <div class="stack">
       <div class="group">
-        <div class="group-title">LIVE BOARD RENDERER</div>
+        <div class="group-title">RAW TERMINAL BOARD</div>
         <div id="boardText" tabindex="0"></div>
         <div class="callout">
-          When the client is locked onto a match, this view updates from the live game state. If the game payload contains a structured board object, it renders pieces directly; otherwise it falls back to a raw payload preview.
+          When the client is locked onto a match, this view updates as raw terminal text. Structured board payloads render into aligned characters; otherwise the latest payload is shown as a plain preview.
         </div>
       </div>
 
@@ -565,6 +572,15 @@
         return state.pieces.find(p => Number(p.x) === x && Number(p.y) === y) || null;
       }
 
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
       function buildBoardHTML() {
         const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
         for (const piece of state.pieces) {
@@ -573,21 +589,26 @@
           grid[piece.y][piece.x] = piece;
         }
 
-        let html = '<div class="board-grid">';
-        html += '<div class="board-row">';
-        html += '<span class="board-lbl">&nbsp;</span>';
-        for (let x = 0; x < 10; x++) html += `<span class="board-lbl">${x}</span>`;
-        html += '</div>';
+        let html = '<div class="raw-board">';
+        html += '<div class="raw-row">';
+        html += '<span class="raw-lbl">&nbsp;</span>';
+        html += '<span class="raw-lbl">&nbsp;</span>';
+        for (let x = 0; x < 10; x++) {
+          html += `<span class="raw-axis raw-cell">${x}</span>`;
+        }
+        html += '</div>
+';
 
         for (let y = 7; y >= 0; y--) {
-          html += '<div class="board-row">';
-          html += `<span class="board-lbl">${y}</span>`;
+          html += '<div class="raw-row">';
+          html += `<span class="raw-lbl">${y}</span>`;
+          html += '<span class="raw-lbl">│</span>';
 
           for (let x = 0; x < 10; x++) {
             const p = grid[y][x];
             const isCursor = (cursor.x === x && cursor.y === y);
             let char = '·';
-            const classes = ['board-cell'];
+            const classes = ['raw-cell'];
 
             if (p) {
               char = pieceChar(p);
@@ -596,24 +617,31 @@
             }
             if (isCursor) classes.push('p-cursor');
 
-            html += `<span class="${classes.join(' ')}">${char}</span>`;
+            html += `<span class="${classes.join(' ')}">${escapeHtml(char)}</span>`;
           }
-          html += '</div>';
+          html += '</div>
+';
         }
-        html += '</div>';
 
-        html += '<div class="board-meta">';
-        html += `CURSOR: ${cursor.x},${cursor.y}\n`;
-        html += `PALETTE: ${palette.pieceType} / ${palette.color} / rot ${palette.rotation}\n`;
+        html += '<div class="raw-meta">';
+        html += `CURSOR: ${cursor.x},${cursor.y}
+`;
+        html += `PALETTE: ${palette.pieceType} / ${palette.color} / rot ${palette.rotation}
+`;
         const active = selectedId ? getPieceById(selectedId) : null;
-        html += `ACTIVE: ${active ? `${active.color} ${active.pieceType} @ ${active.x},${active.y}` : 'NONE'}\n`;
-        html += `LIVE: ${state.live ? 'YES' : 'NO'}\n`;
+        html += `ACTIVE: ${active ? `${active.color} ${active.pieceType} @ ${active.x},${active.y}` : 'NONE'}
+`;
+        html += `LIVE: ${state.live ? 'YES' : 'NO'}
+`;
         html += `HELP: arrows move cursor, enter select/place, WASD move selected on keyup`;
         html += '</div>';
+        html += '</div>';
+
         return html;
       }
 
       function syncJson() {
+
         jsonBox.value = JSON.stringify({
           turn: state.turn,
           phase: state.phase,
