@@ -396,20 +396,8 @@
     }
   }
 
-  // Turn Validation Helper
-  function isMyTurn() {
-    if (!latestState) return false;
-    const myColor = localStorage.getItem('ls_my_color');
-    const currentTurn = latestState.board?.turn ?? latestState.turn;
-    return myColor && currentTurn && myColor.toUpperCase() === currentTurn.toUpperCase();
-  }
-
   // Hardware Actions Strategy Handlers
   function handleGridAction() {
-    if (!isMyTurn()) {
-      add("Action rejected: Not your turn.", "error-msg");
-      return;
-    }
     if (!latestState) return;
 
     const src = latestState.board && typeof latestState.board === 'object' && !Array.isArray(latestState.board) ? latestState.board : latestState;
@@ -427,28 +415,57 @@
       } else {
         let targetPiece = pieces.find(p => p && p.x === selectedPiece.x && p.y === selectedPiece.y);
         if (targetPiece) {
-          const oldX = targetPiece.x;
-          const oldY = targetPiece.y;
-          targetPiece.x = cursorX;
-          targetPiece.y = cursorY;
+          // 1. Laser pieces cannot be moved.
+          if (targetPiece.pieceType === 'LASER') {
+            add("Action rejected: Laser pieces cannot be moved.", "error-msg");
+            selectedPiece = null;
+            return;
+          }
+
+          // 2. Target square must be orthogonally or diagonally 1 unit away.
+          const dx = Math.abs(cursorX - targetPiece.x);
+          const dy = Math.abs(cursorY - targetPiece.y);
+          if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) {
+            add("Action rejected: Move range 1 square.", "error-msg");
+            selectedPiece = null;
+            return;
+          }
+
+          // 3. Handle Interaction
+          if (pieceAtCursor) {
+            // Cannot swap with Switches, Lasers, or Kings.
+            const forbiddenTypes = ['KING', 'LASER', 'SWITCH'];
+            if (forbiddenTypes.includes(pieceAtCursor.pieceType)) {
+              add(`Action rejected: Cannot swap with ${pieceAtCursor.pieceType}.`, "error-msg");
+              selectedPiece = null;
+              return;
+            }
+            
+            // Swap positions
+            const oldX = targetPiece.x;
+            const oldY = targetPiece.y;
+            targetPiece.x = pieceAtCursor.x;
+            targetPiece.y = pieceAtCursor.y;
+            pieceAtCursor.x = oldX;
+            pieceAtCursor.y = oldY;
+            add(`Piece swapped with ${pieceAtCursor.pieceType}.`, "success-msg");
+          } else {
+            // Move to empty square
+            targetPiece.x = cursorX;
+            targetPiece.y = cursorY;
+            add(`Piece moved to (${cursorX}, ${cursorY}).`, "success-msg");
+          }
           
           if (src.turn !== undefined) {
             src.turn = src.turn === 'RED' ? 'BLUE' : 'RED';
           }
           
           dbGame.ref(`G/${lockedMatchId}`).set(latestState);
-          add(`Piece relocated: (${oldX}, ${oldY}) -> (${cursorX}, ${cursorY})`, "success-msg");
         }
         selectedPiece = null;
       }
     } else {
       if (pieceAtCursor) {
-        // Enforce grabbing only your own pieces
-        const myColor = localStorage.getItem('ls_my_color');
-        if (myColor && pieceAtCursor.color && pieceAtCursor.color.toUpperCase() !== myColor.toUpperCase()) {
-            add("Action rejected: You cannot select an opponent's piece.", "error-msg");
-            return;
-        }
         selectedPiece = { x: cursorX, y: cursorY };
         add(`Target selected at (${cursorX}, ${cursorY})`, "success-msg");
       } else {
@@ -459,10 +476,6 @@
   }
 
   function handleRotation(dir) {
-    if (!isMyTurn()) {
-      add("Action rejected: Not your turn.", "error-msg");
-      return;
-    }
     if (!latestState || !selectedPiece) {
       add("Action dropped: Select a piece before initiating rotation transformations.", "error-msg");
       return;
@@ -942,10 +955,6 @@
   async function registerHost(color, isIntercept = false, extra = {}) {
     const username = localStorage.getItem(KEY_USER);
     const password = localStorage.getItem(KEY_PASS);
-    
-    // Optimistically set assignment color based on registration payload
-    localStorage.setItem('ls_my_color', color === 0 ? 'RED' : 'BLUE');
-
     try {
       const res = await fetch(WORKER_URL, {
         method: 'POST',
@@ -995,32 +1004,14 @@
     gameRef.on('value', snap => {
         const state = snap.val();
         if (state) {
-            latestState = state; // Update state immediately to validate checks
-
-            // Persist the assigned color by validating the server's G object player assignments
-            const myUsername = localStorage.getItem(KEY_USER);
-            if (myUsername) {
-                const myUpper = myUsername.toUpperCase();
-                if (state.redPlayer && state.redPlayer.toUpperCase() === myUpper) {
-                    localStorage.setItem('ls_my_color', 'RED');
-                } else if (state.bluePlayer && state.bluePlayer.toUpperCase() === myUpper) {
-                    localStorage.setItem('ls_my_color', 'BLUE');
-                }
-            }
-
             const turnDisplay = state.board?.turn ?? state.turn ?? 'N/A';
-            const turnFeedback = isMyTurn() ? "YOUR TURN" : "WAITING FOR OPPONENT";
-            
-            add(`[SYNC] Turn: ${turnDisplay} - ${turnFeedback}`, isMyTurn() ? 'success-msg' : 'system-msg');
-            
+            add(`[SYNC] Turn: ${turnDisplay}`, 'system-msg');
             printTerminalMatrix(state);
         } else {
             add('MATCH TERMINATED.', 'error-msg');
             localStorage.removeItem(KEY_RID);
-            localStorage.removeItem('ls_my_color');
             lockedMatchId = null;
             activeMatrixContainer = null;
-            latestState = null;
             gameRef.off();
             modeShown = false;
             startPolling();
