@@ -1,789 +1,715 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LASER CHESS - STANDARD VARIANT- CORE EDITION (BETA η-)</title>
-    <style>
-        @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
-        :root { --bg0: #0a0a0a; --bg1: #1a1a1a; --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; --muted: #999999; --waiting: #00ff00; }
-        body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
-        #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
-        .history-line { white-space: pre-wrap; word-break: break-all; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-        .input-wrapper { display:flex; gap:8px; align-items:flex-start; width: 100%; }
-        .prompt { white-space: pre; }
-        .user-input-line {
-            flex: 1;
-            background: transparent;
-            border: none;
-            color: var(--bright);
-            font: inherit;
-            outline: none;
-            resize: none;
-            overflow: hidden;
-            min-height: 1.2em;
-            line-height: 1.2;
-            padding: 0;
-            margin: 0;
-            white-space: pre-wrap;
-        }
-        .system-msg { color: var(--muted); }
-        .success-msg { color: var(--bright); font-weight: 700; }
-        .error-msg { color: var(--error); }
-        .highlight { color: var(--bright); font-weight: 700; }
-        .wait-msg { color: var(--waiting); }
-        
-        .copy-btn {
-            background: #2a2a2a;
-            color: var(--waiting);
-            border: 1px solid var(--waiting);
-            font-family: 'Unifont', monospace;
-            font-size: 12px;
-            cursor: pointer;
-            padding: 2px 6px;
-            user-select: none;
-            display: inline-block;
-        }
-        .copy-btn:hover {
-            background: var(--waiting);
-            color: var(--bg0);
-        }
-        .copy-btn:active {
-            transform: scale(0.95);
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LASER CHESS // KEYBOARD TEXTAREAS</title>
+  <style>
+    @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
+    :root {
+      --bg0:#0a0a0a;
+      --bg1:#1a1a1a;
+      --line:#2a2a2a;
+      --text:#b0b0b0;
+      --bright:#ffffff;
+      --error:#ff5555;
+      --muted:#999999;
+      --waiting:#00ff00;
+      --blue:#00d4ff;
+      --red:#ff3333;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: radial-gradient(circle at center, var(--bg1), var(--bg0));
+      color: var(--text);
+      font-family: 'Unifont', monospace;
+    }
+    .topbar {
+      max-width: 1280px;
+      margin: 0 auto 14px auto;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.25);
+      box-shadow: 0 12px 30px rgba(0,0,0,.35);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .title { color: var(--bright); font-weight: 700; letter-spacing: .08em; }
+    .status { color: var(--muted); }
+    .hint { color: var(--waiting); }
+    .app {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: minmax(640px, 1fr) minmax(320px, 420px);
+      gap: 18px;
+      align-items: start;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.2);
+      box-shadow: 0 12px 30px rgba(0,0,0,.35);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .panel-head {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.02);
+      color: var(--bright);
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel-body { padding: 14px; }
+    textarea {
+      width: 100%;
+      border: 1px solid #333;
+      background: #0f0f0f;
+      color: var(--bright);
+      padding: 12px;
+      border-radius: 8px;
+      outline: none;
+      font: inherit;
+      resize: vertical;
+      white-space: pre;
+      line-height: 1.2;
+    }
+    #boardText {
+      min-height: 520px;
+      font-size: 18px;
+      letter-spacing: 1.5px;
+      caret-color: var(--waiting);
+    }
+    #jsonBox {
+      min-height: 220px;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .stack { display: grid; gap: 10px; }
+    .group {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      background: rgba(255,255,255,.02);
+      display: grid;
+      gap: 10px;
+    }
+    .group-title {
+      color: var(--bright);
+      font-weight: 700;
+      letter-spacing: .05em;
+    }
+    .valueLine {
+      color: var(--bright);
+      font-size: 13px;
+      word-break: break-all;
+      line-height: 1.35;
+    }
+    .small { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .monoTag { color: var(--waiting); }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    select, input[type="text"] {
+      width: 100%;
+      border: 1px solid #333;
+      background: #0f0f0f;
+      color: var(--bright);
+      padding: 10px;
+      border-radius: 8px;
+      outline: none;
+      font: inherit;
+    }
+    .btnRow { display:flex; flex-wrap:wrap; gap:8px; }
+    button {
+      border: 1px solid #3a3a3a;
+      background: #1a1a1a;
+      color: var(--waiting);
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font: inherit;
+    }
+    button:hover { background:#232323; border-color:#555; }
+    button.active { outline: 1px solid var(--waiting); color: var(--bright); }
+    button.primary { color: var(--bright); }
+    button.danger { color: var(--error); }
+    .pieceSwatch {
+      display:inline-block;
+      min-width: 1.2em;
+      text-align:center;
+      margin-right: 6px;
+      font-size: 18px;
+      vertical-align: middle;
+    }
+    .callout {
+      border-left: 2px solid var(--waiting);
+      padding-left: 10px;
+      margin-top: 6px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+  </style>
 </head>
 <body>
-<div id="terminal-log"></div>
+  <div class="topbar">
+    <div class="title">LASER CHESS // KEYBOARD TEXTAREAS</div>
+    <div class="status" id="status">READY</div>
+    <div class="hint">arrows cursor · enter select/place · WASD release-move · no mouse required</div>
+  </div>
 
-<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
+  <div class="app">
+    <div class="panel">
+      <div class="panel-head">
+        <div>BOARD</div>
+        <div class="small">This area always renders on load.</div>
+      </div>
+      <div class="panel-body">
+        <textarea id="boardText" spellcheck="false" wrap="off" readonly></textarea>
+        <div class="callout">
+          Move the cursor with the arrow keys. Press <span class="monoTag">Enter</span> on an empty square to add the currently selected build piece. Press <span class="monoTag">Enter</span> on a piece to select it. Use <span class="monoTag">WASD</span> to move the selected piece when keys are released.
+        </div>
+      </div>
+    </div>
 
-<script>
-(() => {
-  'use strict';
+    <div class="stack">
+      <div class="group">
+        <div class="group-title">TEMP BUILD TOOLS</div>
+        <div class="small">These buttons choose the next piece to place. You can still use keyboard only: <span class="monoTag">1-5</span> type, <span class="monoTag">C</span> color, <span class="monoTag">O</span> rotation.</div>
+        <div id="typeButtons" class="btnRow"></div>
+        <div id="colorButtons" class="btnRow"></div>
+        <div id="rotButtons" class="btnRow"></div>
+        <div class="small" id="paletteInfo">Palette: KING / BLUE / rot 0</div>
+      </div>
 
-  const matchConfig = {
-    apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
-    authDomain: "lasercheowefficiencymanager.firebaseapp.com",
-    databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com",
-    projectId: "lasercheowefficiencymanager"
-  };
+      <div class="group">
+        <div class="group-title">SELECTION</div>
+        <div class="valueLine" id="selectedInfo">No piece selected.</div>
+        <div class="small">Selection follows the cursor. Press <span class="monoTag">Space</span> or <span class="monoTag">Enter</span> on a piece to select it.</div>
+      </div>
 
-  const gameConfig = {
-    apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE",
-    authDomain: "laser-chess-low-efficiency.firebaseapp.com",
-    databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com",
-    projectId: "laser-chess-low-efficiency"
-  };
+      <div class="group">
+        <div class="group-title">STATE</div>
+        <div class="split">
+          <div>
+            <div class="small" style="margin-bottom:6px;">Turn</div>
+            <select id="turnSelect">
+              <option>BLUE</option>
+              <option>RED</option>
+            </select>
+          </div>
+          <div>
+            <div class="small" style="margin-bottom:6px;">Phase</div>
+            <input id="phaseInput" type="text" placeholder="MOVE" />
+          </div>
+        </div>
+        <div>
+          <div class="small" style="margin-bottom:6px;">Move Number</div>
+          <input id="moveNumberInput" type="text" placeholder="12" />
+        </div>
+      </div>
 
-  const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
-  
-  const matchApp = firebase.initializeApp(matchConfig, "matchApp");
-  const gameApp = firebase.initializeApp(gameConfig, "gameApp");
-  const dbMatch = firebase.database(matchApp);
-  const dbGame = firebase.database(gameApp);
+      <div class="group">
+        <div class="group-title">EXPORT JSON</div>
+        <textarea id="jsonBox" spellcheck="false" readonly></textarea>
+        <div class="small">Export-only view. No manual JSON editing.</div>
+      </div>
+    </div>
+  </div>
 
-  const KEY_USER = 'ls_user', KEY_PASS = 'ls_pass', KEY_RID = 'ls_request_id';
-  const logContainer = document.getElementById('terminal-log');
-  const queue = [];
-  let processing = false, currentPromptWrap = null, lockedMatchId = null;
-  let rqPollInterval = null, recoveryPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
-  let currentHead = null;
-  let initialQueueScanDone = false;
-  let modeShown = false;
-  let privateState = null;
-  
-  let isPollingStarting = false;
-  let hostGamePollInterval = null; 
+  <script>
+    (() => {
+      'use strict';
 
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
+      const boardText = document.getElementById('boardText');
+      const jsonBox = document.getElementById('jsonBox');
+      const statusEl = document.getElementById('status');
+      const selectedInfoEl = document.getElementById('selectedInfo');
+      const paletteInfoEl = document.getElementById('paletteInfo');
+      const turnSelect = document.getElementById('turnSelect');
+      const phaseInput = document.getElementById('phaseInput');
+      const moveNumberInput = document.getElementById('moveNumberInput');
+      const typeButtons = document.getElementById('typeButtons');
+      const colorButtons = document.getElementById('colorButtons');
+      const rotButtons = document.getElementById('rotButtons');
 
-  function createLine(cls='') {
-    const d = document.createElement('div');
-    d.className = `history-line ${cls}`;
-    if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap);
-    else logContainer.appendChild(d);
-    return d;
-  }
+      const PIECE_TYPES = ['KING', 'LASER', 'SWITCH', 'DEFENDER', 'DEFLECTOR'];
+      const symbols = {
+        KING: '◈',
+        LASER: ['⫝', '⟜', 'Ͳ', 'Ð'],
+        SWITCH: ['⟋', '⟍'],
+        DEFENDER: ['⬒', '◨', '⬓', '◧'],
+        DEFLECTOR: ['◤', '◥', '◢', '◣']
+      };
 
-  function createLineWithCopy(text, codeToCopy, cls='') {
-    const container = createLine(cls);
-    
-    const textSpan = document.createElement('span');
-    textSpan.textContent = text;
-    container.appendChild(textSpan);
-    
-    const btn = document.createElement('button');
-    btn.className = 'copy-btn';
-    btn.textContent = '[COPY CODE]';
-    btn.onclick = async () => {
-        try {
-            await navigator.clipboard.writeText(codeToCopy);
-            btn.textContent = '[COPIED!]';
-        } catch (err) {
-            const dummy = document.createElement('textarea');
-            dummy.value = codeToCopy;
-            document.body.appendChild(dummy);
-            dummy.select();
-            document.execCommand('copy');
-            document.body.removeChild(dummy);
-            btn.textContent = '[COPIED!]';
+      const state = {
+        turn: 'BLUE',
+        phase: 'MOVE',
+        moveNumber: 1,
+        pieces: []
+      };
+
+      let cursor = { x: 4, y: 4 };
+      let selectedId = null;
+      let palette = { pieceType: 'KING', color: 'BLUE', rotation: 0 };
+      let lineStarts = { rows: {} };
+      let idSeq = 1;
+      const pressedKeys = new Set();
+
+      function uid(prefix = 'p') {
+        return `${prefix}${Date.now().toString(36)}${(idSeq++).toString(36)}`;
+      }
+
+      function setStatus(text, kind = 'normal') {
+        statusEl.textContent = text;
+        statusEl.style.color = kind === 'error' ? 'var(--error)' : kind === 'good' ? 'var(--waiting)' : 'var(--muted)';
+      }
+
+      function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+      }
+
+      function pieceChar(piece) {
+        const type = String(piece.pieceType || '').toUpperCase();
+        const rot = Number(piece.rotation ?? 0) % 4;
+        if (type === 'KING') return symbols.KING;
+        if (type === 'LASER') return symbols.LASER[rot];
+        if (type === 'SWITCH') return (rot === 1 || rot === 3) ? symbols.SWITCH[0] : symbols.SWITCH[1];
+        if (type === 'DEFENDER') return symbols.DEFENDER[rot];
+        if (type === 'DEFLECTOR') return symbols.DEFLECTOR[rot];
+        return '?';
+      }
+
+      function normalizePiece(piece) {
+        return {
+          id: String(piece.id || uid('p')),
+          pieceType: String(piece.pieceType || 'KING').toUpperCase(),
+          color: String(piece.color || 'BLUE').toUpperCase(),
+          rotation: Number(piece.rotation ?? 0),
+          x: Number(piece.x),
+          y: Number(piece.y)
+        };
+      }
+
+      function getPieceById(id) {
+        return state.pieces.find(p => p.id === id) || null;
+      }
+
+      function getPieceAt(x, y) {
+        return state.pieces.find(p => Number(p.x) === x && Number(p.y) === y) || null;
+      }
+
+      function buildBoardText() {
+        const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
+        for (const piece of state.pieces) {
+          if (!Number.isFinite(piece.x) || !Number.isFinite(piece.y)) continue;
+          if (piece.x < 0 || piece.x > 9 || piece.y < 0 || piece.y > 7) continue;
+          grid[piece.y][piece.x] = piece;
         }
-        setTimeout(() => { btn.textContent = '[COPY CODE]'; }, 2000);
-    };
-    
-    container.appendChild(btn);
-    return container;
-  }
 
-  function add(text, cls='', req=false, handler=null) {
-    if (!req && processing) { type(text, cls, true); return; }
-    queue.push({text,cls,req,handler});
-    if (!processing) run();
-  }
-
-  async function run() {
-    processing = true;
-    while(queue.length) {
-      const i = queue.shift();
-      if (i.req) await prompt(i.text, i.cls, i.handler || handleAuth);
-      else await type(i.text, i.cls);
-    }
-    processing = false;
-  }
-
-  async function type(text, cls, immediate=false) {
-    const l = createLine(cls);
-    if (immediate) { l.textContent = text; return l; }
-    for (const c of text) { l.textContent += c; await sleep(10); }
-    return l;
-  }
-
-  async function prompt(text, cls, handler) {
-    const wrap = document.createElement('div');
-    wrap.className = 'input-wrapper history-line';
-
-    const p = document.createElement('span');
-    p.className = 'prompt';
-    wrap.appendChild(p);
-
-    const input = document.createElement('textarea');
-    input.className = 'user-input-line';
-    input.rows = 1;
-    input.spellcheck = false;
-    input.autocapitalize = 'off';
-    input.autocomplete = 'off';
-    input.autocorrect = 'off';
-    wrap.appendChild(input);
-
-    logContainer.appendChild(wrap);
-    currentPromptWrap = wrap;
-
-    for (const c of text) { p.textContent += c; await sleep(8); }
-
-    const resize = () => {
-      input.style.height = 'auto';
-      input.style.height = input.scrollHeight + 'px';
-    };
-
-    const handleInput = () => { resize(); };
-
-    setTimeout(() => {
-      input.focus();
-      resize();
-    }, 0);
-
-    input.addEventListener('input', handleInput);
-
-    return new Promise(resolve => {
-      input.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          const v = input.value.trim().toUpperCase();
-          input.disabled = true;
-          const finalLine = createLine('highlight');
-          finalLine.textContent = p.textContent + v;
-          wrap.remove();
-          currentPromptWrap = null;
-          handler(v);
-          resolve();
+        let text = '';
+        lineStarts.rows = {};
+        text += `  0 1 2 3 4 5 6 7 8 9
+`;
+        for (let y = 7; y >= 0; y--) {
+          lineStarts.rows[y] = text.length;
+          text += `${y} `;
+          for (let x = 0; x < 10; x++) {
+            const p = grid[y][x];
+            text += p ? pieceChar(p) : '·';
+            if (x < 9) text += ' ';
+          }
+          text += `
+`;
         }
-      });
-    });
-  }
+        text += `
+CURSOR: ${cursor.x},${cursor.y}
+`;
+        text += `PALETTE: ${palette.pieceType} / ${palette.color} / rot ${palette.rotation}
+`;
+        const active = selectedId ? getPieceById(selectedId) : null;
+        text += `ACTIVE: ${active ? `${active.color} ${active.pieceType} @ ${active.x},${active.y}` : 'NONE'}
+`;
+        text += `HELP: arrows move cursor, enter select/place, WASD move selected on keyup`;
+        return text;
+      }
 
-  async function pollFirstMatch({ silentEmpty = false } = {}) {
-    if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
+      function updateSelectionRange() {"}]}{
+        const idx = (lineStarts.rows[cursor.y] ?? 0) + 2 + (cursor.x * 2);
+        const max = Math.max(0, (boardText.value || '').length - 1);
+        const safe = clamp(idx, 0, max);
+        boardText.setSelectionRange(safe, Math.min(safe + 1, boardText.value.length));
+      }
 
-    try {
-      const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
-      const data = snapshot.val();
+      function syncJson() {
+        jsonBox.value = JSON.stringify({
+          turn: state.turn,
+          phase: state.phase,
+          moveNumber: state.moveNumber,
+          pieces: state.pieces.map(p => ({
+            id: p.id,
+            pieceType: p.pieceType,
+            color: p.color,
+            rotation: Number(p.rotation ?? 0),
+            x: Number(p.x),
+            y: Number(p.y)
+          }))
+        }, null, 2);
+      }
 
-      if (!data) {
-        currentHead = null;
-        if (!silentEmpty && initialQueueScanDone && lastQueueState !== 'EMPTY') {
-          add('RQ_Q: Empty (Idle)', 'system-msg');
-          lastQueueState = 'EMPTY';
+      function updateButtons() {
+        typeButtons.innerHTML = '';
+        colorButtons.innerHTML = '';
+        rotButtons.innerHTML = '';
+
+        for (const t of PIECE_TYPES) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = palette.pieceType === t ? 'active' : '';
+          btn.innerHTML = `<span class="pieceSwatch">${pieceChar({ pieceType: t, rotation: palette.rotation })}</span>${t}`;
+          btn.addEventListener('click', () => {
+            palette.pieceType = t;
+            setStatus(`Palette type: ${t}.`, 'good');
+            render();
+          });
+          typeButtons.appendChild(btn);
         }
-        return false;
+
+        for (const c of ['BLUE', 'RED']) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = palette.color === c ? 'active' : '';
+          btn.textContent = c;
+          btn.style.color = c === 'BLUE' ? 'var(--blue)' : 'var(--red)';
+          btn.addEventListener('click', () => {
+            palette.color = c;
+            setStatus(`Palette color: ${c}.`, 'good');
+            render();
+          });
+          colorButtons.appendChild(btn);
+        }
+
+        for (let r = 0; r < 4; r++) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = palette.rotation === r ? 'active' : '';
+          btn.textContent = `ROT ${r}`;
+          btn.addEventListener('click', () => {
+            palette.rotation = r;
+            setStatus(`Palette rotation: ${r}.`, 'good');
+            render();
+          });
+          rotButtons.appendChild(btn);
+        }
       }
 
-      initialQueueScanDone = true;
-      const firstKey = Object.keys(data)[0];
-      currentHead = { id: firstKey, data: data[firstKey] };
+      function render() {
+        boardText.value = buildBoardText();
+        turnSelect.value = state.turn;
+        phaseInput.value = state.phase || '';
+        moveNumberInput.value = String(state.moveNumber ?? '');
 
-      if (lastQueueState !== firstKey) {
-        add(`[AUTO-SCAN] Head detected: ${data[firstKey].username} (${data[firstKey].color === 0 ? 'RED' : 'BLUE'})`, 'success-msg');
-        lastQueueState = firstKey;
+        const active = selectedId ? getPieceById(selectedId) : null;
+        selectedInfoEl.textContent = active
+          ? `Selected: ${active.id} | ${active.color} ${active.pieceType} | rot ${active.rotation} | x ${active.x} y ${active.y}`
+          : 'No piece selected.';
+        paletteInfoEl.textContent = `Palette: ${palette.pieceType} / ${palette.color} / rot ${palette.rotation}`;
+        syncJson();
+        updateButtons();
+        updateSelectionRange();
       }
 
-      return true;
-    } catch (e) {
-      currentHead = null;
-      return false;
-    }
-  }
-
-  async function showMode() {
-    if (localStorage.getItem(KEY_RID)) return;
-
-    while (processing) {
-      await sleep(10);
-    }
-
-    if (modeShown) return;
-    modeShown = true;
-
-    const privateSuffix = ' | [P] Private Host | [J] Private Join';
-
-    if (!currentHead) {
-      add(`Queue Empty. [R] Host Red | [B] Host Blue${privateSuffix}`, 'system-msg');
-    } else if (currentHead.data.color === 0) {
-      add(`RED at head. [A] Join as Blue | [R] Host Red${privateSuffix}`, 'system-msg');
-    } else {
-      add(`BLUE at head. [A] Join as Red | [B] Host Blue${privateSuffix}`, 'system-msg');
-    }
-    add('MODE:', '', true, handleMode);
-  }
-
-  async function startPolling() {
-    if (isPollingStarting) return;
-    isPollingStarting = true;
-
-    if (rqPollInterval) clearInterval(rqPollInterval);
-
-    await pollFirstMatch({ silentEmpty: true });
-
-    modeShown = false;
-    await showMode();
-
-    if (!localStorage.getItem(KEY_RID) && !lockedMatchId) {
-      rqPollInterval = setInterval(() => pollFirstMatch({ silentEmpty: false }), 6000);
-    }
-    isPollingStarting = false;
-  }
-
-  function stopPolling() { 
-    if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } 
-    lastQueueState = 'STOPPED';
-  }
-
-  async function searchForGameDBMatch() {
-    const myName = localStorage.getItem(KEY_USER);
-    if (!myName) return false;
-    try {
-      const snap = await dbGame.ref('G').once('value');
-      const games = snap.val();
-      if (!games) return false;
-      const matchID = Object.keys(games).find(key => key.includes(myName));
-      if (matchID) {
-        lockOntoMatch(matchID, games[matchID]);
-        return true;
-      }
-    } catch (e) { console.error(e); }
-    return false;
-  }
-
-  // INTEGRATED: High-efficiency worker status polling loop
-  function startHostMatchWorkerPolling(requestId, contextMsg = "Awaiting Handshake") {
-    stopHostGamePolling();
-    toggleWaiting(true, contextMsg);
-
-    hostGamePollInterval = setInterval(async () => {
-      if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId.toString()) {
-        stopHostGamePolling();
-        toggleWaiting(false);
-        return;
+      function moveCursor(dx, dy) {
+        cursor.x = clamp(cursor.x + dx, 0, 9);
+        cursor.y = clamp(cursor.y + dy, 0, 7);
+        render();
       }
 
-      try {
-        const res = await fetch(WORKER_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'POLL_MATCH_STATUS', requestId: requestId.toString() })
+      function selectAtCursor() {
+        const piece = getPieceAt(cursor.x, cursor.y);
+        if (!piece) {
+          selectedId = null;
+          setStatus('No piece at cursor.', 'error');
+          render();
+          return;
+        }
+        selectedId = piece.id;
+        cursor = { x: piece.x, y: piece.y };
+        setStatus(`Selected ${piece.color} ${piece.pieceType}.`, 'good');
+        render();
+      }
+
+      function deselect() {
+        selectedId = null;
+        setStatus('Selection cleared.', 'normal');
+        render();
+      }
+
+      function rotateSelected() {
+        const p = getPieceById(selectedId);
+        if (!p) return;
+        p.rotation = (Number(p.rotation || 0) + 1) % 4;
+        setStatus('Piece rotated.', 'good');
+        render();
+      }
+
+      function moveSelected(dx, dy) {
+        const p = getPieceById(selectedId);
+        if (!p) return;
+        const nx = clamp(Number(p.x) + dx, 0, 9);
+        const ny = clamp(Number(p.y) + dy, 0, 7);
+        const occupant = getPieceAt(nx, ny);
+        if (occupant && occupant.id !== p.id) {
+          occupant.x = Number(p.x);
+          occupant.y = Number(p.y);
+        }
+        p.x = nx;
+        p.y = ny;
+        cursor = { x: nx, y: ny };
+        setStatus(`Moved to ${nx}, ${ny}.`, 'good');
+        render();
+      }
+
+      function removeSelected() {
+        if (!selectedId) return;
+        const idx = state.pieces.findIndex(p => p.id === selectedId);
+        if (idx >= 0) state.pieces.splice(idx, 1);
+        selectedId = null;
+        setStatus('Piece deleted.', 'good');
+        render();
+      }
+
+      function placePaletteAtCursor() {
+        if (getPieceAt(cursor.x, cursor.y)) {
+          setStatus('Cell occupied.', 'error');
+          return;
+        }
+        const piece = normalizePiece({
+          id: uid('p'),
+          pieceType: palette.pieceType,
+          color: palette.color,
+          rotation: palette.rotation,
+          x: cursor.x,
+          y: cursor.y
         });
-        const data = await res.json();
+        state.pieces.push(piece);
+        selectedId = piece.id;
+        setStatus('Piece placed.', 'good');
+        render();
+      }
 
-        if (data.status === 'MATCHED' && data.matchName) {
-          stopHostGamePolling();
-          toggleWaiting(false);
-          lockOntoMatch(data.matchName, { status: 'SYNCING' });
-        } else if (data.status === 'NOT_FOUND') {
-          stopHostGamePolling();
-          toggleWaiting(false);
-          add('Match request expired or consumed.', 'error-msg');
-          localStorage.removeItem(KEY_RID);
-          modeShown = false;
-          await startPolling();
+      function applyJson() {
+        try {
+          const parsed = JSON.parse(jsonBox.value);
+          if (!parsed || typeof parsed !== 'object') throw new Error('Top-level JSON must be an object.');
+          if (!Array.isArray(parsed.pieces)) throw new Error('Missing pieces array.');
+          state.turn = String(parsed.turn || 'BLUE').toUpperCase();
+          state.phase = parsed.phase ?? '';
+          state.moveNumber = parsed.moveNumber ?? '';
+          state.pieces = parsed.pieces.map(normalizePiece).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+          selectedId = null;
+          setStatus('JSON applied.', 'good');
+          render();
+        } catch (err) {
+          setStatus(`INVALID JSON: ${err.message}`, 'error');
         }
-      } catch (e) {
-        console.error("Worker match status polling error:", e);
-      }
-    }, 3000);
-  }
-
-  function stopHostGamePolling() {
-    if (hostGamePollInterval) {
-      clearInterval(hostGamePollInterval);
-      hostGamePollInterval = null;
-    }
-  }
-
-  async function verifyRequestIdByRQD(requestId) {
-    if (!requestId) return false;
-    try {
-      const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value');
-      return snap.exists() ? snap.val() : false;
-    } catch (e) {
-      console.error(e);
-      return false;
-    }
-  }
-
-  async function isUsernameOccupied(username) {
-    if (!username) return true;
-    try {
-      const snap = await dbMatch.ref(`P/${username}`).once('value');
-      return snap.exists();
-    } catch (e) {
-      console.error(e);
-      return true;
-    }
-  }
-
-  async function verifyRecoveryPath(requestId) {
-    if (!requestId) return { state: 'missing', data: null };
-
-    const qd = await verifyRequestIdByRQD(requestId);
-    if (qd) {
-      if (qd.matchName) return { state: 'matched', data: qd };
-      return { state: 'waiting', data: qd };
-    }
-
-    return { state: 'missing', data: null };
-  }
-
-  function stopRecoveryPolling() {
-    if (recoveryPollInterval) {
-      clearInterval(recoveryPollInterval);
-      recoveryPollInterval = null;
-    }
-  }
-
-  function startRecoveryPolling(requestId) {
-    stopRecoveryPolling();
-    toggleWaiting(true, "Recovering Uplink Signal");
-
-    let attempts = 0;
-    const maxAttempts = 18;
-
-    const tick = async () => {
-      if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId) {
-        stopRecoveryPolling();
-        toggleWaiting(false);
-        return;
       }
 
-      const recovered = await verifyRecoveryPath(requestId);
-
-      if (recovered.state === 'matched') {
-        stopRecoveryPolling();
-        toggleWaiting(false);
-        add('Recovering uplink...', 'system-msg');
-        lockOntoMatch(recovered.data.matchName, recovered.data);
-        return;
+      function resetDemo() {
+        state.turn = 'BLUE';
+        state.phase = 'MOVE';
+        state.moveNumber = 1;
+        state.pieces = [];
+        cursor = { x: 4, y: 4 };
+        selectedId = null;
+        palette = { pieceType: 'KING', color: 'BLUE', rotation: 0 };
+        setStatus('Demo board loaded.', 'good');
+        render();
       }
 
-      if (recovered.state === 'waiting') {
-        stopRecoveryPolling();
-        toggleWaiting(false);
-        add('Recovering uplink...', 'system-msg');
-        if (recovered.data.isPrivate && recovered.data.inviteCode) {
-          startHostMatchWorkerPolling(requestId, `Awaiting Private Join [CODE: ${recovered.data.inviteCode}]`);
-        } else {
-          startHostMatchWorkerPolling(requestId, "Awaiting Public Match Intercept");
+      function handleBoardKeydown(e) {
+        if (document.activeElement !== boardText) return;
+        const key = e.key.toLowerCase();
+
+        if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab', ' ', 'enter', 'escape', 'delete', 'backspace', '1', '2', '3', '4', '5', 'c', 'o', 'r'].includes(key)) {
+          e.preventDefault();
         }
-        return;
+
+        if (e.ctrlKey && key === 'b') {
+          e.preventDefault();
+          boardText.focus();
+          updateSelectionRange();
+          return;
+        }
+
+        if (key === 'arrowup') return moveCursor(0, 1);
+        if (key === 'arrowdown') return moveCursor(0, -1);
+        if (key === 'arrowleft') return moveCursor(-1, 0);
+        if (key === 'arrowright') return moveCursor(1, 0);
+
+        if (key === 'enter') {
+          const piece = getPieceAt(cursor.x, cursor.y);
+          if (piece) return selectAtCursor();
+          return placePaletteAtCursor();
+        }
+
+        if (key === ' ') {
+          const piece = getPieceAt(cursor.x, cursor.y);
+          if (piece) return selectAtCursor();
+          setStatus('No piece to select.', 'error');
+          return;
+        }
+
+        if (key === 'escape') return deselect();
+        if (key === 'delete' || key === 'backspace') return removeSelected();
+
+        if (key === 'r') {
+          if (selectedId) return rotateSelected();
+          palette.rotation = (palette.rotation + 1) % 4;
+          setStatus(`Palette rotation: ${palette.rotation}.`, 'good');
+          render();
+          return;
+        }
+
+        if (key === 'c') {
+          palette.color = palette.color === 'BLUE' ? 'RED' : 'BLUE';
+          setStatus(`Palette color: ${palette.color}.`, 'good');
+          render();
+          return;
+        }
+
+        if (key === 'o') {
+          palette.rotation = (palette.rotation + 1) % 4;
+          setStatus(`Palette rotation: ${palette.rotation}.`, 'good');
+          render();
+          return;
+        }
+
+        if (key >= '1' && key <= '5') {
+          palette.pieceType = PIECE_TYPES[Number(key) - 1];
+          setStatus(`Palette type: ${palette.pieceType}.`, 'good');
+          render();
+          return;
+        }
       }
 
-      attempts += 1;
-      if (attempts === 1) add('Recovering uplink...', 'system-msg');
-
-      if (attempts >= maxAttempts) {
-        stopRecoveryPolling();
-        toggleWaiting(false);
-        stopHostGamePolling();
-
-        localStorage.removeItem(KEY_RID);
-        modeShown = false;
-        await startPolling();
-      }
-    };
-
-    tick();
-    recoveryPollInterval = setInterval(tick, 4000);
-  }
-
-  async function handleMode(val) {
-    if (privateState) {
-      return handlePrivateFlow(val);
-    }
-
-    if (val === 'A') {
-      if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); modeShown = false; return showMode(); }
-      toggleWaiting(true, `Intercepting ${currentHead.id}`);
-      return registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
-    }
-    if (val === 'R') return registerHost(0, false); 
-    if (val === 'B') return registerHost(1, false);
-
-    if (val === 'P') {
-      privateState = { step: 'TARGET', target: null };
-      return add('TARGET USER (OPTIONAL - ENTER TO SKIP):', '', true, handlePrivateFlow);
-    }
-
-    if (val === 'J') {
-      privateState = { step: 'CODE' };
-      return add('INVITE CODE:', '', true, handlePrivateFlow);
-    }
-
-    add('Unknown Command.', 'error-msg');
-    modeShown = false;
-    return showMode();
-  }
-
-  async function handlePrivateFlow(v) {
-    if (!privateState) {
-      modeShown = false;
-      return showMode();
-    }
-
-    if (privateState.step === 'TARGET') {
-      const raw = (v || '').trim();
-
-      if (!raw) {
-        privateState.target = null;
-        privateState.step = 'COLOR';
-        return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
+      function handleBoardKeydownForWASD(e) {
+        if (document.activeElement !== boardText) return;
+        const k = e.key.toLowerCase();
+        if (!['w', 'a', 's', 'd'].includes(k)) return;
+        e.preventDefault();
+        pressedKeys.add(k);
       }
 
-      const target = raw.toUpperCase();
-
-      if (target === localStorage.getItem(KEY_USER)) {
-        add('CANNOT TARGET SELF.', 'error-msg');
-        privateState = null;
-        modeShown = false;
-        return showMode();
+      function handleBoardKeyup(e) {
+        if (document.activeElement !== boardText) return;
+        const k = e.key.toLowerCase();
+        if (!['w', 'a', 's', 'd'].includes(k)) return;
+        e.preventDefault();
+        const before = new Set(pressedKeys);
+        before.add(k);
+        pressedKeys.delete(k);
+        if (!selectedId) return;
+        const dx = (before.has('d') ? 1 : 0) + (before.has('a') ? -1 : 0);
+        const dy = (before.has('w') ? 1 : 0) + (before.has('s') ? -1 : 0);
+        if (dx !== 0 || dy !== 0) moveSelected(dx, dy);
       }
 
-      const exists = await isUsernameOccupied(target);
-      if (!exists) {
-        add('TARGET USER NOT FOUND.', 'error-msg');
-        privateState = null;
-        modeShown = false;
-        return showMode();
-      }
+      // Buttons use click for the temporary build controls, but keyboard shortcuts are the main path.
+      document.addEventListener('keydown', e => {
+        if (e.ctrlKey && e.key.toLowerCase() === 'b') {
+          e.preventDefault();
+          boardText.focus();
+          updateSelectionRange();
+          return;
+        }
+      }, true);
 
-      privateState.target = target;
-      privateState.step = 'COLOR';
-      return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
-    }
+      boardText.addEventListener('keydown', handleBoardKeydownForWASD);
+      boardText.addEventListener('keydown', handleBoardKeydown);
+      boardText.addEventListener('keyup', handleBoardKeyup);
 
-    if (privateState.step === 'COLOR') {
-      const input = (v || '').trim().toUpperCase();
-
-      const colorChar = input.includes('R') ? 'R' : input.includes('B') ? 'B' : null;
-      const color = colorChar === 'R' ? 0 : colorChar === 'B' ? 1 : null;
-
-      if (color === null) {
-        add('Unknown Command.', 'error-msg');
-        privateState = null;
-        modeShown = false;
-        return showMode();
-      }
-
-      const target = privateState.target;
-      privateState = null;
-
-      return createPrivateRequest(color, target);
-    }
-
-    if (privateState.step === 'CODE') {
-      const code = (v || '').trim().toUpperCase();
-      if (!code) {
-        add('INVALID CODE.', 'error-msg');
-        privateState = null;
-        modeShown = false;
-        return showMode();
-      }
-
-      privateState = null;
-      return joinPrivate(code);
-    }
-
-    privateState = null;
-    modeShown = false;
-    return showMode();
-  }
-
-  async function joinPrivate(inviteCode) {
-    const username = localStorage.getItem(KEY_USER);
-    const password = localStorage.getItem(KEY_PASS);
-
-    try {
-      const res = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username,
-          password,
-          isPrivate: true,
-          privateMode: 'JOIN',
-          inviteCode
-        })
+      turnSelect.addEventListener('change', () => { state.turn = turnSelect.value; render(); });
+      phaseInput.addEventListener('input', () => { state.phase = phaseInput.value.trim(); render(); });
+      moveNumberInput.addEventListener('input', () => {
+        const v = moveNumberInput.value.trim();
+        state.moveNumber = v === '' ? '' : Number(v);
+        render();
       });
 
-      const data = await res.json();
-      if (data.ok) {
-        const idToStore = data.matchName || data.matchId || data.requestId || data.timestamp;
-        if (idToStore) localStorage.setItem(KEY_RID, idToStore);
-        stopPolling();
-        add('Private Link Success!', 'success-msg');
+      function mountTempButtons() {
+        typeButtons.innerHTML = '';
+        colorButtons.innerHTML = '';
+        rotButtons.innerHTML = '';
 
-        if (data.matchName) {
-          lockOntoMatch(data.matchName, { status: 'SYNCING' });
-        } else if (data.requestId) {
-          startHostMatchWorkerPolling(data.requestId, "Awaiting Private Handshake");
+        for (const t of PIECE_TYPES) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = palette.pieceType === t ? 'active' : '';
+          btn.innerHTML = `<span class="pieceSwatch">${pieceChar({ pieceType: t, rotation: palette.rotation })}</span>${t}`;
+          btn.addEventListener('click', () => {
+            palette.pieceType = t;
+            setStatus(`Palette type: ${t}.`, 'good');
+            render();
+          });
+          typeButtons.appendChild(btn);
         }
-        return;
+
+        for (const c of ['BLUE', 'RED']) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = palette.color === c ? 'active' : '';
+          btn.textContent = c;
+          btn.style.color = c === 'BLUE' ? 'var(--blue)' : 'var(--red)';
+          btn.addEventListener('click', () => {
+            palette.color = c;
+            setStatus(`Palette color: ${c}.`, 'good');
+            render();
+          });
+          colorButtons.appendChild(btn);
+        }
+
+        for (let r = 0; r < 4; r++) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = palette.rotation === r ? 'active' : '';
+          btn.textContent = `ROT ${r}`;
+          btn.addEventListener('click', () => {
+            palette.rotation = r;
+            setStatus(`Palette rotation: ${r}.`, 'good');
+            render();
+          });
+          rotButtons.appendChild(btn);
+        }
       }
 
-      add(`Private Join Denied: ${data.error}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    } catch (e) {
-      add(`Worker Error: ${e.message}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    }
-  }
+      // Initial boot.
+      mountTempButtons();
+      resetDemo();
+      boardText.focus();
+      updateSelectionRange();
+      setStatus('Keyboard editor ready.', 'good');
 
-  async function createPrivateRequest(color, privateTarget = null) {
-    const username = localStorage.getItem(KEY_USER);
-    const password = localStorage.getItem(KEY_PASS);
+      // Keep a live export area only.
+      const exportTick = () => {
+        syncJson();
+        requestAnimationFrame(exportTick);
+      };
+      requestAnimationFrame(exportTick);
 
-    const privateRequestPayload = {
-      mode: 'PRIVATE_MATCH_REQUEST',
-      body: {
-        requester: username,
-        secret: password,
-        color,
-        target: privateTarget
-      }
-    };
-
-    try {
-      const res = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(privateRequestPayload)
+      // Make sure the board always stays visible.
+      window.addEventListener('load', () => {
+        render();
+        boardText.focus();
+        updateSelectionRange();
       });
-
-      const data = await res.json();
-      if (data.ok) {
-        const privateRequestId = data.requestId;
-        if (privateRequestId) localStorage.setItem(KEY_RID, privateRequestId);
-        
-        stopPolling();
-        
-        if (data.inviteCode) {
-          try { await navigator.clipboard.writeText(data.inviteCode); } catch(cErr){}
-          createLineWithCopy(`Private Request Generated! CODE: ${data.inviteCode} `, data.inviteCode, 'success-msg');
-        } else {
-          add('Private Request Generated!', 'success-msg');
-        }
-        
-        // INTEGRATED: Replaced legacy Realtime DB polling loop with Worker Polling loop
-        startHostMatchWorkerPolling(privateRequestId, `Awaiting Private Join [CODE: ${data.inviteCode}]`);
-        return;
-      }
-
-      add(`Private Request Denied: ${data.error}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    } catch (e) {
-      add(`Worker Error: ${e.message}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    }
-  }
-
-  async function registerHost(color, isIntercept = false, extra = {}) {
-    const username = localStorage.getItem(KEY_USER);
-    const password = localStorage.getItem(KEY_PASS);
-    try {
-      const res = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, color, isIntercept, ...extra })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        const idToStore = data.matchName || data.requestId || data.timestamp;
-        if (idToStore) localStorage.setItem(KEY_RID, idToStore);
-        stopPolling();
-        add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
-
-        if (data.matchName) {
-          lockOntoMatch(data.matchName, { status: 'SYNCING' });
-        } else if (data.requestId) {
-          startHostMatchWorkerPolling(data.requestId, isIntercept ? "Awaiting Intercept Handshake" : "Awaiting Public Match Intercept");
-        }
-
-        return;
-      } else {
-        add(`Uplink Denied: ${data.error}`, 'error-msg');
-        modeShown = false;
-        return showMode();
-      }
-    } catch (e) {
-      add(`Worker Error: ${e.message}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    }
-  }
-
-  function lockOntoMatch(id, entry) {
-    lockedMatchId = id;
-    localStorage.setItem(KEY_RID, id); 
-    stopPolling(); 
-    toggleWaiting(false);
-    
-    stopHostGamePolling();
-
-    modeShown = false;
-    add(`LINK ESTABLISHED: ${id}`, 'success-msg');
-    
-    const gameRef = dbGame.ref(`G/${id}`);
-    gameRef.on('value', snap => {
-        const state = snap.val();
-        if (state) {
-            add(`[SYNC] Turn: ${state.turn} | Board: ${state.board}`, 'system-msg');
-        } else {
-            add(`MATCH TERMINATED.`, 'error-msg');
-            localStorage.removeItem(KEY_RID);
-            lockedMatchId = null;
-            gameRef.off();
-            modeShown = false;
-            startPolling();
-        }
-    });
-  }
-
-  function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
-    if (active) {
-      if (waitAnimationInterval) return;
-      const l = createLine('wait-msg');
-      let dots = 0;
-      waitAnimationInterval = setInterval(() => { 
-        dots = (dots + 1) % 4; 
-        l.textContent = contextMsg + ".".repeat(dots); 
-      }, 500);
-    } else { 
-      if (waitAnimationInterval) { 
-        clearInterval(waitAnimationInterval); 
-        waitAnimationInterval = null; 
-      } 
-    }
-  }
-
-  async function handleAuth(v) {
-    if (!localStorage.getItem(KEY_USER)) {
-      if (!v) return add('User ID:', '', true, handleAuth);
-
-      const candidate = v.trim().toUpperCase();
-      if (!candidate) {
-        add('INVALID USER ID.', 'error-msg');
-        return add('User ID:', '', true, handleAuth);
-      }
-
-      const occupied = await isUsernameOccupied(candidate);
-      if (occupied) {
-        add('USER ID ALREADY OCCUPIED.', 'error-msg');
-        return add('User ID:', '', true, handleAuth);
-      }
-
-      localStorage.setItem(KEY_USER, candidate);
-      return boot();
-    }
-    if (!localStorage.getItem(KEY_PASS)) {
-      if (!v) return add('Access Key:', '', true, handleAuth);
-      localStorage.setItem(KEY_PASS, v);
-      return boot();
-    }
-  }
-
-  async function boot() {
-    const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
-    if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
-    
-    add('System Online.', 'success-msg');
-    
-    if (rid && rid.toString().includes('_')) {
-        const snap = await dbGame.ref(`G/${rid}`).once('value');
-        if (snap.exists()) return lockOntoMatch(rid, snap.val());
-
-        localStorage.removeItem(KEY_RID);
-    }
-
-    if (rid && !rid.toString().includes('_')) {
-        const rqdEntry = await verifyRequestIdByRQD(rid);
-        if (rqdEntry) {
-            add('Recovering uplink...', 'system-msg');
-            
-            // INTEGRATED: Resumes polling via Worker architecture rather than legacy listeners
-            if (rqdEntry.isPrivate && rqdEntry.inviteCode) {
-                createLineWithCopy(`Re-asserted Private Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg');
-                startHostMatchWorkerPolling(rid, `Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`);
-            } else {
-                startHostMatchWorkerPolling(rid, "Awaiting Public Match Intercept");
-            }
-            return;
-        }
-        localStorage.removeItem(KEY_RID);
-    }
-
-    const foundInGameDB = await searchForGameDBMatch();
-    if (!foundInGameDB) {
-      await startPolling();
-    }
-  }
-
-  window.addEventListener('DOMContentLoaded', async () => {
-    await boot();
-  });
-})();
-</script>
+    })();
+  </script>
 </body>
 </html>
