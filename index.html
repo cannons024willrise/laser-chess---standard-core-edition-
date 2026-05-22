@@ -1,127 +1,444 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LASER CHESS - STANDARD VARIANT- CORE EDITION (BETA η-)</title>
-    <style>
-        @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
-        :root { --bg0: #0a0a0a; --bg1: #1a1a1a; --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; --muted: #999999; --waiting: #00ff00; }
-        body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
-        #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
-        .history-line { white-space: pre-wrap; word-break: break-all; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-        .input-wrapper { display:flex; gap:8px; align-items:flex-start; width: 100%; }
-        .prompt { white-space: pre; }
-        .user-input-line {
-            flex: 1;
-            background: transparent;
-            border: none;
-            color: var(--bright);
-            font: inherit;
-            outline: none;
-            resize: none;
-            overflow: hidden;
-            min-height: 1.2em;
-            line-height: 1.2;
-            padding: 0;
-            margin: 0;
-            white-space: pre-wrap;
-        }
-        .system-msg { color: var(--muted); }
-        .success-msg { color: var(--bright); font-weight: 700; }
-        .error-msg { color: var(--error); }
-        .highlight { color: var(--bright); font-weight: 700; }
-        .wait-msg { color: var(--waiting); }
-        
-        .copy-btn {
-            background: #2a2a2a;
-            color: var(--waiting);
-            border: 1px solid var(--waiting);
-            font-family: 'Unifont', monospace;
-            font-size: 12px;
-            cursor: pointer;
-            padding: 2px 6px;
-            user-select: none;
-            display: inline-block;
-        }
-        .copy-btn:hover {
-            background: var(--waiting);
-            color: var(--bg0);
-        }
-        .copy-btn:active {
-            transform: scale(0.95);
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LASER CHESS // INTEGRATED CLIENT</title>
+  <style>
+    @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
+    :root {
+      --bg0:#0a0a0a;
+      --bg1:#1a1a1a;
+      --line:#2a2a2a;
+      --text:#b0b0b0;
+      --bright:#ffffff;
+      --error:#ff5555;
+      --muted:#999999;
+      --waiting:#00ff00;
+      --blue:#00d4ff;
+      --red:#ff3333;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 22px;
+      background: radial-gradient(circle at center, var(--bg1), var(--bg0));
+      color: var(--text);
+      font-family: 'Unifont', monospace;
+    }
+    .topbar {
+      max-width: 1440px;
+      margin: 0 auto 14px auto;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.25);
+      box-shadow: 0 12px 30px rgba(0,0,0,.35);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      border-radius: 10px;
+    }
+    .title { color: var(--bright); font-weight: 700; letter-spacing: .08em; }
+    .status { color: var(--muted); }
+    .hint { color: var(--waiting); }
+    .app {
+      max-width: 1440px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: minmax(680px, 1.4fr) minmax(360px, .9fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.2);
+      box-shadow: 0 12px 30px rgba(0,0,0,.35);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .panel-head {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.02);
+      color: var(--bright);
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel-body { padding: 14px; }
+
+    #terminal-log {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-height: 280px;
+      max-height: 420px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+    .history-line { white-space: pre-wrap; word-break: break-all; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .input-wrapper { display:flex; gap:8px; align-items:flex-start; width: 100%; }
+    .prompt { white-space: pre; }
+    .user-input-line {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--bright);
+      font: inherit;
+      outline: none;
+      resize: none;
+      overflow: hidden;
+      min-height: 1.2em;
+      line-height: 1.2;
+      padding: 0;
+      margin: 0;
+      white-space: pre-wrap;
+    }
+    .system-msg { color: var(--muted); }
+    .success-msg { color: var(--bright); font-weight: 700; }
+    .error-msg { color: var(--error); }
+    .highlight { color: var(--bright); font-weight: 700; }
+    .wait-msg { color: var(--waiting); }
+    .copy-btn {
+      background: #2a2a2a;
+      color: var(--waiting);
+      border: 1px solid var(--waiting);
+      font-family: 'Unifont', monospace;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 2px 6px;
+      user-select: none;
+      display: inline-block;
+    }
+    .copy-btn:hover { background: var(--waiting); color: var(--bg0); }
+    .copy-btn:active { transform: scale(0.95); }
+
+    .stack { display: grid; gap: 10px; }
+    .group {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      background: rgba(255,255,255,.02);
+      display: grid;
+      gap: 10px;
+    }
+    .group-title {
+      color: var(--bright);
+      font-weight: 700;
+      letter-spacing: .05em;
+    }
+    .valueLine {
+      color: var(--bright);
+      font-size: 13px;
+      word-break: break-all;
+      line-height: 1.35;
+    }
+    .small { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .monoTag { color: var(--waiting); }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    select, input[type="text"] {
+      width: 100%;
+      border: 1px solid #333;
+      background: #0f0f0f;
+      color: var(--bright);
+      padding: 10px;
+      border-radius: 8px;
+      outline: none;
+      font: inherit;
+    }
+    textarea {
+      width: 100%;
+      border: 1px solid #333;
+      background: #0f0f0f;
+      color: var(--bright);
+      padding: 12px;
+      border-radius: 8px;
+      outline: none;
+      font: inherit;
+      resize: vertical;
+      white-space: pre;
+      line-height: 1.2;
+    }
+    #jsonBox {
+      min-height: 220px;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .btnRow { display:flex; flex-wrap:wrap; gap:8px; }
+    button {
+      border: 1px solid #3a3a3a;
+      background: #1a1a1a;
+      color: var(--waiting);
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font: inherit;
+    }
+    button:hover { background:#232323; border-color:#555; }
+    button.active { outline: 1px solid var(--waiting); color: var(--bright); }
+    button.primary { color: var(--bright); }
+    button.danger { color: var(--error); }
+    .pieceSwatch {
+      display:inline-block;
+      min-width: 1.2em;
+      text-align:center;
+      margin-right: 6px;
+      font-size: 18px;
+      vertical-align: middle;
+    }
+    .callout {
+      border-left: 2px solid var(--waiting);
+      padding-left: 10px;
+      margin-top: 6px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    #boardText {
+      width: 100%;
+      min-height: 520px;
+      font-size: 18px;
+      border: 1px solid #333;
+      background: #0f0f0f;
+      color: var(--bright);
+      padding: 16px;
+      border-radius: 8px;
+      outline: none;
+      font-family: 'Unifont', monospace;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+    }
+    #boardText:focus {
+      border-color: var(--waiting);
+      box-shadow: 0 0 8px rgba(0, 255, 0, 0.15);
+    }
+    .board-grid { display: inline-block; margin-bottom: 16px; user-select: none; }
+    .board-row { display: flex; height: 26px; align-items: center; }
+    .board-cell {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Unifont', monospace;
+      text-align: center;
+      box-sizing: border-box;
+    }
+    .board-lbl {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-family: 'Unifont', monospace;
+    }
+    .board-meta {
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+      font-family: 'Unifont', monospace;
+      color: var(--text);
+      white-space: pre;
+      line-height: 1.4;
+    }
+    .p-blue { color: var(--blue); font-weight: bold; }
+    .p-red { color: var(--red); font-weight: bold; }
+    .p-selected { outline: 1px dashed var(--bright); background: rgba(255,255,255,0.08); }
+    .p-cursor { background: var(--waiting) !important; color: #000000 !important; }
+  </style>
 </head>
 <body>
-<div id="terminal-log"></div>
+  <div class="topbar">
+    <div class="title">LASER CHESS // INTEGRATED CLIENT</div>
+    <div class="status" id="status">READY</div>
+    <div class="hint">login / match flow + live board renderer</div>
+  </div>
 
-<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
+  <div class="app">
+    <div class="panel">
+      <div class="panel-head">
+        <div>CLIENT</div>
+        <div class="small">Terminal auth and live sync</div>
+      </div>
+      <div class="panel-body">
+        <div id="terminal-log"></div>
+      </div>
+    </div>
 
-<script>
-(() => {
-  'use strict';
+    <div class="stack">
+      <div class="group">
+        <div class="group-title">LIVE BOARD RENDERER</div>
+        <div id="boardText" tabindex="0"></div>
+        <div class="callout">
+          When the client is locked onto a match, this view updates from the live game state. If the game payload contains a structured board object, it renders pieces directly; otherwise it falls back to a raw payload preview.
+        </div>
+      </div>
 
-  const matchConfig = {
-    apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
-    authDomain: "lasercheowefficiencymanager.firebaseapp.com",
-    databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com",
-    projectId: "lasercheowefficiencymanager"
-  };
+      <div class="group">
+        <div class="group-title">SYNC SNAPSHOT</div>
+        <div class="valueLine" id="liveInfo">No match linked.</div>
+        <div class="small">This panel mirrors the latest remote state from <span class="monoTag">/G/&lt;match&gt;</span>.</div>
+      </div>
 
-  const gameConfig = {
-    apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE",
-    authDomain: "laser-chess-low-efficiency.firebaseapp.com",
-    databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com",
-    projectId: "laser-chess-low-efficiency"
-  };
+      <div class="group">
+        <div class="group-title">LOCAL BOARD CONTROLS</div>
+        <div class="small">These controls remain available for local testing and planning.</div>
+        <div id="typeButtons" class="btnRow"></div>
+        <div id="colorButtons" class="btnRow"></div>
+        <div id="rotButtons" class="btnRow"></div>
+        <div class="small" id="paletteInfo">Palette: KING / BLUE / rot 0</div>
+      </div>
 
-  const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
-  
-  const matchApp = firebase.initializeApp(matchConfig, "matchApp");
-  const gameApp = firebase.initializeApp(gameConfig, "gameApp");
-  const dbMatch = firebase.database(matchApp);
-  const dbGame = firebase.database(gameApp);
+      <div class="group">
+        <div class="group-title">SELECTION</div>
+        <div class="valueLine" id="selectedInfo">No piece selected.</div>
+        <div class="small">Selection follows the cursor. Press <span class="monoTag">Space</span> or <span class="monoTag">Enter</span> on a piece to select it.</div>
+      </div>
 
-  const KEY_USER = 'ls_user', KEY_PASS = 'ls_pass', KEY_RID = 'ls_request_id';
-  const logContainer = document.getElementById('terminal-log');
-  const queue = [];
-  let processing = false, currentPromptWrap = null, lockedMatchId = null;
-  let rqPollInterval = null, recoveryPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
-  let currentHead = null;
-  let initialQueueScanDone = false;
-  let modeShown = false;
-  let privateState = null;
-  
-  let isPollingStarting = false;
-  let hostGamePollInterval = null; 
+      <div class="group">
+        <div class="group-title">STATE</div>
+        <div class="split">
+          <div>
+            <div class="small" style="margin-bottom:6px;">Turn</div>
+            <select id="turnSelect">
+              <option>BLUE</option>
+              <option>RED</option>
+            </select>
+          </div>
+          <div>
+            <div class="small" style="margin-bottom:6px;">Phase</div>
+            <input id="phaseInput" type="text" placeholder="MOVE" />
+          </div>
+        </div>
+        <div>
+          <div class="small" style="margin-bottom:6px;">Move Number</div>
+          <input id="moveNumberInput" type="text" placeholder="12" />
+        </div>
+      </div>
 
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
+      <div class="group">
+        <div class="group-title">EXPORT JSON</div>
+        <textarea id="jsonBox" spellcheck="false" readonly></textarea>
+        <div class="small">Export-only view. No manual JSON editing.</div>
+      </div>
+    </div>
+  </div>
 
-  function createLine(cls='') {
-    const d = document.createElement('div');
-    d.className = `history-line ${cls}`;
-    if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap);
-    else logContainer.appendChild(d);
-    return d;
-  }
+  <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
 
-  function createLineWithCopy(text, codeToCopy, cls='') {
-    const container = createLine(cls);
-    
-    const textSpan = document.createElement('span');
-    textSpan.textContent = text;
-    container.appendChild(textSpan);
-    
-    const btn = document.createElement('button');
-    btn.className = 'copy-btn';
-    btn.textContent = '[COPY CODE]';
-    btn.onclick = async () => {
-        try {
+  <script>
+    (() => {
+      'use strict';
+
+      const matchConfig = {
+        apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
+        authDomain: "lasercheowefficiencymanager.firebaseapp.com",
+        databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com",
+        projectId: "lasercheowefficiencymanager"
+      };
+
+      const gameConfig = {
+        apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE",
+        authDomain: "laser-chess-low-efficiency.firebaseapp.com",
+        databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com",
+        projectId: "laser-chess-low-efficiency"
+      };
+
+      const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
+
+      const matchApp = firebase.initializeApp(matchConfig, "matchApp");
+      const gameApp = firebase.initializeApp(gameConfig, "gameApp");
+      const dbMatch = firebase.database(matchApp);
+      const dbGame = firebase.database(gameApp);
+
+      const KEY_USER = 'ls_user';
+      const KEY_PASS = 'ls_pass';
+      const KEY_RID = 'ls_request_id';
+
+      const logContainer = document.getElementById('terminal-log');
+      const statusEl = document.getElementById('status');
+      const boardText = document.getElementById('boardText');
+      const jsonBox = document.getElementById('jsonBox');
+      const selectedInfoEl = document.getElementById('selectedInfo');
+      const paletteInfoEl = document.getElementById('paletteInfo');
+      const turnSelect = document.getElementById('turnSelect');
+      const phaseInput = document.getElementById('phaseInput');
+      const moveNumberInput = document.getElementById('moveNumberInput');
+      const typeButtons = document.getElementById('typeButtons');
+      const colorButtons = document.getElementById('colorButtons');
+      const rotButtons = document.getElementById('rotButtons');
+      const liveInfo = document.getElementById('liveInfo');
+
+      const queue = [];
+      let processing = false;
+      let currentPromptWrap = null;
+      let lockedMatchId = null;
+      let rqPollInterval = null;
+      let recoveryPollInterval = null;
+      let waitAnimationInterval = null;
+      let lastQueueState = 'INIT';
+      let currentHead = null;
+      let initialQueueScanDone = false;
+      let modeShown = false;
+      let privateState = null;
+      let isPollingStarting = false;
+      let hostGamePollInterval = null;
+
+      const PIECE_TYPES = ['KING', 'LASER', 'SWITCH', 'DEFENDER', 'DEFLECTOR'];
+      const symbols = {
+        KING: '◈',
+        LASER: ['⫝', '⟜', 'Ͳ', 'Ð'],
+        SWITCH: ['⟋', '⟍'],
+        DEFENDER: ['⬒', '◨', '⬓', '◧'],
+        DEFLECTOR: ['◤', '◥', '◢', '◣']
+      };
+
+      const state = {
+        turn: 'BLUE',
+        phase: 'MOVE',
+        moveNumber: 1,
+        pieces: [],
+        rawBoard: null,
+        rawBoardText: '',
+        live: false
+      };
+
+      let cursor = { x: 4, y: 4 };
+      let selectedId = null;
+      let palette = { pieceType: 'KING', color: 'BLUE', rotation: 0 };
+      let idSeq = 1;
+      const pressedKeys = new Set();
+
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+      function createLine(cls='') {
+        const d = document.createElement('div');
+        d.className = `history-line ${cls}`;
+        if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap);
+        else logContainer.appendChild(d);
+        return d;
+      }
+
+      function createLineWithCopy(text, codeToCopy, cls='') {
+        const container = createLine(cls);
+        const textSpan = document.createElement('span');
+        textSpan.textContent = text;
+        container.appendChild(textSpan);
+
+        const btn = document.createElement('button');
+        btn.className = 'copy-btn';
+        btn.textContent = '[COPY CODE]';
+        btn.onclick = async () => {
+          try {
             await navigator.clipboard.writeText(codeToCopy);
             btn.textContent = '[COPIED!]';
-        } catch (err) {
+          } catch (err) {
             const dummy = document.createElement('textarea');
             dummy.value = codeToCopy;
             document.body.appendChild(dummy);
@@ -129,688 +446,1204 @@
             document.execCommand('copy');
             document.body.removeChild(dummy);
             btn.textContent = '[COPIED!]';
+          }
+          setTimeout(() => { btn.textContent = '[COPY CODE]'; }, 2000);
+        };
+
+        container.appendChild(btn);
+        return container;
+      }
+
+      function add(text, cls='', req=false, handler=null) {
+        if (!req && processing) { type(text, cls, true); return; }
+        queue.push({text, cls, req, handler});
+        if (!processing) run();
+      }
+
+      async function run() {
+        processing = true;
+        while (queue.length) {
+          const i = queue.shift();
+          if (i.req) await prompt(i.text, i.cls, i.handler || handleAuth);
+          else await type(i.text, i.cls);
         }
-        setTimeout(() => { btn.textContent = '[COPY CODE]'; }, 2000);
-    };
-    
-    container.appendChild(btn);
-    return container;
-  }
+        processing = false;
+      }
 
-  function add(text, cls='', req=false, handler=null) {
-    if (!req && processing) { type(text, cls, true); return; }
-    queue.push({text,cls,req,handler});
-    if (!processing) run();
-  }
+      async function type(text, cls, immediate=false) {
+        const l = createLine(cls);
+        if (immediate) { l.textContent = text; return l; }
+        for (const c of text) { l.textContent += c; await sleep(10); }
+        return l;
+      }
 
-  async function run() {
-    processing = true;
-    while(queue.length) {
-      const i = queue.shift();
-      if (i.req) await prompt(i.text, i.cls, i.handler || handleAuth);
-      else await type(i.text, i.cls);
-    }
-    processing = false;
-  }
+      async function prompt(text, cls, handler) {
+        const wrap = document.createElement('div');
+        wrap.className = 'input-wrapper history-line';
 
-  async function type(text, cls, immediate=false) {
-    const l = createLine(cls);
-    if (immediate) { l.textContent = text; return l; }
-    for (const c of text) { l.textContent += c; await sleep(10); }
-    return l;
-  }
+        const p = document.createElement('span');
+        p.className = 'prompt';
+        wrap.appendChild(p);
 
-  async function prompt(text, cls, handler) {
-    const wrap = document.createElement('div');
-    wrap.className = 'input-wrapper history-line';
+        const input = document.createElement('textarea');
+        input.className = 'user-input-line';
+        input.rows = 1;
+        input.spellcheck = false;
+        input.autocapitalize = 'off';
+        input.autocomplete = 'off';
+        input.autocorrect = 'off';
+        wrap.appendChild(input);
 
-    const p = document.createElement('span');
-    p.className = 'prompt';
-    wrap.appendChild(p);
+        logContainer.appendChild(wrap);
+        currentPromptWrap = wrap;
 
-    const input = document.createElement('textarea');
-    input.className = 'user-input-line';
-    input.rows = 1;
-    input.spellcheck = false;
-    input.autocapitalize = 'off';
-    input.autocomplete = 'off';
-    input.autocorrect = 'off';
-    wrap.appendChild(input);
+        for (const c of text) { p.textContent += c; await sleep(8); }
 
-    logContainer.appendChild(wrap);
-    currentPromptWrap = wrap;
+        const resize = () => {
+          input.style.height = 'auto';
+          input.style.height = input.scrollHeight + 'px';
+        };
 
-    for (const c of text) { p.textContent += c; await sleep(8); }
+        setTimeout(() => { input.focus(); resize(); }, 0);
+        input.addEventListener('input', resize);
 
-    const resize = () => {
-      input.style.height = 'auto';
-      input.style.height = input.scrollHeight + 'px';
-    };
+        return new Promise(resolve => {
+          input.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              const v = input.value.trim().toUpperCase();
+              input.disabled = true;
+              const finalLine = createLine('highlight');
+              finalLine.textContent = p.textContent + v;
+              wrap.remove();
+              currentPromptWrap = null;
+              handler(v);
+              resolve();
+            }
+          });
+        });
+      }
 
-    const handleInput = () => { resize(); };
+      function setStatus(text, kind) {
+        statusEl.textContent = text;
+        statusEl.style.color = kind === 'error' ? 'var(--error)' : (kind === 'good' ? 'var(--waiting)' : 'var(--muted)');
+      }
 
-    setTimeout(() => {
-      input.focus();
-      resize();
-    }, 0);
+      function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
-    input.addEventListener('input', handleInput);
+      function uid(prefix) {
+        return (prefix || 'p') + Date.now().toString(36) + (idSeq++).toString(36);
+      }
 
-    return new Promise(resolve => {
-      input.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          const v = input.value.trim().toUpperCase();
-          input.disabled = true;
-          const finalLine = createLine('highlight');
-          finalLine.textContent = p.textContent + v;
-          wrap.remove();
-          currentPromptWrap = null;
-          handler(v);
-          resolve();
+      function normalizePiece(piece) {
+        return {
+          id: String(piece.id || uid('p')),
+          pieceType: String(piece.pieceType || 'KING').toUpperCase(),
+          color: String(piece.color || 'BLUE').toUpperCase(),
+          rotation: Number(piece.rotation !== undefined ? piece.rotation : 0),
+          x: Number(piece.x),
+          y: Number(piece.y)
+        };
+      }
+
+      function pieceChar(piece) {
+        const type = String(piece.pieceType || '').toUpperCase();
+        const rot = Number(piece.rotation !== undefined ? piece.rotation : 0) % 4;
+        if (type === 'KING') return symbols.KING;
+        if (type === 'LASER') return symbols.LASER[rot];
+        if (type === 'SWITCH') return (rot === 1 || rot === 3) ? symbols.SWITCH[0] : symbols.SWITCH[1];
+        if (type === 'DEFENDER') return symbols.DEFENDER[rot];
+        if (type === 'DEFLECTOR') return symbols.DEFLECTOR[rot];
+        return '?';
+      }
+
+      function getPieceById(id) {
+        return state.pieces.find(p => p.id === id) || null;
+      }
+
+      function getPieceAt(x, y) {
+        return state.pieces.find(p => Number(p.x) === x && Number(p.y) === y) || null;
+      }
+
+      function buildBoardHTML() {
+        const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
+        for (const piece of state.pieces) {
+          if (!Number.isFinite(piece.x) || !Number.isFinite(piece.y)) continue;
+          if (piece.x < 0 || piece.x > 9 || piece.y < 0 || piece.y > 7) continue;
+          grid[piece.y][piece.x] = piece;
         }
-      });
-    });
-  }
 
-  async function pollFirstMatch({ silentEmpty = false } = {}) {
-    if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
+        let html = '<div class="board-grid">';
+        html += '<div class="board-row">';
+        html += '<span class="board-lbl">&nbsp;</span>';
+        for (let x = 0; x < 10; x++) html += `<span class="board-lbl">${x}</span>`;
+        html += '</div>';
 
-    try {
-      const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
-      const data = snapshot.val();
+        for (let y = 7; y >= 0; y--) {
+          html += '<div class="board-row">';
+          html += `<span class="board-lbl">${y}</span>`;
 
-      if (!data) {
-        currentHead = null;
-        if (!silentEmpty && initialQueueScanDone && lastQueueState !== 'EMPTY') {
-          add('RQ_Q: Empty (Idle)', 'system-msg');
-          lastQueueState = 'EMPTY';
+          for (let x = 0; x < 10; x++) {
+            const p = grid[y][x];
+            const isCursor = (cursor.x === x && cursor.y === y);
+            let char = '·';
+            const classes = ['board-cell'];
+
+            if (p) {
+              char = pieceChar(p);
+              classes.push(p.color === 'RED' ? 'p-red' : 'p-blue');
+              if (selectedId === p.id) classes.push('p-selected');
+            }
+            if (isCursor) classes.push('p-cursor');
+
+            html += `<span class="${classes.join(' ')}">${char}</span>`;
+          }
+          html += '</div>';
+        }
+        html += '</div>';
+
+        html += '<div class="board-meta">';
+        html += `CURSOR: ${cursor.x},${cursor.y}\n`;
+        html += `PALETTE: ${palette.pieceType} / ${palette.color} / rot ${palette.rotation}\n`;
+        const active = selectedId ? getPieceById(selectedId) : null;
+        html += `ACTIVE: ${active ? `${active.color} ${active.pieceType} @ ${active.x},${active.y}` : 'NONE'}\n`;
+        html += `LIVE: ${state.live ? 'YES' : 'NO'}\n`;
+        html += `HELP: arrows move cursor, enter select/place, WASD move selected on keyup`;
+        html += '</div>';
+        return html;
+      }
+
+      function syncJson() {
+        jsonBox.value = JSON.stringify({
+          turn: state.turn,
+          phase: state.phase,
+          moveNumber: state.moveNumber,
+          live: state.live,
+          rawBoardText: state.rawBoardText || '',
+          pieces: state.pieces.map(p => ({
+            id: p.id,
+            pieceType: p.pieceType,
+            color: p.color,
+            rotation: Number(p.rotation !== undefined ? p.rotation : 0),
+            x: Number(p.x),
+            y: Number(p.y)
+          }))
+        }, null, 2);
+      }
+
+      function updateButtons() {
+        typeButtons.innerHTML = '';
+        colorButtons.innerHTML = '';
+        rotButtons.innerHTML = '';
+
+        for (const t of PIECE_TYPES) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = palette.pieceType === t ? 'active' : '';
+          btn.innerHTML = `<span class="pieceSwatch">${pieceChar({ pieceType: t, rotation: palette.rotation })}</span>${t}`;
+          btn.addEventListener('click', () => {
+            palette.pieceType = t;
+            setStatus(`Palette type: ${t}.`, 'good');
+            render();
+          });
+          typeButtons.appendChild(btn);
+        }
+
+        for (const c of ['BLUE', 'RED']) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = palette.color === c ? 'active' : '';
+          btn.textContent = c;
+          btn.style.color = c === 'BLUE' ? 'var(--blue)' : 'var(--red)';
+          btn.addEventListener('click', () => {
+            palette.color = c;
+            setStatus(`Palette color: ${c}.`, 'good');
+            render();
+          });
+          colorButtons.appendChild(btn);
+        }
+
+        for (let r = 0; r < 4; r++) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = palette.rotation === r ? 'active' : '';
+          btn.textContent = `ROT ${r}`;
+          btn.addEventListener('click', () => {
+            palette.rotation = r;
+            setStatus(`Palette rotation: ${r}.`, 'good');
+            render();
+          });
+          rotButtons.appendChild(btn);
+        }
+      }
+
+      function render() {
+        boardText.innerHTML = buildBoardHTML();
+        turnSelect.value = state.turn;
+        phaseInput.value = state.phase || '';
+        moveNumberInput.value = String(state.moveNumber || '');
+        liveInfo.textContent = state.live
+          ? `${state.turn || 'UNKNOWN'} | phase ${state.phase || '-'} | move ${state.moveNumber || '-'} | pieces ${state.pieces.length}`
+          : 'No match linked.';
+
+        const active = selectedId ? getPieceById(selectedId) : null;
+        selectedInfoEl.textContent = active
+          ? `Selected: ${active.id} | ${active.color} ${active.pieceType} | rot ${active.rotation} | x ${active.x} y ${active.y}`
+          : 'No piece selected.';
+
+        paletteInfoEl.textContent = `Palette: ${palette.pieceType} / ${palette.color} / rot ${palette.rotation}`;
+        syncJson();
+        updateButtons();
+      }
+
+      function moveCursor(dx, dy) {
+        cursor.x = clamp(cursor.x + dx, 0, 9);
+        cursor.y = clamp(cursor.y + dy, 0, 7);
+        render();
+      }
+
+      function selectAtCursor() {
+        const piece = getPieceAt(cursor.x, cursor.y);
+        if (!piece) {
+          selectedId = null;
+          setStatus('No piece at cursor.', 'error');
+          render();
+          return;
+        }
+        selectedId = piece.id;
+        cursor = { x: piece.x, y: piece.y };
+        setStatus(`Selected ${piece.color} ${piece.pieceType}.`, 'good');
+        render();
+      }
+
+      function deselect() {
+        selectedId = null;
+        setStatus('Selection cleared.', 'normal');
+        render();
+      }
+
+      function rotateSelected() {
+        const p = getPieceById(selectedId);
+        if (!p) return;
+        p.rotation = (Number(p.rotation || 0) + 1) % 4;
+        setStatus('Piece rotated.', 'good');
+        render();
+      }
+
+      function moveSelected(dx, dy) {
+        const p = getPieceById(selectedId);
+        if (!p) return;
+        const nx = clamp(Number(p.x) + dx, 0, 9);
+        const ny = clamp(Number(p.y) + dy, 0, 7);
+        const occupant = getPieceAt(nx, ny);
+        if (occupant && occupant.id !== p.id) {
+          occupant.x = Number(p.x);
+          occupant.y = Number(p.y);
+        }
+        p.x = nx;
+        p.y = ny;
+        cursor = { x: nx, y: ny };
+        setStatus(`Moved to ${nx}, ${ny}.`, 'good');
+        render();
+      }
+
+      function removeSelected() {
+        const pieceAtCursor = getPieceAt(cursor.x, cursor.y);
+        const idToRemove = pieceAtCursor ? pieceAtCursor.id : selectedId;
+
+        if (!idToRemove) {
+          setStatus('No piece at cursor or selected to delete.', 'error');
+          return;
+        }
+
+        const idx = state.pieces.findIndex(p => p.id === idToRemove);
+        if (idx >= 0) {
+          state.pieces.splice(idx, 1);
+          setStatus('Piece deleted cleanly.', 'good');
+        }
+
+        if (selectedId === idToRemove) selectedId = null;
+        render();
+      }
+
+      function placePaletteAtCursor() {
+        if (getPieceAt(cursor.x, cursor.y)) {
+          setStatus('Cell occupied.', 'error');
+          return;
+        }
+        const piece = normalizePiece({
+          id: uid('p'),
+          pieceType: palette.pieceType,
+          color: palette.color,
+          rotation: palette.rotation,
+          x: cursor.x,
+          y: cursor.y
+        });
+        state.pieces.push(piece);
+        selectedId = piece.id;
+        setStatus('Piece placed.', 'good');
+        render();
+      }
+
+      function applyJson() {
+        try {
+          const parsed = JSON.parse(jsonBox.value);
+          if (!parsed || typeof parsed !== 'object') throw new Error('Top-level JSON must be an object.');
+          if (!Array.isArray(parsed.pieces)) throw new Error('Missing pieces array.');
+          state.turn = String(parsed.turn || 'BLUE').toUpperCase();
+          state.phase = parsed.phase !== undefined ? parsed.phase : '';
+          state.moveNumber = parsed.moveNumber !== undefined ? parsed.moveNumber : '';
+          state.pieces = parsed.pieces.map(normalizePiece).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+          selectedId = null;
+          setStatus('JSON applied.', 'good');
+          render();
+        } catch (err) {
+          setStatus(`INVALID JSON: ${err.message}`, 'error');
+        }
+      }
+
+      function resetDemo() {
+        state.turn = 'BLUE';
+        state.phase = 'MOVE';
+        state.moveNumber = 1;
+        state.pieces = [];
+        state.rawBoard = null;
+        state.rawBoardText = '';
+        state.live = false;
+        cursor = { x: 4, y: 4 };
+        selectedId = null;
+        palette = { pieceType: 'KING', color: 'BLUE', rotation: 0 };
+        setStatus('Client ready.', 'good');
+        render();
+      }
+
+      function parseBoardPayload(board) {
+        const fallback = { pieces: [], rawText: '', turn: '', phase: '', moveNumber: '' };
+
+        if (board == null) return fallback;
+
+        if (typeof board === 'string') {
+          const text = board.trim();
+          if (!text) return fallback;
+          try {
+            const parsed = JSON.parse(text);
+            return parseBoardPayload(parsed);
+          } catch {
+            return { ...fallback, rawText: text };
+          }
+        }
+
+        if (Array.isArray(board)) {
+          return { ...fallback, pieces: gridToPieces(board), rawText: JSON.stringify(board) };
+        }
+
+        if (typeof board === 'object') {
+          const out = { ...fallback, rawText: JSON.stringify(board) };
+
+          if (Array.isArray(board.pieces)) {
+            out.pieces = board.pieces.map(normalizePiece).filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+          } else if (Array.isArray(board.grid)) {
+            out.pieces = gridToPieces(board.grid);
+          } else if (Array.isArray(board.cells)) {
+            out.pieces = gridToPieces(board.cells);
+          }
+
+          if (board.turn !== undefined) out.turn = String(board.turn).toUpperCase();
+          if (board.phase !== undefined) out.phase = String(board.phase);
+          if (board.moveNumber !== undefined) out.moveNumber = board.moveNumber;
+          if (board.rawText !== undefined && typeof board.rawText === 'string') out.rawText = board.rawText;
+
+          return out;
+        }
+
+        return fallback;
+      }
+
+      function gridToPieces(grid) {
+        const pieces = [];
+        const height = Math.min(8, grid.length || 0);
+        for (let y = 0; y < height; y++) {
+          const row = grid[y];
+          if (!Array.isArray(row)) continue;
+          const width = Math.min(10, row.length || 0);
+          for (let x = 0; x < width; x++) {
+            const cell = row[x];
+            if (!cell) continue;
+            if (typeof cell === 'string') {
+              const symbol = cell.trim();
+              if (!symbol || symbol === '.' || symbol === '·') continue;
+              pieces.push(normalizePiece({
+                id: uid('r'),
+                pieceType: symbolToType(symbol),
+                color: inferColorFromSymbol(symbol),
+                rotation: 0,
+                x,
+                y
+              }));
+              continue;
+            }
+            if (typeof cell === 'object') {
+              pieces.push(normalizePiece({
+                id: cell.id || uid('r'),
+                pieceType: cell.pieceType || cell.type || 'KING',
+                color: cell.color || 'BLUE',
+                rotation: cell.rotation || 0,
+                x,
+                y
+              }));
+            }
+          }
+        }
+        return pieces;
+      }
+
+      function symbolToType(symbol) {
+        const s = String(symbol);
+        if (s === '◈') return 'KING';
+        if (symbols.LASER.includes(s)) return 'LASER';
+        if (symbols.SWITCH.includes(s)) return 'SWITCH';
+        if (symbols.DEFENDER.includes(s)) return 'DEFENDER';
+        if (symbols.DEFLECTOR.includes(s)) return 'DEFLECTOR';
+        return 'KING';
+      }
+
+      function inferColorFromSymbol(symbol) {
+        const s = String(symbol);
+        if (/[A-Z]/.test(s) || '◈⫝⟜ͲÐ⟋⟍⬒◨⬓◧◤◥◢◣'.includes(s)) return 'BLUE';
+        return 'BLUE';
+      }
+
+      async function pollFirstMatch({ silentEmpty = false } = {}) {
+        if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
+
+        try {
+          const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
+          const data = snapshot.val();
+
+          if (!data) {
+            currentHead = null;
+            if (!silentEmpty && initialQueueScanDone && lastQueueState !== 'EMPTY') {
+              add('RQ_Q: Empty (Idle)', 'system-msg');
+              lastQueueState = 'EMPTY';
+            }
+            return false;
+          }
+
+          initialQueueScanDone = true;
+          const firstKey = Object.keys(data)[0];
+          currentHead = { id: firstKey, data: data[firstKey] };
+
+          if (lastQueueState !== firstKey) {
+            add(`[AUTO-SCAN] Head detected: ${data[firstKey].username} (${data[firstKey].color === 0 ? 'RED' : 'BLUE'})`, 'success-msg');
+            lastQueueState = firstKey;
+          }
+
+          return true;
+        } catch (e) {
+          currentHead = null;
+          return false;
+        }
+      }
+
+      async function showMode() {
+        if (localStorage.getItem(KEY_RID)) return;
+        while (processing) await sleep(10);
+        if (modeShown) return;
+        modeShown = true;
+
+        const privateSuffix = ' | [P] Private Host | [J] Private Join';
+
+        if (!currentHead) {
+          add('Queue Empty. [R] Host Red | [B] Host Blue' + privateSuffix, 'system-msg');
+        } else if (currentHead.data.color === 0) {
+          add('RED at head. [A] Join as Blue | [R] Host Red' + privateSuffix, 'system-msg');
+        } else {
+          add('BLUE at head. [A] Join as Red | [B] Host Blue' + privateSuffix, 'system-msg');
+        }
+        add('MODE:', '', true, handleMode);
+      }
+
+      async function startPolling() {
+        if (isPollingStarting) return;
+        isPollingStarting = true;
+
+        if (rqPollInterval) clearInterval(rqPollInterval);
+        await pollFirstMatch({ silentEmpty: true });
+
+        modeShown = false;
+        await showMode();
+
+        if (!localStorage.getItem(KEY_RID) && !lockedMatchId) {
+          rqPollInterval = setInterval(() => pollFirstMatch({ silentEmpty: false }), 6000);
+        }
+        isPollingStarting = false;
+      }
+
+      function stopPolling() {
+        if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; }
+        lastQueueState = 'STOPPED';
+      }
+
+      async function searchForGameDBMatch() {
+        const myName = localStorage.getItem(KEY_USER);
+        if (!myName) return false;
+
+        try {
+          const snap = await dbGame.ref('G').once('value');
+          const games = snap.val();
+          if (!games) return false;
+
+          const upperName = myName.toUpperCase();
+          const matchID = Object.keys(games).find(key => String(key).toUpperCase().includes(upperName));
+
+          if (matchID) {
+            add(`[AUTO-JOIN] Match detected in /G: ${matchID}`, 'success-msg');
+            lockOntoMatch(matchID, games[matchID]);
+            return true;
+          }
+        } catch (e) {
+          console.error(e);
         }
         return false;
       }
 
-      initialQueueScanDone = true;
-      const firstKey = Object.keys(data)[0];
-      currentHead = { id: firstKey, data: data[firstKey] };
-
-      if (lastQueueState !== firstKey) {
-        add(`[AUTO-SCAN] Head detected: ${data[firstKey].username} (${data[firstKey].color === 0 ? 'RED' : 'BLUE'})`, 'success-msg');
-        lastQueueState = firstKey;
+      function stopHostGamePolling() {
+        if (hostGamePollInterval) {
+          clearInterval(hostGamePollInterval);
+          hostGamePollInterval = null;
+        }
       }
 
-      return true;
-    } catch (e) {
-      currentHead = null;
-      return false;
-    }
-  }
-
-  async function showMode() {
-    if (localStorage.getItem(KEY_RID)) return;
-
-    while (processing) {
-      await sleep(10);
-    }
-
-    if (modeShown) return;
-    modeShown = true;
-
-    const privateSuffix = ' | [P] Private Host | [J] Private Join';
-
-    if (!currentHead) {
-      add('Queue Empty. [R] Host Red | [B] Host Blue' + privateSuffix, 'system-msg');
-    } else if (currentHead.data.color === 0) {
-      add('RED at head. [A] Join as Blue | [R] Host Red' + privateSuffix, 'system-msg');
-    } else {
-      add('BLUE at head. [A] Join as Red | [B] Host Blue' + privateSuffix, 'system-msg');
-    }
-    add('MODE:', '', true, handleMode);
-  }
-
-  async function startPolling() {
-    if (isPollingStarting) return;
-    isPollingStarting = true;
-
-    if (rqPollInterval) clearInterval(rqPollInterval);
-
-    await pollFirstMatch({ silentEmpty: true });
-
-    modeShown = false;
-    await showMode();
-
-    if (!localStorage.getItem(KEY_RID) && !lockedMatchId) {
-      rqPollInterval = setInterval(() => pollFirstMatch({ silentEmpty: false }), 6000);
-    }
-    isPollingStarting = false;
-  }
-
-  function stopPolling() { 
-    if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } 
-    lastQueueState = 'STOPPED';
-  }
-
-  async function searchForGameDBMatch() {
-    const myName = localStorage.getItem(KEY_USER);
-    if (!myName) return false;
-
-    try {
-      const snap = await dbGame.ref('G').once('value');
-      const games = snap.val();
-      if (!games) return false;
-
-      const upperName = myName.toUpperCase();
-
-      const matchID = Object.keys(games).find(key =>
-        String(key).toUpperCase().includes(upperName)
-      );
-
-      if (matchID) {
-        add(`[AUTO-JOIN] Match detected in /G: ${matchID}`, 'success-msg');
-        lockOntoMatch(matchID, games[matchID]);
-        return true;
-      }
-    } catch (e) {
-      console.error(e);
-    }
-
-    return false;
-  }
-
-  function startHostMatchWorkerPolling(requestId, contextMsg = "Awaiting Handshake") {
-    stopHostGamePolling();
-
-    const passiveGamePoll = async () => {
-      if (lockedMatchId) return;
-      const found = await searchForGameDBMatch();
-      if (found) {
-        stopHostGamePolling();
-        toggleWaiting(false);
-      }
-    };
-
-    passiveGamePoll();
-    stopHostGamePolling();
-    toggleWaiting(true, contextMsg);
-
-    hostGamePollInterval = setInterval(async () => {
-      if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId.toString()) {
-        stopHostGamePolling();
-        toggleWaiting(false);
-        return;
-      }
-
-      try {
-        const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value');
-        const data = snap.val();
-
-        if (data && data.matchName) {
-          stopHostGamePolling();
-          toggleWaiting(false);
-          lockOntoMatch(data.matchName, { status: 'SYNCING' });
-        } else if (!data) {
-          stopHostGamePolling();
-          toggleWaiting(false);
-          
-          // Check game DB partition for match identity containing username before resetting
-          const foundMatchInG = await searchForGameDBMatch();
-          if (!foundMatchInG) {
-            add('Match request expired or consumed.', 'error-msg');
-            localStorage.removeItem(KEY_RID);
-            modeShown = false;
-            await startPolling();
+      function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
+        if (active) {
+          if (waitAnimationInterval) return;
+          const l = createLine('wait-msg');
+          let dots = 0;
+          waitAnimationInterval = setInterval(() => {
+            dots = (dots + 1) % 4;
+            l.textContent = contextMsg + ".".repeat(dots);
+          }, 500);
+        } else {
+          if (waitAnimationInterval) {
+            clearInterval(waitAnimationInterval);
+            waitAnimationInterval = null;
           }
         }
-      } catch (e) {
-        console.error("RTDB match status polling error:", e);
-      }
-    }, 3000);
-  }
-
-  function stopHostGamePolling() {
-    if (hostGamePollInterval) {
-      clearInterval(hostGamePollInterval);
-      hostGamePollInterval = null;
-    }
-  }
-
-  async function verifyRequestIdByRQD(requestId) {
-    if (!requestId) return false;
-    try {
-      const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value');
-      return snap.exists() ? snap.val() : false;
-    } catch (e) {
-      console.error(e);
-      return false;
-    }
-  }
-
-  async function isUsernameOccupied(username) {
-    if (!username) return true;
-    try {
-      const snap = await dbMatch.ref(`P/${username}`).once('value');
-      return snap.exists();
-    } catch (e) {
-      console.error(e);
-      return true;
-    }
-  }
-
-  async function verifyRecoveryPath(requestId) {
-    if (!requestId) return { state: 'missing', data: null };
-
-    const qd = await verifyRequestIdByRQD(requestId);
-    if (qd) {
-      if (qd.matchName) return { state: 'matched', data: qd };
-      return { state: 'waiting', data: qd };
-    }
-
-    return { state: 'missing', data: null };
-  }
-
-  function stopRecoveryPolling() {
-    if (recoveryPollInterval) {
-      clearInterval(recoveryPollInterval);
-      recoveryPollInterval = null;
-    }
-  }
-
-  function startRecoveryPolling(requestId) {
-    stopRecoveryPolling();
-    toggleWaiting(true, "Recovering Uplink Signal");
-
-    let attempts = 0;
-    const maxAttempts = 18;
-
-    const tick = async () => {
-      if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId) {
-        stopRecoveryPolling();
-        toggleWaiting(false);
-        return;
       }
 
-      const recovered = await verifyRecoveryPath(requestId);
+      function updateLiveBoardFromState(remote) {
+        const payload = parseBoardPayload(remote && remote.board !== undefined ? remote.board : remote);
+        state.turn = String(remote && remote.turn !== undefined ? remote.turn : payload.turn || state.turn || 'BLUE').toUpperCase();
+        state.phase = String(remote && remote.phase !== undefined ? remote.phase : payload.phase || state.phase || '');
+        state.moveNumber = remote && remote.moveNumber !== undefined
+          ? remote.moveNumber
+          : (payload.moveNumber !== '' ? payload.moveNumber : state.moveNumber);
 
-      if (recovered.state === 'matched') {
-        stopRecoveryPolling();
-        toggleWaiting(false);
-        add('Recovering uplink...', 'system-msg');
-        lockOntoMatch(recovered.data.matchName, recovered.data);
-        return;
-      }
-
-      if (recovered.state === 'waiting') {
-        stopRecoveryPolling();
-        toggleWaiting(false);
-        add('Recovering uplink...', 'system-msg');
-        if (recovered.data.isPrivate && recovered.data.inviteCode) {
-          startHostMatchWorkerPolling(requestId, `Awaiting Private Join [CODE: ${recovered.data.inviteCode}]`);
-        } else {
-          startHostMatchWorkerPolling(requestId, "Awaiting Public Match Intercept");
+        if (payload.pieces.length) {
+          state.pieces = payload.pieces;
         }
-        return;
+        state.rawBoard = remote;
+        state.rawBoardText = payload.rawText || (remote && typeof remote.board === 'string' ? remote.board : JSON.stringify(remote || {}));
+        state.live = true;
+        render();
       }
 
-      attempts += 1;
-      if (attempts === 1) add('Recovering uplink...', 'system-msg');
-
-      if (attempts >= maxAttempts) {
-        stopRecoveryPolling();
+      function lockOntoMatch(id, entry) {
+        lockedMatchId = id;
+        localStorage.setItem(KEY_RID, id);
+        stopPolling();
         toggleWaiting(false);
+
         stopHostGamePolling();
 
-        const foundMatchInG = await searchForGameDBMatch();
-        if (!foundMatchInG) {
-          localStorage.removeItem(KEY_RID);
-          modeShown = false;
-          await startPolling();
-        }
-      }
-    };
-
-    tick();
-    recoveryPollInterval = setInterval(tick, 4000);
-  }
-
-  async function handleMode(val) {
-    if (privateState) {
-      return handlePrivateFlow(val);
-    }
-
-    if (val === 'A') {
-      if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); modeShown = false; return showMode(); }
-      toggleWaiting(true, `Intercepting ${currentHead.id}`);
-      return registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
-    }
-    if (val === 'R') return registerHost(0, false); 
-    if (val === 'B') return registerHost(1, false);
-
-    if (val === 'P') {
-      privateState = { step: 'TARGET', target: null };
-      return add('TARGET USER (OPTIONAL - ENTER TO SKIP):', '', true, handlePrivateFlow);
-    }
-
-    if (val === 'J') {
-      privateState = { step: 'CODE' };
-      return add('INVITE CODE:', '', true, handlePrivateFlow);
-    }
-
-    add('Unknown Command.', 'error-msg');
-    modeShown = false;
-    return showMode();
-  }
-
-  async function handlePrivateFlow(v) {
-    if (!privateState) {
-      modeShown = false;
-      return showMode();
-    }
-
-    if (privateState.step === 'TARGET') {
-      const raw = (v || '').trim();
-
-      if (!raw) {
-        privateState.target = null;
-        privateState.step = 'COLOR';
-        return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
-      }
-
-      const target = raw.toUpperCase();
-
-      if (target === localStorage.getItem(KEY_USER)) {
-        add('CANNOT TARGET SELF.', 'error-msg');
-        privateState = null;
         modeShown = false;
-        return showMode();
-      }
+        add(`LINK ESTABLISHED: ${id}`, 'success-msg');
 
-      const exists = await isUsernameOccupied(target);
-      if (!exists) {
-        add('TARGET USER NOT FOUND.', 'error-msg');
-        privateState = null;
-        modeShown = false;
-        return showMode();
-      }
-
-      privateState.target = target;
-      privateState.step = 'COLOR';
-      return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
-    }
-
-    if (privateState.step === 'COLOR') {
-      const input = (v || '').trim().toUpperCase();
-
-      const colorChar = input.includes('R') ? 'R' : input.includes('B') ? 'B' : null;
-      const color = colorChar === 'R' ? 0 : colorChar === 'B' ? 1 : null;
-
-      if (color === null) {
-        add('Unknown Command.', 'error-msg');
-        privateState = null;
-        modeShown = false;
-        return showMode();
-      }
-
-      const target = privateState.target;
-      privateState = null;
-
-      return createPrivateRequest(color, target);
-    }
-
-    if (privateState.step === 'CODE') {
-      const code = (v || '').trim().toUpperCase();
-      if (!code) {
-        add('INVALID CODE.', 'error-msg');
-        privateState = null;
-        modeShown = false;
-        return showMode();
-      }
-
-      privateState = null;
-      return joinPrivate(code);
-    }
-
-    privateState = null;
-    modeShown = false;
-    return showMode();
-  }
-
-  async function joinPrivate(inviteCode) {
-    const username = localStorage.getItem(KEY_USER);
-    const password = localStorage.getItem(KEY_PASS);
-
-    try {
-      const res = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username,
-          password,
-          isPrivate: true,
-          privateMode: 'JOIN',
-          inviteCode
-        })
-      });
-
-      const data = await res.json();
-      if (data.ok) {
-        const idToStore = data.matchName || data.matchId || data.requestId || data.timestamp;
-        if (idToStore) localStorage.setItem(KEY_RID, idToStore);
-        stopPolling();
-        add('Private Link Success!', 'success-msg');
-
-        if (data.matchName) {
-          lockOntoMatch(data.matchName, { status: 'SYNCING' });
-        } else if (data.requestId) {
-          startHostMatchWorkerPolling(data.requestId, "Awaiting Private Handshake");
-        }
-        return;
-      }
-
-      add(`Private Join Denied: ${data.error}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    } catch (e) {
-      add(`Worker Error: ${e.message}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    }
-  }
-
-  async function createPrivateRequest(color, privateTarget = null) {
-    const username = localStorage.getItem(KEY_USER);
-    const password = localStorage.getItem(KEY_PASS);
-
-    const privateRequestPayload = {
-      mode: 'PRIVATE_MATCH_REQUEST',
-      body: {
-        requester: username,
-        secret: password,
-        color,
-        target: privateTarget
-      }
-    };
-
-    try {
-      const res = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(privateRequestPayload)
-      });
-
-      const data = await res.json();
-      if (data.ok) {
-        const privateRequestId = data.requestId;
-        if (privateRequestId) localStorage.setItem(KEY_RID, privateRequestId);
-        
-        stopPolling();
-        
-        if (data.inviteCode) {
-          try { await navigator.clipboard.writeText(data.inviteCode); } catch(cErr){}
-          createLineWithCopy(`Private Request Generated! CODE: ${data.inviteCode} `, data.inviteCode, 'success-msg');
-        } else {
-          add('Private Request Generated!', 'success-msg');
-        }
-        
-        startHostMatchWorkerPolling(privateRequestId, `Awaiting Private Join [CODE: ${data.inviteCode}]`);
-        return;
-      }
-
-      add(`Private Request Denied: ${data.error}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    } catch (e) {
-      add(`Worker Error: ${e.message}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    }
-  }
-
-  async function registerHost(color, isIntercept = false, extra = {}) {
-    const username = localStorage.getItem(KEY_USER);
-    const password = localStorage.getItem(KEY_PASS);
-    try {
-      const res = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, color, isIntercept, ...extra })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        const idToStore = data.matchName || data.requestId || data.timestamp;
-        if (idToStore) localStorage.setItem(KEY_RID, idToStore);
-        stopPolling();
-        add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
-
-        if (data.matchName) {
-          lockOntoMatch(data.matchName, { status: 'SYNCING' });
-        } else {
-          const requestIdToPoll = data.requestId || data.timestamp;
-          if (requestIdToPoll) {
-            startHostMatchWorkerPolling(requestIdToPoll, isIntercept ? "Awaiting Intercept Handshake" : "Awaiting Public Match Intercept");
-          }
-        }
-
-        return;
-      } else {
-        add(`Uplink Denied: ${data.error}`, 'error-msg');
-        modeShown = false;
-        return showMode();
-      }
-    } catch (e) {
-      add(`Worker Error: ${e.message}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    }
-  }
-
-  function lockOntoMatch(id, entry) {
-    lockedMatchId = id;
-    localStorage.setItem(KEY_RID, id); 
-    stopPolling(); 
-    toggleWaiting(false);
-    
-    stopHostGamePolling();
-
-    modeShown = false;
-    add(`LINK ESTABLISHED: ${id}`, 'success-msg');
-    
-    const gameRef = dbGame.ref(`G/${id}`);
-    gameRef.on('value', snap => {
-        const state = snap.val();
-        if (state) {
-            add(`[SYNC] Turn: ${state.turn} | Board: ${state.board}`, 'system-msg');
-        } else {
+        const gameRef = dbGame.ref(`G/${id}`);
+        gameRef.on('value', snap => {
+          const remote = snap.val();
+          if (remote) {
+            updateLiveBoardFromState(remote);
+            add(`[SYNC] Turn: ${remote.turn ?? state.turn} | Board updated`, 'system-msg');
+          } else {
             add('MATCH TERMINATED.', 'error-msg');
             localStorage.removeItem(KEY_RID);
             lockedMatchId = null;
             gameRef.off();
+            state.live = false;
             modeShown = false;
             startPolling();
+          }
+        });
+      }
+
+      function startHostMatchWorkerPolling(requestId, contextMsg = "Awaiting Handshake") {
+        stopHostGamePolling();
+
+        const passiveGamePoll = async () => {
+          if (lockedMatchId) return;
+          const found = await searchForGameDBMatch();
+          if (found) {
+            stopHostGamePolling();
+            toggleWaiting(false);
+          }
+        };
+
+        passiveGamePoll();
+        stopHostGamePolling();
+        toggleWaiting(true, contextMsg);
+
+        hostGamePollInterval = setInterval(async () => {
+          if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId.toString()) {
+            stopHostGamePolling();
+            toggleWaiting(false);
+            return;
+          }
+
+          try {
+            const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value');
+            const data = snap.val();
+
+            if (data && data.matchName) {
+              stopHostGamePolling();
+              toggleWaiting(false);
+              lockOntoMatch(data.matchName, { status: 'SYNCING' });
+            } else if (!data) {
+              stopHostGamePolling();
+              toggleWaiting(false);
+
+              const foundMatchInG = await searchForGameDBMatch();
+              if (!foundMatchInG) {
+                add('Match request expired or consumed.', 'error-msg');
+                localStorage.removeItem(KEY_RID);
+                modeShown = false;
+                await startPolling();
+              }
+            }
+          } catch (e) {
+            console.error("RTDB match status polling error:", e);
+          }
+        }, 3000);
+      }
+
+      async function verifyRequestIdByRQD(requestId) {
+        if (!requestId) return false;
+        try {
+          const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value');
+          return snap.exists() ? snap.val() : false;
+        } catch (e) {
+          console.error(e);
+          return false;
         }
-    });
-  }
-
-  function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
-    if (active) {
-      if (waitAnimationInterval) return;
-      const l = createLine('wait-msg');
-      let dots = 0;
-      waitAnimationInterval = setInterval(() => { 
-        dots = (dots + 1) % 4; 
-        l.textContent = contextMsg + ".".repeat(dots); 
-      }, 500);
-    } else { 
-      if (waitAnimationInterval) { 
-        clearInterval(waitAnimationInterval); 
-        waitAnimationInterval = null; 
-      } 
-    }
-  }
-
-  async function handleAuth(v) {
-    if (!localStorage.getItem(KEY_USER)) {
-      if (!v) return add('User ID:', '', true, handleAuth);
-
-      const candidate = v.trim().toUpperCase();
-      if (!candidate) {
-        add('INVALID USER ID.', 'error-msg');
-        return add('User ID:', '', true, handleAuth);
       }
 
-      const occupied = await isUsernameOccupied(candidate);
-      if (occupied) {
-        add('USER ID ALREADY OCCUPIED.', 'error-msg');
-        return add('User ID:', '', true, handleAuth);
+      async function isUsernameOccupied(username) {
+        if (!username) return true;
+        try {
+          const snap = await dbMatch.ref(`P/${username}`).once('value');
+          return snap.exists();
+        } catch (e) {
+          console.error(e);
+          return true;
+        }
       }
 
-      localStorage.setItem(KEY_USER, candidate);
-      return boot();
-    }
-    if (!localStorage.getItem(KEY_PASS)) {
-      if (!v) return add('Access Key:', '', true, handleAuth);
-      localStorage.setItem(KEY_PASS, v);
-      return boot();
-    }
-  }
+      async function verifyRecoveryPath(requestId) {
+        if (!requestId) return { state: 'missing', data: null };
+        const qd = await verifyRequestIdByRQD(requestId);
+        if (qd) {
+          if (qd.matchName) return { state: 'matched', data: qd };
+          return { state: 'waiting', data: qd };
+        }
+        return { state: 'missing', data: null };
+      }
 
-  async function boot() {
-    const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
-    if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
-    
-    add('System Online.', 'success-msg');
-    
-    if (rid && rid.toString().includes('_')) {
-        const snap = await dbGame.ref(`G/${rid}`).once('value');
-        if (snap.exists()) return lockOntoMatch(rid, snap.val());
+      function stopRecoveryPolling() {
+        if (recoveryPollInterval) {
+          clearInterval(recoveryPollInterval);
+          recoveryPollInterval = null;
+        }
+      }
 
-        localStorage.removeItem(KEY_RID);
-    }
+      function startRecoveryPolling(requestId) {
+        stopRecoveryPolling();
+        toggleWaiting(true, "Recovering Uplink Signal");
 
-    if (rid && !rid.toString().includes('_')) {
-        const rqdEntry = await verifyRequestIdByRQD(rid);
-        if (rqdEntry) {
+        let attempts = 0;
+        const maxAttempts = 18;
+
+        const tick = async () => {
+          if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId) {
+            stopRecoveryPolling();
+            toggleWaiting(false);
+            return;
+          }
+
+          const recovered = await verifyRecoveryPath(requestId);
+
+          if (recovered.state === 'matched') {
+            stopRecoveryPolling();
+            toggleWaiting(false);
             add('Recovering uplink...', 'system-msg');
-            
-            if (rqdEntry.isPrivate && rqdEntry.inviteCode) {
-                createLineWithCopy(`Re-asserted Private Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg');
-                startHostMatchWorkerPolling(rid, `Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`);
+            lockOntoMatch(recovered.data.matchName, recovered.data);
+            return;
+          }
+
+          if (recovered.state === 'waiting') {
+            stopRecoveryPolling();
+            toggleWaiting(false);
+            add('Recovering uplink...', 'system-msg');
+            if (recovered.data.isPrivate && recovered.data.inviteCode) {
+              startHostMatchWorkerPolling(requestId, `Awaiting Private Join [CODE: ${recovered.data.inviteCode}]`);
             } else {
-                startHostMatchWorkerPolling(rid, "Awaiting Public Match Intercept");
+              startHostMatchWorkerPolling(requestId, "Awaiting Public Match Intercept");
             }
             return;
+          }
+
+          attempts += 1;
+          if (attempts === 1) add('Recovering uplink...', 'system-msg');
+
+          if (attempts >= maxAttempts) {
+            stopRecoveryPolling();
+            toggleWaiting(false);
+            stopHostGamePolling();
+
+            const foundMatchInG = await searchForGameDBMatch();
+            if (!foundMatchInG) {
+              localStorage.removeItem(KEY_RID);
+              modeShown = false;
+              await startPolling();
+            }
+          }
+        };
+
+        tick();
+        recoveryPollInterval = setInterval(tick, 4000);
+      }
+
+      async function joinPrivate(inviteCode) {
+        const username = localStorage.getItem(KEY_USER);
+        const password = localStorage.getItem(KEY_PASS);
+
+        try {
+          const res = await fetch(WORKER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username,
+              password,
+              isPrivate: true,
+              privateMode: 'JOIN',
+              inviteCode
+            })
+          });
+
+          const data = await res.json();
+          if (data.ok) {
+            const idToStore = data.matchName || data.matchId || data.requestId || data.timestamp;
+            if (idToStore) localStorage.setItem(KEY_RID, idToStore);
+            stopPolling();
+            add('Private Link Success!', 'success-msg');
+
+            if (data.matchName) {
+              lockOntoMatch(data.matchName, { status: 'SYNCING' });
+            } else if (data.requestId) {
+              startHostMatchWorkerPolling(data.requestId, "Awaiting Private Handshake");
+            }
+            return;
+          }
+
+          add(`Private Join Denied: ${data.error}`, 'error-msg');
+          modeShown = false;
+          return showMode();
+        } catch (e) {
+          add(`Worker Error: ${e.message}`, 'error-msg');
+          modeShown = false;
+          return showMode();
         }
-        localStorage.removeItem(KEY_RID);
-    }
+      }
 
-    const foundInGameDB = await searchForGameDBMatch();
-    if (!foundInGameDB) {
-      await startPolling();
-    }
-  }
+      async function createPrivateRequest(color, privateTarget = null) {
+        const username = localStorage.getItem(KEY_USER);
+        const password = localStorage.getItem(KEY_PASS);
 
-  window.addEventListener('DOMContentLoaded', async () => {
-    await boot();
-  });
-})();
-</script>
+        const privateRequestPayload = {
+          mode: 'PRIVATE_MATCH_REQUEST',
+          body: {
+            requester: username,
+            secret: password,
+            color,
+            target: privateTarget
+          }
+        };
+
+        try {
+          const res = await fetch(WORKER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(privateRequestPayload)
+          });
+
+          const data = await res.json();
+          if (data.ok) {
+            const privateRequestId = data.requestId;
+            if (privateRequestId) localStorage.setItem(KEY_RID, privateRequestId);
+
+            stopPolling();
+
+            if (data.inviteCode) {
+              try { await navigator.clipboard.writeText(data.inviteCode); } catch (cErr) {}
+              createLineWithCopy(`Private Request Generated! CODE: ${data.inviteCode} `, data.inviteCode, 'success-msg');
+            } else {
+              add('Private Request Generated!', 'success-msg');
+            }
+
+            startHostMatchWorkerPolling(privateRequestId, `Awaiting Private Join [CODE: ${data.inviteCode}]`);
+            return;
+          }
+
+          add(`Private Request Denied: ${data.error}`, 'error-msg');
+          modeShown = false;
+          return showMode();
+        } catch (e) {
+          add(`Worker Error: ${e.message}`, 'error-msg');
+          modeShown = false;
+          return showMode();
+        }
+      }
+
+      async function registerHost(color, isIntercept = false, extra = {}) {
+        const username = localStorage.getItem(KEY_USER);
+        const password = localStorage.getItem(KEY_PASS);
+        try {
+          const res = await fetch(WORKER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, color, isIntercept, ...extra })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            const idToStore = data.matchName || data.requestId || data.timestamp;
+            if (idToStore) localStorage.setItem(KEY_RID, idToStore);
+            stopPolling();
+            add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
+
+            if (data.matchName) {
+              lockOntoMatch(data.matchName, { status: 'SYNCING' });
+            } else {
+              const requestIdToPoll = data.requestId || data.timestamp;
+              if (requestIdToPoll) {
+                startHostMatchWorkerPolling(requestIdToPoll, isIntercept ? "Awaiting Intercept Handshake" : "Awaiting Public Match Intercept");
+              }
+            }
+            return;
+          } else {
+            add(`Uplink Denied: ${data.error}`, 'error-msg');
+            modeShown = false;
+            return showMode();
+          }
+        } catch (e) {
+          add(`Worker Error: ${e.message}`, 'error-msg');
+          modeShown = false;
+          return showMode();
+        }
+      }
+
+      async function handleMode(val) {
+        if (privateState) return handlePrivateFlow(val);
+
+        if (val === 'A') {
+          if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); modeShown = false; return showMode(); }
+          toggleWaiting(true, `Intercepting ${currentHead.id}`);
+          return registerHost(currentHead.data.color === 0 ? 1 : 0, true);
+        }
+        if (val === 'R') return registerHost(0, false);
+        if (val === 'B') return registerHost(1, false);
+
+        if (val === 'P') {
+          privateState = { step: 'TARGET', target: null };
+          return add('TARGET USER (OPTIONAL - ENTER TO SKIP):', '', true, handlePrivateFlow);
+        }
+
+        if (val === 'J') {
+          privateState = { step: 'CODE' };
+          return add('INVITE CODE:', '', true, handlePrivateFlow);
+        }
+
+        add('Unknown Command.', 'error-msg');
+        modeShown = false;
+        return showMode();
+      }
+
+      async function handlePrivateFlow(v) {
+        if (!privateState) {
+          modeShown = false;
+          return showMode();
+        }
+
+        if (privateState.step === 'TARGET') {
+          const raw = (v || '').trim();
+          if (!raw) {
+            privateState.target = null;
+            privateState.step = 'COLOR';
+            return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
+          }
+
+          const target = raw.toUpperCase();
+          if (target === localStorage.getItem(KEY_USER)) {
+            add('CANNOT TARGET SELF.', 'error-msg');
+            privateState = null;
+            modeShown = false;
+            return showMode();
+          }
+
+          const exists = await isUsernameOccupied(target);
+          if (!exists) {
+            add('TARGET USER NOT FOUND.', 'error-msg');
+            privateState = null;
+            modeShown = false;
+            return showMode();
+          }
+
+          privateState.target = target;
+          privateState.step = 'COLOR';
+          return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
+        }
+
+        if (privateState.step === 'COLOR') {
+          const input = (v || '').trim().toUpperCase();
+          const colorChar = input.includes('R') ? 'R' : input.includes('B') ? 'B' : null;
+          const color = colorChar === 'R' ? 0 : colorChar === 'B' ? 1 : null;
+
+          if (color === null) {
+            add('Unknown Command.', 'error-msg');
+            privateState = null;
+            modeShown = false;
+            return showMode();
+          }
+
+          const target = privateState.target;
+          privateState = null;
+          return createPrivateRequest(color, target);
+        }
+
+        if (privateState.step === 'CODE') {
+          const code = (v || '').trim().toUpperCase();
+          if (!code) {
+            add('INVALID CODE.', 'error-msg');
+            privateState = null;
+            modeShown = false;
+            return showMode();
+          }
+
+          privateState = null;
+          return joinPrivate(code);
+        }
+
+        privateState = null;
+        modeShown = false;
+        return showMode();
+      }
+
+      async function handleAuth(v) {
+        if (!localStorage.getItem(KEY_USER)) {
+          if (!v) return add('User ID:', '', true, handleAuth);
+
+          const candidate = v.trim().toUpperCase();
+          if (!candidate) {
+            add('INVALID USER ID.', 'error-msg');
+            return add('User ID:', '', true, handleAuth);
+          }
+
+          const occupied = await isUsernameOccupied(candidate);
+          if (occupied) {
+            add('USER ID ALREADY OCCUPIED.', 'error-msg');
+            return add('User ID:', '', true, handleAuth);
+          }
+
+          localStorage.setItem(KEY_USER, candidate);
+          return boot();
+        }
+
+        if (!localStorage.getItem(KEY_PASS)) {
+          if (!v) return add('Access Key:', '', true, handleAuth);
+          localStorage.setItem(KEY_PASS, v);
+          return boot();
+        }
+      }
+
+      async function boot() {
+        const u = localStorage.getItem(KEY_USER);
+        const p = localStorage.getItem(KEY_PASS);
+        const rid = localStorage.getItem(KEY_RID);
+
+        if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
+
+        add('System Online.', 'success-msg');
+
+        if (rid && rid.toString().includes('_')) {
+          const snap = await dbGame.ref(`G/${rid}`).once('value');
+          if (snap.exists()) return lockOntoMatch(rid, snap.val());
+          localStorage.removeItem(KEY_RID);
+        }
+
+        if (rid && !rid.toString().includes('_')) {
+          const rqdEntry = await verifyRequestIdByRQD(rid);
+          if (rqdEntry) {
+            add('Recovering uplink...', 'system-msg');
+
+            if (rqdEntry.isPrivate && rqdEntry.inviteCode) {
+              createLineWithCopy(`Re-asserted Private Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg');
+              startHostMatchWorkerPolling(rid, `Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`);
+            } else {
+              startHostMatchWorkerPolling(rid, "Awaiting Public Match Intercept");
+            }
+            return;
+          }
+          localStorage.removeItem(KEY_RID);
+        }
+
+        const foundInGameDB = await searchForGameDBMatch();
+        if (!foundInGameDB) {
+          await startPolling();
+        }
+      }
+
+      function handleBoardKeydown(e) {
+        if (document.activeElement !== boardText) return;
+        const key = e.key.toLowerCase();
+
+        if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab', ' ', 'enter', 'escape', 'delete', 'backspace', '1', '2', '3', '4', '5', 'c', 'o', 'r'].includes(key)) {
+          e.preventDefault();
+        }
+
+        if (e.ctrlKey && key === 'b') {
+          e.preventDefault();
+          boardText.focus();
+          return;
+        }
+
+        if (key === 'arrowup') return moveCursor(0, 1);
+        if (key === 'arrowdown') return moveCursor(0, -1);
+        if (key === 'arrowleft') return moveCursor(-1, 0);
+        if (key === 'arrowright') return moveCursor(1, 0);
+
+        if (key === 'enter') {
+          const piece = getPieceAt(cursor.x, cursor.y);
+          if (piece) return selectAtCursor();
+          return placePaletteAtCursor();
+        }
+
+        if (key === ' ') {
+          const piece = getPieceAt(cursor.x, cursor.y);
+          if (piece) return selectAtCursor();
+          setStatus('No piece to select.', 'error');
+          return;
+        }
+
+        if (key === 'escape') return deselect();
+        if (key === 'delete' || key === 'backspace') return removeSelected();
+
+        if (key === 'r') {
+          if (selectedId) return rotateSelected();
+          palette.rotation = (palette.rotation + 1) % 4;
+          setStatus(`Palette rotation: ${palette.rotation}.`, 'good');
+          render();
+          return;
+        }
+
+        if (key === 'c') {
+          palette.color = palette.color === 'BLUE' ? 'RED' : 'BLUE';
+          setStatus(`Palette color: ${palette.color}.`, 'good');
+          render();
+          return;
+        }
+
+        if (key === 'o') {
+          palette.rotation = (palette.rotation + 1) % 4;
+          setStatus(`Palette rotation: ${palette.rotation}.`, 'good');
+          render();
+          return;
+        }
+
+        if (key >= '1' && key <= '5') {
+          palette.pieceType = PIECE_TYPES[Number(key) - 1];
+          setStatus(`Palette type: ${palette.pieceType}.`, 'good');
+          render();
+          return;
+        }
+      }
+
+      function handleBoardKeydownForWASD(e) {
+        if (document.activeElement !== boardText) return;
+        const k = e.key.toLowerCase();
+        if (!['w', 'a', 's', 'd'].includes(k)) return;
+        e.preventDefault();
+        pressedKeys.add(k);
+      }
+
+      function handleBoardKeyup(e) {
+        if (document.activeElement !== boardText) return;
+        const k = e.key.toLowerCase();
+        if (!['w', 'a', 's', 'd'].includes(k)) return;
+        e.preventDefault();
+        const before = new Set(pressedKeys);
+        before.add(k);
+        pressedKeys.delete(k);
+        if (!selectedId) return;
+        const dx = (before.has('d') ? 1 : 0) + (before.has('a') ? -1 : 0);
+        const dy = (before.has('w') ? 1 : 0) + (before.has('s') ? -1 : 0);
+        if (dx !== 0 || dy !== 0) moveSelected(dx, dy);
+      }
+
+      document.addEventListener('keydown', e => {
+        if (e.ctrlKey && e.key.toLowerCase() === 'b') {
+          e.preventDefault();
+          boardText.focus();
+          return;
+        }
+      }, true);
+
+      boardText.addEventListener('keydown', handleBoardKeydownForWASD);
+      boardText.addEventListener('keydown', handleBoardKeydown);
+      boardText.addEventListener('keyup', handleBoardKeyup);
+
+      turnSelect.addEventListener('change', () => { state.turn = turnSelect.value; render(); });
+      phaseInput.addEventListener('input', () => { state.phase = phaseInput.value.trim(); render(); });
+      moveNumberInput.addEventListener('input', () => {
+        const v = moveNumberInput.value.trim();
+        state.moveNumber = v === '' ? '' : Number(v);
+        render();
+      });
+
+      updateButtons();
+      resetDemo();
+      boardText.focus();
+      setStatus('Keyboard editor and client ready.', 'good');
+
+      window.addEventListener('load', () => {
+        render();
+        boardText.focus();
+      });
+
+      window.addEventListener('DOMContentLoaded', async () => {
+        await boot();
+      });
+
+      const exportTick = () => {
+        syncJson();
+        requestAnimationFrame(exportTick);
+      };
+      requestAnimationFrame(exportTick);
+
+      window.__LASER_CHESS__ = {
+        applyJson,
+        resetDemo,
+        render,
+        state
+      };
+    })();
+  </script>
 </body>
 </html>
