@@ -315,8 +315,8 @@
 
         let text = '';
         lineStarts.rows = {};
-        text += `  0 1 2 3 4 5 6 7 8 9
-`;
+        text += '  0 1 2 3 4 5 6 7 8 9
+';
         for (let y = 7; y >= 0; y--) {
           lineStarts.rows[y] = text.length;
           text += `${y} `;
@@ -325,8 +325,8 @@
             text += p ? pieceChar(p) : '·';
             if (x < 9) text += ' ';
           }
-          text += `
-`;
+          text += '
+';
         }
         text += `
 CURSOR: ${cursor.x},${cursor.y}
@@ -340,7 +340,7 @@ CURSOR: ${cursor.x},${cursor.y}
         return text;
       }
 
-      function updateSelectionRange() {"}]}{
+      function updateSelectionRange() {
         const idx = (lineStarts.rows[cursor.y] ?? 0) + 2 + (cursor.x * 2);
         const max = Math.max(0, (boardText.value || '').length - 1);
         const safe = clamp(idx, 0, max);
@@ -621,13 +621,11 @@ CURSOR: ${cursor.x},${cursor.y}
         if (dx !== 0 || dy !== 0) moveSelected(dx, dy);
       }
 
-      // Buttons use click for the temporary build controls, but keyboard shortcuts are the main path.
       document.addEventListener('keydown', e => {
         if (e.ctrlKey && e.key.toLowerCase() === 'b') {
           e.preventDefault();
           boardText.focus();
           updateSelectionRange();
-          return;
         }
       }, true);
 
@@ -689,21 +687,12 @@ CURSOR: ${cursor.x},${cursor.y}
         }
       }
 
-      // Initial boot.
       mountTempButtons();
       resetDemo();
       boardText.focus();
       updateSelectionRange();
       setStatus('Keyboard editor ready.', 'good');
 
-      // Keep a live export area only.
-      const exportTick = () => {
-        syncJson();
-        requestAnimationFrame(exportTick);
-      };
-      requestAnimationFrame(exportTick);
-
-      // Make sure the board always stays visible.
       window.addEventListener('load', () => {
         render();
         boardText.focus();
