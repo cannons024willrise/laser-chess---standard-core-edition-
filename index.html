@@ -332,6 +332,7 @@
     stopHostGamePolling();
     toggleWaiting(true, contextMsg);
 
+    // FIX: Hitting RTDB directly via simple read instead of polling the Cloudflare Worker
     hostGamePollInterval = setInterval(async () => {
       if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId.toString()) {
         stopHostGamePolling();
@@ -340,18 +341,14 @@
       }
 
       try {
-        const res = await fetch(WORKER_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'POLL_MATCH_STATUS', requestId: requestId.toString() })
-        });
-        const data = await res.json();
+        const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value');
+        const data = snap.val();
 
-        if (data.status === 'MATCHED' && data.matchName) {
+        if (data && data.matchName) {
           stopHostGamePolling();
           toggleWaiting(false);
           lockOntoMatch(data.matchName, { status: 'SYNCING' });
-        } else if (data.status === 'NOT_FOUND') {
+        } else if (!data) {
           stopHostGamePolling();
           toggleWaiting(false);
           add('Match request expired or consumed.', 'error-msg');
@@ -359,8 +356,10 @@
           modeShown = false;
           await startPolling();
         }
+        // If data exists but no matchName, request is still active/waiting in queue. 
+        // Interval simply ticks and checks again.
       } catch (e) {
-        console.error("Worker match status polling error:", e);
+        console.error("RTDB match status polling error:", e);
       }
     }, 3000);
   }
