@@ -292,20 +292,43 @@
   async function searchForGameDBMatch() {
     const myName = localStorage.getItem(KEY_USER);
     if (!myName) return false;
+
     try {
       const snap = await dbGame.ref('G').once('value');
       const games = snap.val();
       if (!games) return false;
-      const matchID = Object.keys(games).find(key => key.includes(myName));
+
+      const upperName = myName.toUpperCase();
+
+      const matchID = Object.keys(games).find(key =>
+        String(key).toUpperCase().includes(upperName)
+      );
+
       if (matchID) {
+        add(`[AUTO-JOIN] Match detected in /G: ${matchID}`, 'success-msg');
         lockOntoMatch(matchID, games[matchID]);
         return true;
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
+
     return false;
   }
 
   function startHostMatchWorkerPolling(requestId, contextMsg = "Awaiting Handshake") {
+    stopHostGamePolling();
+
+    const passiveGamePoll = async () => {
+      if (lockedMatchId) return;
+      const found = await searchForGameDBMatch();
+      if (found) {
+        stopHostGamePolling();
+        toggleWaiting(false);
+      }
+    };
+
+    passiveGamePoll();
     stopHostGamePolling();
     toggleWaiting(true, contextMsg);
 
@@ -785,4 +808,5 @@
   });
 })();
 </script>
-<
+</body>
+</html>
