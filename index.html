@@ -466,6 +466,12 @@
       }
     } else {
       if (pieceAtCursor) {
+        // Color Check Validation
+        if (src.turn && pieceAtCursor.color !== src.turn) {
+            add(`Action rejected: Piece belongs to ${pieceAtCursor.color}, turn is ${src.turn}.`, "error-msg");
+            return;
+        }
+        
         selectedPiece = { x: cursorX, y: cursorY };
         add(`Target selected at (${cursorX}, ${cursorY})`, "success-msg");
       } else {
