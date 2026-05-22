@@ -6,7 +6,18 @@
     <title>LASER CHESS - STANDARD VARIANT- CORE EDITION (BETA η-)</title>
     <style>
         @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
-        :root { --bg0: #0a0a0a; --bg1: #1a1a1a; --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; --muted: #999999; --waiting: #00ff00; }
+        :root { 
+            --bg0: #0a0a0a; 
+            --bg1: #1a1a1a; 
+            --line: #2a2a2a;
+            --text: #b0b0b0; 
+            --bright: #ffffff; 
+            --error: #ff5555; 
+            --muted: #999999; 
+            --waiting: #00ff00; 
+            --blue: #00d4ff;
+            --red: #ff3333;
+        }
         body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
         #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
         .history-line { white-space: pre-wrap; word-break: break-all; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -51,23 +62,37 @@
         .copy-btn:active {
             transform: scale(0.95);
         }
-    
-#board-render {
-  white-space: pre;
-  font-family: 'Unifont', monospace;
-  line-height: 1;
-  letter-spacing: 0;
-  color: var(--bright);
-  margin-top: 12px;
-  padding: 12px;
-  border: 1px solid #2a2a2a;
-  background: rgba(255,255,255,0.02);
-  overflow-x: auto;
-}
-.blue-piece { color: #00d4ff; }
-.red-piece { color: #ff3333; }
 
-</style>
+        /* MATRIX TERMINAL RENDERER STYLES */
+        .matrix-container {
+            display: flex;
+            flex-direction: column;
+            margin: 6px 0 16px 0;
+            font-family: 'Unifont', monospace;
+            user-select: none;
+        }
+        .matrix-row {
+            display: flex;
+            height: 24px;
+            align-items: center;
+        }
+        .matrix-cell {
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            box-sizing: border-box;
+            font-weight: bold;
+        }
+        .matrix-lbl {
+            color: var(--muted);
+            font-weight: normal;
+        }
+        .p-blue { color: var(--blue); }
+        .p-red { color: var(--red); }
+    </style>
 </head>
 <body>
 <div id="terminal-log"></div>
@@ -113,8 +138,7 @@
   let isPollingStarting = false;
   let hostGamePollInterval = null; 
 
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
-
+  // Renderer asset definitions
   const symbols = {
     KING: '◈',
     LASER: ['⫝', '⟜', 'Ͳ', 'Ð'],
@@ -123,71 +147,7 @@
     DEFLECTOR: ['◤', '◥', '◢', '◣']
   };
 
-  let boardRenderer = null;
-
-  function pieceChar(piece) {
-    const type = String(piece.pieceType || '').toUpperCase();
-    const rot = Number(piece.rotation || 0) % 4;
-
-    if (type === 'KING') return symbols.KING;
-    if (type === 'LASER') return symbols.LASER[rot];
-    if (type === 'SWITCH') return (rot === 1 || rot === 3) ? symbols.SWITCH[0] : symbols.SWITCH[1];
-    if (type === 'DEFENDER') return symbols.DEFENDER[rot];
-    if (type === 'DEFLECTOR') return symbols.DEFLECTOR[rot];
-
-    return '?';
-  }
-
-  function ensureRenderer() {
-    if (boardRenderer) return boardRenderer;
-
-    boardRenderer = document.createElement('pre');
-    boardRenderer.id = 'board-render';
-
-    if (currentPromptWrap) {
-      logContainer.insertBefore(boardRenderer, currentPromptWrap);
-    } else {
-      logContainer.appendChild(boardRenderer);
-    }
-
-    return boardRenderer;
-  }
-
-  function renderBoard(state) {
-    const view = ensureRenderer();
-
-    if (!state || !Array.isArray(state.pieces)) {
-      view.textContent = '[NO BOARD DATA]';
-      return;
-    }
-
-    const grid = Array.from({ length: 8 }, () => Array(10).fill('·'));
-
-    for (const p of state.pieces) {
-      if (p.x >= 0 && p.x < 10 && p.y >= 0 && p.y < 8) {
-        grid[p.y][p.x] = pieceChar(p);
-      }
-    }
-
-    let out = '';
-    out += '    0 1 2 3 4 5 6 7 8 9\n';
-
-    for (let y = 7; y >= 0; y--) {
-      out += y + ' | ';
-      for (let x = 0; x < 10; x++) {
-        out += grid[y][x] + ' ';
-      }
-      out += '\n';
-    }
-
-    out += '\n';
-    out += 'TURN  : ' + (state.turn || 'UNKNOWN') + '\n';
-    out += 'PHASE : ' + (state.phase || 'UNKNOWN') + '\n';
-    out += 'MOVE  : ' + (state.moveNumber ?? '?') + '\n';
-
-    view.textContent = out;
-  }
-
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   function createLine(cls='') {
     const d = document.createElement('div');
@@ -301,6 +261,87 @@
         }
       });
     });
+  }
+
+  function getPieceChar(piece) {
+    const type = String(piece.pieceType || '').toUpperCase();
+    const rot = Number(piece.rotation !== undefined ? piece.rotation : 0) % 4;
+    
+    if (type === 'KING') return symbols.KING;
+    if (type === 'LASER') return symbols.LASER[rot];
+    if (type === 'SWITCH') return (rot === 1 || rot === 3) ? symbols.SWITCH[0] : symbols.SWITCH[1];
+    if (type === 'DEFENDER') return symbols.DEFENDER[rot];
+    if (type === 'DEFLECTOR') return symbols.DEFLECTOR[rot];
+    return '?';
+  }
+
+  function printTerminalMatrix(state) {
+    let pieces = [];
+    if (Array.isArray(state.pieces)) {
+        pieces = state.pieces;
+    } else if (typeof state.board === 'string') {
+        try { pieces = JSON.parse(state.board); } catch(e){}
+    } else if (Array.isArray(state.board)) {
+        pieces = state.board;
+    } else if (state.pieces && typeof state.pieces === 'object') {
+        pieces = Object.values(state.pieces);
+    }
+
+    const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
+    for (const piece of pieces) {
+      if (!piece || !Number.isFinite(piece.x) || !Number.isFinite(piece.y)) continue;
+      if (piece.x < 0 || piece.x > 9 || piece.y < 0 || piece.y > 7) continue;
+      grid[piece.y][piece.x] = piece;
+    }
+
+    const container = document.createElement('div');
+    container.className = 'matrix-container';
+
+    // Top X Index Label Line
+    let headerRow = document.createElement('div');
+    headerRow.className = 'matrix-row';
+    let cornerCell = document.createElement('span');
+    cornerCell.className = 'matrix-cell matrix-lbl';
+    cornerCell.innerHTML = '&nbsp;';
+    headerRow.appendChild(cornerCell);
+    for (let x = 0; x < 10; x++) {
+      let lblCell = document.createElement('span');
+      lblCell.className = 'matrix-cell matrix-lbl';
+      lblCell.textContent = x;
+      headerRow.appendChild(lblCell);
+    }
+    container.appendChild(headerRow);
+
+    // Grid row assembly (inverted Y axis projection)
+    for (let y = 7; y >= 0; y--) {
+      let rowEl = document.createElement('div');
+      rowEl.className = 'matrix-row';
+      
+      let yLbl = document.createElement('span');
+      yLbl.className = 'matrix-cell matrix-lbl';
+      yLbl.textContent = y;
+      rowEl.appendChild(yLbl);
+
+      for (let x = 0; x < 10; x++) {
+        let cellEl = document.createElement('span');
+        cellEl.className = 'matrix-cell';
+        
+        const p = grid[y][x];
+        if (p) {
+          cellEl.textContent = getPieceChar(p);
+          cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue');
+        } else {
+          cellEl.textContent = '·';
+          cellEl.style.color = 'var(--bright)';
+        }
+        rowEl.appendChild(cellEl);
+      }
+      container.appendChild(rowEl);
+    }
+
+    if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap);
+    else logContainer.appendChild(container);
+    window.scrollTo(0, document.body.scrollHeight);
   }
 
   async function pollFirstMatch({ silentEmpty = false } = {}) {
@@ -441,7 +482,6 @@
           stopHostGamePolling();
           toggleWaiting(false);
           
-          // Check game DB partition for match identity containing username before resetting
           const foundMatchInG = await searchForGameDBMatch();
           if (!foundMatchInG) {
             add('Match request expired or consumed.', 'error-msg');
@@ -797,7 +837,6 @@
     localStorage.setItem(KEY_RID, id); 
     stopPolling(); 
     toggleWaiting(false);
-    
     stopHostGamePolling();
 
     modeShown = false;
@@ -807,10 +846,8 @@
     gameRef.on('value', snap => {
         const state = snap.val();
         if (state) {
-            
-            add(`[SYNC] Match State Updated`, 'system-msg');
-            renderBoard(state);
-
+            add(`[SYNC] Turn: ${state.turn !== undefined ? state.turn : 'N/A'}`, 'system-msg');
+            printTerminalMatrix(state);
         } else {
             add('MATCH TERMINATED.', 'error-msg');
             localStorage.removeItem(KEY_RID);
