@@ -277,14 +277,22 @@
 
   function printTerminalMatrix(state) {
     let pieces = [];
-    if (Array.isArray(state.pieces)) {
-        pieces = state.pieces;
-    } else if (typeof state.board === 'string') {
-        try { pieces = JSON.parse(state.board); } catch(e){}
-    } else if (Array.isArray(state.board)) {
-        pieces = state.board;
-    } else if (state.pieces && typeof state.pieces === 'object') {
-        pieces = Object.values(state.pieces);
+    
+    // Firebase structure: G/<matchName> = { board: { pieces: [...], turn, ... }, turn, status }
+    // Extract the actual board data, whether nested or not
+    const src = state.board && typeof state.board === 'object' && !Array.isArray(state.board)
+        ? state.board
+        : state;
+
+    // Now try all the possible ways pieces might be stored
+    if (Array.isArray(src.pieces)) {
+        pieces = src.pieces;
+    } else if (src.pieces && typeof src.pieces === 'object') {
+        pieces = Object.values(src.pieces);
+    } else if (Array.isArray(src.board)) {
+        pieces = src.board;
+    } else if (typeof src.board === 'string') {
+        try { pieces = JSON.parse(src.board); } catch(e){}
     }
 
     const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
@@ -846,7 +854,9 @@
     gameRef.on('value', snap => {
         const state = snap.val();
         if (state) {
-            add(`[SYNC] Turn: ${state.turn !== undefined ? state.turn : 'N/A'}`, 'system-msg');
+            // Read turn from nested board or top-level
+            const turnDisplay = state.board?.turn ?? state.turn ?? 'N/A';
+            add(`[SYNC] Turn: ${turnDisplay}`, 'system-msg');
             printTerminalMatrix(state);
         } else {
             add('MATCH TERMINATED.', 'error-msg');
