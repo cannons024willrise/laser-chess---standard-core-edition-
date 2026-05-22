@@ -85,6 +85,7 @@
             text-align: center;
             box-sizing: border-box;
             font-weight: bold;
+            transition: background-color 0.1s ease;
         }
         .matrix-lbl {
             color: var(--muted);
@@ -92,6 +93,20 @@
         }
         .p-blue { color: var(--blue); }
         .p-red { color: var(--red); }
+
+        /* INTERACTIVE INPUT STYLES */
+        .matrix-cell.cursor {
+            background-color: rgba(255, 255, 255, 0.15);
+            outline: 1px solid var(--bright);
+        }
+        .matrix-cell.selected {
+            outline: 1px dashed var(--waiting) !important;
+            background-color: rgba(0, 255, 0, 0.05);
+        }
+        .matrix-cell.target-preview {
+            outline: 1px dashed var(--blue) !important;
+            background-color: rgba(0, 212, 255, 0.1);
+        }
     </style>
 </head>
 <body>
@@ -137,6 +152,13 @@
   
   let isPollingStarting = false;
   let hostGamePollInterval = null; 
+
+  // Interactive UI State Properties
+  let cursorX = 0;
+  let cursorY = 0;
+  let selectedPiece = null;
+  let latestState = null;
+  let activeMatrixContainer = null;
 
   // Renderer asset definitions
   const symbols = {
@@ -276,15 +298,13 @@
   }
 
   function printTerminalMatrix(state) {
+    latestState = state;
     let pieces = [];
     
-    // Firebase structure: G/<matchName> = { board: { pieces: [...], turn, ... }, turn, status }
-    // Extract the actual board data, whether nested or not
     const src = state.board && typeof state.board === 'object' && !Array.isArray(state.board)
         ? state.board
         : state;
 
-    // Now try all the possible ways pieces might be stored
     if (Array.isArray(src.pieces)) {
         pieces = src.pieces;
     } else if (src.pieces && typeof src.pieces === 'object') {
@@ -334,6 +354,18 @@
         let cellEl = document.createElement('span');
         cellEl.className = 'matrix-cell';
         
+        // Active Navigation Cursor Highlights
+        if (x === cursorX && y === cursorY) {
+          cellEl.classList.add('cursor');
+        }
+        
+        // Target Location Dashed Movement Preview Updates
+        if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) {
+          cellEl.classList.add('selected');
+        } else if (selectedPiece && x === cursorX && y === cursorY) {
+          cellEl.classList.add('target-preview');
+        }
+
         const p = grid[y][x];
         if (p) {
           cellEl.textContent = getPieceChar(p);
@@ -347,9 +379,92 @@
       container.appendChild(rowEl);
     }
 
-    if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap);
-    else logContainer.appendChild(container);
+    // Single-matrix layout updates to prevent log spamming during real-time movement updates
+    if (activeMatrixContainer && activeMatrixContainer.parentNode) {
+      activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer);
+    } else {
+      if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap);
+      else logContainer.appendChild(container);
+    }
+    activeMatrixContainer = container;
     window.scrollTo(0, document.body.scrollHeight);
+  }
+
+  function updateMatrixView() {
+    if (latestState) {
+      printTerminalMatrix(latestState);
+    }
+  }
+
+  // Hardware Actions Strategy Handlers
+  function handleGridAction() {
+    if (!latestState) return;
+
+    const src = latestState.board && typeof latestState.board === 'object' && !Array.isArray(latestState.board) ? latestState.board : latestState;
+    let pieces = [];
+    
+    if (Array.isArray(src.pieces)) pieces = src.pieces;
+    else if (src.pieces && typeof src.pieces === 'object') pieces = Object.values(src.pieces);
+
+    let pieceAtCursor = pieces.find(p => p && p.x === cursorX && p.y === cursorY);
+
+    if (selectedPiece) {
+      if (selectedPiece.x === cursorX && selectedPiece.y === cursorY) {
+        selectedPiece = null;
+        add("Selection dropped.", "system-msg");
+      } else {
+        let targetPiece = pieces.find(p => p && p.x === selectedPiece.x && p.y === selectedPiece.y);
+        if (targetPiece) {
+          const oldX = targetPiece.x;
+          const oldY = targetPiece.y;
+          targetPiece.x = cursorX;
+          targetPiece.y = cursorY;
+          
+          if (src.turn !== undefined) {
+            src.turn = src.turn === 'RED' ? 'BLUE' : 'RED';
+          }
+          
+          dbGame.ref(`G/${lockedMatchId}`).set(latestState);
+          add(`Piece relocated: (${oldX}, ${oldY}) -> (${cursorX}, ${cursorY})`, "success-msg");
+        }
+        selectedPiece = null;
+      }
+    } else {
+      if (pieceAtCursor) {
+        selectedPiece = { x: cursorX, y: cursorY };
+        add(`Target selected at (${cursorX}, ${cursorY})`, "success-msg");
+      } else {
+        add(`Invalid action: No grid piece detected at (${cursorX}, ${cursorY})`, "error-msg");
+      }
+    }
+    updateMatrixView();
+  }
+
+  function handleRotation(dir) {
+    if (!latestState || !selectedPiece) {
+      add("Action dropped: Select a piece before initiating rotation transformations.", "error-msg");
+      return;
+    }
+
+    const src = latestState.board && typeof latestState.board === 'object' && !Array.isArray(latestState.board) ? latestState.board : latestState;
+    let pieces = [];
+    
+    if (Array.isArray(src.pieces)) pieces = src.pieces;
+    else if (src.pieces && typeof src.pieces === 'object') pieces = Object.values(src.pieces);
+
+    let targetPiece = pieces.find(p => p && p.x === selectedPiece.x && p.y === selectedPiece.y);
+    if (targetPiece) {
+      let currentRot = Number(targetPiece.rotation !== undefined ? targetPiece.rotation : 0);
+      targetPiece.rotation = dir === 'R' ? (currentRot + 1) % 4 : (currentRot + 3) % 4;
+      
+      if (src.turn !== undefined) {
+        src.turn = src.turn === 'RED' ? 'BLUE' : 'RED';
+      }
+
+      dbGame.ref(`G/${lockedMatchId}`).set(latestState);
+      add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
+    }
+    updateMatrixView();
   }
 
   async function pollFirstMatch({ silentEmpty = false } = {}) {
@@ -854,7 +969,6 @@
     gameRef.on('value', snap => {
         const state = snap.val();
         if (state) {
-            // Read turn from nested board or top-level
             const turnDisplay = state.board?.turn ?? state.turn ?? 'N/A';
             add(`[SYNC] Turn: ${turnDisplay}`, 'system-msg');
             printTerminalMatrix(state);
@@ -862,6 +976,7 @@
             add('MATCH TERMINATED.', 'error-msg');
             localStorage.removeItem(KEY_RID);
             lockedMatchId = null;
+            activeMatrixContainer = null;
             gameRef.off();
             modeShown = false;
             startPolling();
@@ -946,6 +1061,56 @@
       await startPolling();
     }
   }
+
+  // Intercept Global Keyboard Stream for Active Matrix Controls
+  window.addEventListener('keydown', e => {
+    if (!lockedMatchId || !latestState) return;
+
+    // Relinquish event stream control safely if the user is typing message strings into input prompts
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+      if (document.activeElement.value.trim().length > 0) {
+        return;
+      }
+    }
+
+    switch (e.key) {
+      case 'ArrowUp':
+        if (cursorY < 7) cursorY++;
+        updateMatrixView();
+        e.preventDefault();
+        break;
+      case 'ArrowDown':
+        if (cursorY > 0) cursorY--;
+        updateMatrixView();
+        e.preventDefault();
+        break;
+      case 'ArrowLeft':
+        if (cursorX > 0) cursorX--;
+        updateMatrixView();
+        e.preventDefault();
+        break;
+      case 'ArrowRight':
+        if (cursorX < 9) cursorX++;
+        updateMatrixView();
+        e.preventDefault();
+        break;
+      case ' ':
+      case 'Enter':
+        handleGridAction();
+        e.preventDefault();
+        break;
+      case 'l':
+      case 'L':
+        handleRotation('L');
+        e.preventDefault();
+        break;
+      case 'r':
+      case 'R':
+        handleRotation('R');
+        e.preventDefault();
+        break;
+    }
+  });
 
   window.addEventListener('DOMContentLoaded', async () => {
     await boot();
