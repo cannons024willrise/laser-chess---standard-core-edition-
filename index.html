@@ -258,11 +258,11 @@
     const privateSuffix = ' | [P] Private Host | [J] Private Join';
 
     if (!currentHead) {
-      add(`Queue Empty. [R] Host Red | [B] Host Blue${privateSuffix}`, 'system-msg');
+      add('Queue Empty. [R] Host Red | [B] Host Blue' + privateSuffix, 'system-msg');
     } else if (currentHead.data.color === 0) {
-      add(`RED at head. [A] Join as Blue | [R] Host Red${privateSuffix}`, 'system-msg');
+      add('RED at head. [A] Join as Blue | [R] Host Red' + privateSuffix, 'system-msg');
     } else {
-      add(`BLUE at head. [A] Join as Red | [B] Host Blue${privateSuffix}`, 'system-msg');
+      add('BLUE at head. [A] Join as Red | [B] Host Blue' + privateSuffix, 'system-msg');
     }
     add('MODE:', '', true, handleMode);
   }
@@ -332,7 +332,6 @@
     stopHostGamePolling();
     toggleWaiting(true, contextMsg);
 
-    // FIX: Hitting RTDB directly via simple read instead of polling the Cloudflare Worker
     hostGamePollInterval = setInterval(async () => {
       if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId.toString()) {
         stopHostGamePolling();
@@ -351,13 +350,16 @@
         } else if (!data) {
           stopHostGamePolling();
           toggleWaiting(false);
-          add('Match request expired or consumed.', 'error-msg');
-          localStorage.removeItem(KEY_RID);
-          modeShown = false;
-          await startPolling();
+          
+          // Check game DB partition for match identity containing username before resetting
+          const foundMatchInG = await searchForGameDBMatch();
+          if (!foundMatchInG) {
+            add('Match request expired or consumed.', 'error-msg');
+            localStorage.removeItem(KEY_RID);
+            modeShown = false;
+            await startPolling();
+          }
         }
-        // If data exists but no matchName, request is still active/waiting in queue. 
-        // Interval simply ticks and checks again.
       } catch (e) {
         console.error("RTDB match status polling error:", e);
       }
@@ -456,9 +458,12 @@
         toggleWaiting(false);
         stopHostGamePolling();
 
-        localStorage.removeItem(KEY_RID);
-        modeShown = false;
-        await startPolling();
+        const foundMatchInG = await searchForGameDBMatch();
+        if (!foundMatchInG) {
+          localStorage.removeItem(KEY_RID);
+          modeShown = false;
+          await startPolling();
+        }
       }
     };
 
@@ -714,7 +719,7 @@
         if (state) {
             add(`[SYNC] Turn: ${state.turn} | Board: ${state.board}`, 'system-msg');
         } else {
-            add(`MATCH TERMINATED.`, 'error-msg');
+            add('MATCH TERMINATED.', 'error-msg');
             localStorage.removeItem(KEY_RID);
             lockedMatchId = null;
             gameRef.off();
