@@ -6,7 +6,18 @@
     <title>LASER CHESS - STANDARD VARIANT- CORE EDITION (BETA η-)</title>
     <style>
         @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
-        :root { --bg0: #0a0a0a; --bg1: #1a1a1a; --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; --muted: #999999; --waiting: #00ff00; }
+        :root { 
+            --bg0: #0a0a0a; 
+            --bg1: #1a1a1a; 
+            --line: #2a2a2a;
+            --text: #b0b0b0; 
+            --bright: #ffffff; 
+            --error: #ff5555; 
+            --muted: #999999; 
+            --waiting: #00ff00; 
+            --blue: #00d4ff;
+            --red: #ff3333;
+        }
         body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
         #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
         .history-line { white-space: pre-wrap; word-break: break-all; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -51,22 +62,39 @@
         .copy-btn:active {
             transform: scale(0.95);
         }
-    
-        .board-view {
-            margin: 8px 0 4px 0;
-            padding: 10px 12px;
-            border: 1px solid #2a2a2a;
-            background: rgba(255,255,255,0.02);
-            color: var(--bright);
-            white-space: pre;
-            overflow: auto;
-            line-height: 1.1;
-            letter-spacing: 0;
+
+        /* MATRIX TERMINAL RENDERER STYLES */
+        .matrix-container {
+            display: inline-block;
+            background: #0f0f0f;
+            border: 1px solid var(--line);
+            padding: 14px;
+            margin: 6px 0;
             font-family: 'Unifont', monospace;
+            user-select: none;
+            border-radius: 6px;
         }
-        .board-view .board-label {
-            color: var(--waiting);
+        .matrix-row {
+            display: flex;
+            height: 24px;
+            align-items: center;
         }
+        .matrix-cell {
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            box-sizing: border-box;
+            font-weight: bold;
+        }
+        .matrix-lbl {
+            color: var(--muted);
+            font-weight: normal;
+        }
+        .p-blue { color: var(--blue); }
+        .p-red { color: var(--red); }
     </style>
 </head>
 <body>
@@ -106,13 +134,21 @@
   let processing = false, currentPromptWrap = null, lockedMatchId = null;
   let rqPollInterval = null, recoveryPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
   let currentHead = null;
-  let boardBlock = null;
   let initialQueueScanDone = false;
   let modeShown = false;
   let privateState = null;
   
   let isPollingStarting = false;
   let hostGamePollInterval = null; 
+
+  // Renderer asset definitions
+  const symbols = {
+    KING: '◈',
+    LASER: ['⫝', '⟜', 'Ͳ', 'Ð'],
+    SWITCH: ['⟋', '⟍'],
+    DEFENDER: ['⬒', '◨', '⬓', '◧'],
+    DEFLECTOR: ['◤', '◥', '◢', '◣']
+  };
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -153,71 +189,6 @@
     container.appendChild(btn);
     return container;
   }
-
-  function createBlock(cls='') {
-    const d = document.createElement('pre');
-    d.className = cls;
-    if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap);
-    else logContainer.appendChild(d);
-    return d;
-  }
-
-  function normalizeBoardText(board) {
-    if (board == null) return '[NO BOARD PAYLOAD]';
-
-    if (typeof board === 'string') {
-      const s = board.replace(/\r\n/g, '\n');
-      return s.trimEnd() || '[EMPTY BOARD]';
-    }
-
-    if (Array.isArray(board)) {
-      return board.map(row => {
-        if (Array.isArray(row)) {
-          return row.map(cell => {
-            if (cell == null) return '·';
-            if (typeof cell === 'string') return cell;
-            if (typeof cell === 'object') {
-              if (typeof cell.char === 'string') return cell.char;
-              if (typeof cell.symbol === 'string') return cell.symbol;
-              if (typeof cell.value === 'string') return cell.value;
-            }
-            return String(cell);
-          }).join('');
-        }
-        return String(row);
-      }).join('\n');
-    }
-
-    if (typeof board === 'object') {
-      if (typeof board.text === 'string') return board.text.replace(/\r\n/g, '\n');
-      if (typeof board.raw === 'string') return board.raw.replace(/\r\n/g, '\n');
-      if (typeof board.board === 'string') return board.board.replace(/\r\n/g, '\n');
-      if (typeof board.value === 'string') return board.value.replace(/\r\n/g, '\n');
-      if (Array.isArray(board.rows)) return normalizeBoardText(board.rows);
-      if (Array.isArray(board.grid)) return normalizeBoardText(board.grid);
-      if (Array.isArray(board.cells)) return normalizeBoardText(board.cells);
-      return JSON.stringify(board, null, 2);
-    }
-
-    return String(board);
-  }
-
-  function updateBoardView(board, turn = null) {
-    const text = normalizeBoardText(board);
-    if (!boardBlock) {
-      boardBlock = createBlock('board-view');
-    }
-    const header = turn ? `[MATCH BOARD :: TURN ${String(turn).toUpperCase()}]` : '[MATCH BOARD]';
-    boardBlock.textContent = `${header}\n${text}`;
-  }
-
-  function clearBoardView() {
-    if (boardBlock) {
-      boardBlock.remove();
-      boardBlock = null;
-    }
-  }
-
 
   function add(text, cls='', req=false, handler=null) {
     if (!req && processing) { type(text, cls, true); return; }
@@ -295,6 +266,87 @@
     });
   }
 
+  function getPieceChar(piece) {
+    const type = String(piece.pieceType || '').toUpperCase();
+    const rot = Number(piece.rotation !== undefined ? piece.rotation : 0) % 4;
+    
+    if (type === 'KING') return symbols.KING;
+    if (type === 'LASER') return symbols.LASER[rot];
+    if (type === 'SWITCH') return (rot === 1 || rot === 3) ? symbols.SWITCH[0] : symbols.SWITCH[1];
+    if (type === 'DEFENDER') return symbols.DEFENDER[rot];
+    if (type === 'DEFLECTOR') return symbols.DEFLECTOR[rot];
+    return '?';
+  }
+
+  function printTerminalMatrix(state) {
+    let pieces = [];
+    if (Array.isArray(state.pieces)) {
+        pieces = state.pieces;
+    } else if (typeof state.board === 'string') {
+        try { pieces = JSON.parse(state.board); } catch(e){}
+    } else if (Array.isArray(state.board)) {
+        pieces = state.board;
+    } else if (state.pieces && typeof state.pieces === 'object') {
+        pieces = Object.values(state.pieces);
+    }
+
+    const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
+    for (const piece of pieces) {
+      if (!piece || !Number.isFinite(piece.x) || !Number.isFinite(piece.y)) continue;
+      if (piece.x < 0 || piece.x > 9 || piece.y < 0 || piece.y > 7) continue;
+      grid[piece.y][piece.x] = piece;
+    }
+
+    const container = document.createElement('div');
+    container.className = 'matrix-container';
+
+    // Top X Index Label Line
+    let headerRow = document.createElement('div');
+    headerRow.className = 'matrix-row';
+    let cornerCell = document.createElement('span');
+    cornerCell.className = 'matrix-cell matrix-lbl';
+    cornerCell.innerHTML = '&nbsp;';
+    headerRow.appendChild(cornerCell);
+    for (let x = 0; x < 10; x++) {
+      let lblCell = document.createElement('span');
+      lblCell.className = 'matrix-cell matrix-lbl';
+      lblCell.textContent = x;
+      headerRow.appendChild(lblCell);
+    }
+    container.appendChild(headerRow);
+
+    // Grid row assembly (inverted Y axis projection)
+    for (let y = 7; y >= 0; y--) {
+      let rowEl = document.createElement('div');
+      rowEl.className = 'matrix-row';
+      
+      let yLbl = document.createElement('span');
+      yLbl.className = 'matrix-cell matrix-lbl';
+      yLbl.textContent = y;
+      rowEl.appendChild(yLbl);
+
+      for (let x = 0; x < 10; x++) {
+        let cellEl = document.createElement('span');
+        cellEl.className = 'matrix-cell';
+        
+        const p = grid[y][x];
+        if (p) {
+          cellEl.textContent = getPieceChar(p);
+          cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue');
+        } else {
+          cellEl.textContent = '·';
+          cellEl.style.color = 'var(--line)';
+        }
+        rowEl.appendChild(cellEl);
+      }
+      container.appendChild(rowEl);
+    }
+
+    if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap);
+    else logContainer.appendChild(container);
+    window.scrollTo(0, document.body.scrollHeight);
+  }
+
   async function pollFirstMatch({ silentEmpty = false } = {}) {
     if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
 
@@ -354,7 +406,6 @@
     isPollingStarting = true;
 
     if (rqPollInterval) clearInterval(rqPollInterval);
-    clearBoardView();
 
     await pollFirstMatch({ silentEmpty: true });
 
@@ -434,7 +485,6 @@
           stopHostGamePolling();
           toggleWaiting(false);
           
-          // Check game DB partition for match identity containing username before resetting
           const foundMatchInG = await searchForGameDBMatch();
           if (!foundMatchInG) {
             add('Match request expired or consumed.', 'error-msg');
@@ -790,7 +840,6 @@
     localStorage.setItem(KEY_RID, id); 
     stopPolling(); 
     toggleWaiting(false);
-    
     stopHostGamePolling();
 
     modeShown = false;
@@ -800,7 +849,8 @@
     gameRef.on('value', snap => {
         const state = snap.val();
         if (state) {
-            add(`[SYNC] Turn: ${state.turn} | Board: ${state.board}`, 'system-msg');
+            add(`[SYNC] Turn: ${state.turn !== undefined ? state.turn : 'N/A'}`, 'system-msg');
+            printTerminalMatrix(state);
         } else {
             add('MATCH TERMINATED.', 'error-msg');
             localStorage.removeItem(KEY_RID);
