@@ -3,107 +3,814 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LASER CHESS - INTEGRATED CORE</title>
+    <title>LASER CHESS - STANDARD VARIANT- CORE EDITION (BETA η-)</title>
     <style>
         @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
         :root { --bg0: #0a0a0a; --bg1: #1a1a1a; --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; --muted: #999999; --waiting: #00ff00; }
-        body { margin: 0; padding: 20px; color: var(--text); font-family: 'Unifont', monospace; background: var(--bg0); display: flex; gap: 20px; height: 100vh; overflow: hidden; }
-
-        /* Board Styling */
-        #board-container { flex: 0 0 auto; display: grid; grid-template-columns: repeat(10, 40px); grid-template-rows: repeat(8, 40px); gap: 2px; border: 1px solid #333; }
-        .cell { width: 40px; height: 40px; background: var(--bg1); display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text); }
-        .cell.selected { background: #333; outline: 1px solid var(--waiting); }
-
-        /* Terminal Styling */
-        #terminal { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
-        #terminal-log { flex: 1; }
-        .input-wrapper { display: flex; gap: 8px; align-items: flex-start; }
-        .user-input-line { background: transparent; border: none; color: var(--bright); font: inherit; outline: none; flex: 1; }
+        body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
+        #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
+        .history-line { white-space: pre-wrap; word-break: break-all; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .input-wrapper { display:flex; gap:8px; align-items:flex-start; width: 100%; }
+        .prompt { white-space: pre; }
+        .user-input-line {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--bright);
+            font: inherit;
+            outline: none;
+            resize: none;
+            overflow: hidden;
+            min-height: 1.2em;
+            line-height: 1.2;
+            padding: 0;
+            margin: 0;
+            white-space: pre-wrap;
+        }
+        .system-msg { color: var(--muted); }
+        .success-msg { color: var(--bright); font-weight: 700; }
+        .error-msg { color: var(--error); }
+        .highlight { color: var(--bright); font-weight: 700; }
+        .wait-msg { color: var(--waiting); }
+        
+        .copy-btn {
+            background: #2a2a2a;
+            color: var(--waiting);
+            border: 1px solid var(--waiting);
+            font-family: 'Unifont', monospace;
+            font-size: 12px;
+            cursor: pointer;
+            padding: 2px 6px;
+            user-select: none;
+            display: inline-block;
+        }
+        .copy-btn:hover {
+            background: var(--waiting);
+            color: var(--bg0);
+        }
+        .copy-btn:active {
+            transform: scale(0.95);
+        }
     </style>
 </head>
 <body>
+<div id="terminal-log"></div>
 
-<div id="board-container" tabindex="0"></div>
-<div id="terminal">
-    <div id="terminal-log"></div>
-</div>
+<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
 
 <script>
-    // --- 1. BOARD ENGINE ---
-    const BoardEngine = (() => {
-        const board = document.getElementById('board-container');
-        let state = Array(8).fill(null).map(() => Array(10).fill(null)); // 8x10
-        let selected = { x: 0, y: 0 };
+(() => {
+  'use strict';
 
-        function render() {
-            board.innerHTML = '';
-            for (let y = 7; y >= 0; y--) {
-                for (let x = 0; x < 10; x++) {
-                    const el = document.createElement('div');
-                    el.className = `cell ${selected.x === x && selected.y === y ? 'selected' : ''}`;
-                    el.textContent = state[y][x] || '.';
-                    board.appendChild(el);
-                }
-            }
+  const matchConfig = {
+    apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
+    authDomain: "lasercheowefficiencymanager.firebaseapp.com",
+    databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com",
+    projectId: "lasercheowefficiencymanager"
+  };
+
+  const gameConfig = {
+    apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE",
+    authDomain: "laser-chess-low-efficiency.firebaseapp.com",
+    databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com",
+    projectId: "laser-chess-low-efficiency"
+  };
+
+  const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
+  
+  const matchApp = firebase.initializeApp(matchConfig, "matchApp");
+  const gameApp = firebase.initializeApp(gameConfig, "gameApp");
+  const dbMatch = firebase.database(matchApp);
+  const dbGame = firebase.database(gameApp);
+
+  const KEY_USER = 'ls_user', KEY_PASS = 'ls_pass', KEY_RID = 'ls_request_id';
+  const logContainer = document.getElementById('terminal-log');
+  const queue = [];
+  let processing = false, currentPromptWrap = null, lockedMatchId = null;
+  let rqPollInterval = null, recoveryPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
+  let currentHead = null;
+  let initialQueueScanDone = false;
+  let modeShown = false;
+  let privateState = null;
+  
+  let isPollingStarting = false;
+  let hostGamePollInterval = null; 
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  function createLine(cls='') {
+    const d = document.createElement('div');
+    d.className = `history-line ${cls}`;
+    if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap);
+    else logContainer.appendChild(d);
+    return d;
+  }
+
+  function createLineWithCopy(text, codeToCopy, cls='') {
+    const container = createLine(cls);
+    
+    const textSpan = document.createElement('span');
+    textSpan.textContent = text;
+    container.appendChild(textSpan);
+    
+    const btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.textContent = '[COPY CODE]';
+    btn.onclick = async () => {
+        try {
+            await navigator.clipboard.writeText(codeToCopy);
+            btn.textContent = '[COPIED!]';
+        } catch (err) {
+            const dummy = document.createElement('textarea');
+            dummy.value = codeToCopy;
+            document.body.appendChild(dummy);
+            dummy.select();
+            document.execCommand('copy');
+            document.body.removeChild(dummy);
+            btn.textContent = '[COPIED!]';
         }
+        setTimeout(() => { btn.textContent = '[COPY CODE]'; }, 2000);
+    };
+    
+    container.appendChild(btn);
+    return container;
+  }
 
-        // Logic for movement/selection
-        window.addEventListener('keydown', (e) => {
-            if (document.activeElement === document.querySelector('.user-input-line')) return;
-            
-            if (e.key === 'w') selected.y = Math.min(7, selected.y + 1);
-            if (e.key === 's') selected.y = Math.max(0, selected.y - 1);
-            if (e.key === 'a') selected.x = Math.max(0, selected.x - 1);
-            if (e.key === 'd') selected.x = Math.min(9, selected.x + 1);
-            render();
-        });
+  function add(text, cls='', req=false, handler=null) {
+    if (!req && processing) { type(text, cls, true); return; }
+    queue.push({text,cls,req,handler});
+    if (!processing) run();
+  }
 
-        return { render };
-    })();
+  async function run() {
+    processing = true;
+    while(queue.length) {
+      const i = queue.shift();
+      if (i.req) await prompt(i.text, i.cls, i.handler || handleAuth);
+      else await type(i.text, i.cls);
+    }
+    processing = false;
+  }
 
-    // --- 2. TERMINAL ENGINE ---
-    const TerminalEngine = (() => {
-        const logContainer = document.getElementById('terminal-log');
-        let currentPromptWrap = null;
+  async function type(text, cls, immediate=false) {
+    const l = createLine(cls);
+    if (immediate) { l.textContent = text; return l; }
+    for (const c of text) { l.textContent += c; await sleep(10); }
+    return l;
+  }
 
-        function createLine(cls) {
-            const d = document.createElement('div');
-            d.className = `history-line ${cls}`;
-            logContainer.appendChild(d);
-            return d;
+  async function prompt(text, cls, handler) {
+    const wrap = document.createElement('div');
+    wrap.className = 'input-wrapper history-line';
+
+    const p = document.createElement('span');
+    p.className = 'prompt';
+    wrap.appendChild(p);
+
+    const input = document.createElement('textarea');
+    input.className = 'user-input-line';
+    input.rows = 1;
+    input.spellcheck = false;
+    input.autocapitalize = 'off';
+    input.autocomplete = 'off';
+    input.autocorrect = 'off';
+    wrap.appendChild(input);
+
+    logContainer.appendChild(wrap);
+    currentPromptWrap = wrap;
+
+    for (const c of text) { p.textContent += c; await sleep(8); }
+
+    const resize = () => {
+      input.style.height = 'auto';
+      input.style.height = input.scrollHeight + 'px';
+    };
+
+    const handleInput = () => { resize(); };
+
+    setTimeout(() => {
+      input.focus();
+      resize();
+    }, 0);
+
+    input.addEventListener('input', handleInput);
+
+    return new Promise(resolve => {
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          const v = input.value.trim().toUpperCase();
+          input.disabled = true;
+          const finalLine = createLine('highlight');
+          finalLine.textContent = p.textContent + v;
+          wrap.remove();
+          currentPromptWrap = null;
+          handler(v);
+          resolve();
         }
-
-        function prompt(text, handler) {
-            const wrap = document.createElement('div');
-            wrap.className = 'input-wrapper';
-            wrap.innerHTML = `<span class="prompt">${text}</span><textarea class="user-input-line" rows="1"></textarea>`;
-            logContainer.appendChild(wrap);
-            const input = wrap.querySelector('textarea');
-            input.focus();
-            input.addEventListener('keydown', e => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    const v = input.value.trim().toUpperCase();
-                    wrap.remove();
-                    handler(v);
-                }
-            });
-        }
-
-        return {
-            add: (text, cls = '') => { createLine(cls).textContent = text; },
-            prompt
-        };
-    })();
-
-    // --- 3. INIT ---
-    window.addEventListener('DOMContentLoaded', () => {
-        BoardEngine.render();
-        TerminalEngine.add('CORE INITIALIZED', 'success-msg');
-        TerminalEngine.prompt('COMMAND >', (cmd) => {
-            TerminalEngine.add(`EXECUTING: ${cmd}`, 'system-msg');
-        });
+      });
     });
+  }
+
+  async function pollFirstMatch({ silentEmpty = false } = {}) {
+    if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
+
+    try {
+      const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
+      const data = snapshot.val();
+
+      if (!data) {
+        currentHead = null;
+        if (!silentEmpty && initialQueueScanDone && lastQueueState !== 'EMPTY') {
+          add('RQ_Q: Empty (Idle)', 'system-msg');
+          lastQueueState = 'EMPTY';
+        }
+        return false;
+      }
+
+      initialQueueScanDone = true;
+      const firstKey = Object.keys(data)[0];
+      currentHead = { id: firstKey, data: data[firstKey] };
+
+      if (lastQueueState !== firstKey) {
+        add(`[AUTO-SCAN] Head detected: ${data[firstKey].username} (${data[firstKey].color === 0 ? 'RED' : 'BLUE'})`, 'success-msg');
+        lastQueueState = firstKey;
+      }
+
+      return true;
+    } catch (e) {
+      currentHead = null;
+      return false;
+    }
+  }
+
+  async function showMode() {
+    if (localStorage.getItem(KEY_RID)) return;
+
+    while (processing) {
+      await sleep(10);
+    }
+
+    if (modeShown) return;
+    modeShown = true;
+
+    const privateSuffix = ' | [P] Private Host | [J] Private Join';
+
+    if (!currentHead) {
+      add('Queue Empty. [R] Host Red | [B] Host Blue' + privateSuffix, 'system-msg');
+    } else if (currentHead.data.color === 0) {
+      add('RED at head. [A] Join as Blue | [R] Host Red' + privateSuffix, 'system-msg');
+    } else {
+      add('BLUE at head. [A] Join as Red | [B] Host Blue' + privateSuffix, 'system-msg');
+    }
+    add('MODE:', '', true, handleMode);
+  }
+
+  async function startPolling() {
+    if (isPollingStarting) return;
+    isPollingStarting = true;
+
+    if (rqPollInterval) clearInterval(rqPollInterval);
+
+    await pollFirstMatch({ silentEmpty: true });
+
+    modeShown = false;
+    await showMode();
+
+    if (!localStorage.getItem(KEY_RID) && !lockedMatchId) {
+      rqPollInterval = setInterval(() => pollFirstMatch({ silentEmpty: false }), 6000);
+    }
+    isPollingStarting = false;
+  }
+
+  function stopPolling() { 
+    if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } 
+    lastQueueState = 'STOPPED';
+  }
+
+  async function searchForGameDBMatch() {
+    const myName = localStorage.getItem(KEY_USER);
+    if (!myName) return false;
+
+    try {
+      const snap = await dbGame.ref('G').once('value');
+      const games = snap.val();
+      if (!games) return false;
+
+      const upperName = myName.toUpperCase();
+
+      const matchID = Object.keys(games).find(key =>
+        String(key).toUpperCase().includes(upperName)
+      );
+
+      if (matchID) {
+        add(`[AUTO-JOIN] Match detected in /G: ${matchID}`, 'success-msg');
+        lockOntoMatch(matchID, games[matchID]);
+        return true;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    return false;
+  }
+
+  function startHostMatchWorkerPolling(requestId, contextMsg = "Awaiting Handshake") {
+    stopHostGamePolling();
+
+    const passiveGamePoll = async () => {
+      if (lockedMatchId) return;
+      const found = await searchForGameDBMatch();
+      if (found) {
+        stopHostGamePolling();
+        toggleWaiting(false);
+      }
+    };
+
+    passiveGamePoll();
+    stopHostGamePolling();
+    toggleWaiting(true, contextMsg);
+
+    hostGamePollInterval = setInterval(async () => {
+      if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId.toString()) {
+        stopHostGamePolling();
+        toggleWaiting(false);
+        return;
+      }
+
+      try {
+        const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value');
+        const data = snap.val();
+
+        if (data && data.matchName) {
+          stopHostGamePolling();
+          toggleWaiting(false);
+          lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        } else if (!data) {
+          stopHostGamePolling();
+          toggleWaiting(false);
+          
+          // Check game DB partition for match identity containing username before resetting
+          const foundMatchInG = await searchForGameDBMatch();
+          if (!foundMatchInG) {
+            add('Match request expired or consumed.', 'error-msg');
+            localStorage.removeItem(KEY_RID);
+            modeShown = false;
+            await startPolling();
+          }
+        }
+      } catch (e) {
+        console.error("RTDB match status polling error:", e);
+      }
+    }, 3000);
+  }
+
+  function stopHostGamePolling() {
+    if (hostGamePollInterval) {
+      clearInterval(hostGamePollInterval);
+      hostGamePollInterval = null;
+    }
+  }
+
+  async function verifyRequestIdByRQD(requestId) {
+    if (!requestId) return false;
+    try {
+      const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value');
+      return snap.exists() ? snap.val() : false;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  }
+
+  async function isUsernameOccupied(username) {
+    if (!username) return true;
+    try {
+      const snap = await dbMatch.ref(`P/${username}`).once('value');
+      return snap.exists();
+    } catch (e) {
+      console.error(e);
+      return true;
+    }
+  }
+
+  async function verifyRecoveryPath(requestId) {
+    if (!requestId) return { state: 'missing', data: null };
+
+    const qd = await verifyRequestIdByRQD(requestId);
+    if (qd) {
+      if (qd.matchName) return { state: 'matched', data: qd };
+      return { state: 'waiting', data: qd };
+    }
+
+    return { state: 'missing', data: null };
+  }
+
+  function stopRecoveryPolling() {
+    if (recoveryPollInterval) {
+      clearInterval(recoveryPollInterval);
+      recoveryPollInterval = null;
+    }
+  }
+
+  function startRecoveryPolling(requestId) {
+    stopRecoveryPolling();
+    toggleWaiting(true, "Recovering Uplink Signal");
+
+    let attempts = 0;
+    const maxAttempts = 18;
+
+    const tick = async () => {
+      if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId) {
+        stopRecoveryPolling();
+        toggleWaiting(false);
+        return;
+      }
+
+      const recovered = await verifyRecoveryPath(requestId);
+
+      if (recovered.state === 'matched') {
+        stopRecoveryPolling();
+        toggleWaiting(false);
+        add('Recovering uplink...', 'system-msg');
+        lockOntoMatch(recovered.data.matchName, recovered.data);
+        return;
+      }
+
+      if (recovered.state === 'waiting') {
+        stopRecoveryPolling();
+        toggleWaiting(false);
+        add('Recovering uplink...', 'system-msg');
+        if (recovered.data.isPrivate && recovered.data.inviteCode) {
+          startHostMatchWorkerPolling(requestId, `Awaiting Private Join [CODE: ${recovered.data.inviteCode}]`);
+        } else {
+          startHostMatchWorkerPolling(requestId, "Awaiting Public Match Intercept");
+        }
+        return;
+      }
+
+      attempts += 1;
+      if (attempts === 1) add('Recovering uplink...', 'system-msg');
+
+      if (attempts >= maxAttempts) {
+        stopRecoveryPolling();
+        toggleWaiting(false);
+        stopHostGamePolling();
+
+        const foundMatchInG = await searchForGameDBMatch();
+        if (!foundMatchInG) {
+          localStorage.removeItem(KEY_RID);
+          modeShown = false;
+          await startPolling();
+        }
+      }
+    };
+
+    tick();
+    recoveryPollInterval = setInterval(tick, 4000);
+  }
+
+  async function handleMode(val) {
+    if (privateState) {
+      return handlePrivateFlow(val);
+    }
+
+    if (val === 'A') {
+      if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); modeShown = false; return showMode(); }
+      toggleWaiting(true, `Intercepting ${currentHead.id}`);
+      return registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
+    }
+    if (val === 'R') return registerHost(0, false); 
+    if (val === 'B') return registerHost(1, false);
+
+    if (val === 'P') {
+      privateState = { step: 'TARGET', target: null };
+      return add('TARGET USER (OPTIONAL - ENTER TO SKIP):', '', true, handlePrivateFlow);
+    }
+
+    if (val === 'J') {
+      privateState = { step: 'CODE' };
+      return add('INVITE CODE:', '', true, handlePrivateFlow);
+    }
+
+    add('Unknown Command.', 'error-msg');
+    modeShown = false;
+    return showMode();
+  }
+
+  async function handlePrivateFlow(v) {
+    if (!privateState) {
+      modeShown = false;
+      return showMode();
+    }
+
+    if (privateState.step === 'TARGET') {
+      const raw = (v || '').trim();
+
+      if (!raw) {
+        privateState.target = null;
+        privateState.step = 'COLOR';
+        return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
+      }
+
+      const target = raw.toUpperCase();
+
+      if (target === localStorage.getItem(KEY_USER)) {
+        add('CANNOT TARGET SELF.', 'error-msg');
+        privateState = null;
+        modeShown = false;
+        return showMode();
+      }
+
+      const exists = await isUsernameOccupied(target);
+      if (!exists) {
+        add('TARGET USER NOT FOUND.', 'error-msg');
+        privateState = null;
+        modeShown = false;
+        return showMode();
+      }
+
+      privateState.target = target;
+      privateState.step = 'COLOR';
+      return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
+    }
+
+    if (privateState.step === 'COLOR') {
+      const input = (v || '').trim().toUpperCase();
+
+      const colorChar = input.includes('R') ? 'R' : input.includes('B') ? 'B' : null;
+      const color = colorChar === 'R' ? 0 : colorChar === 'B' ? 1 : null;
+
+      if (color === null) {
+        add('Unknown Command.', 'error-msg');
+        privateState = null;
+        modeShown = false;
+        return showMode();
+      }
+
+      const target = privateState.target;
+      privateState = null;
+
+      return createPrivateRequest(color, target);
+    }
+
+    if (privateState.step === 'CODE') {
+      const code = (v || '').trim().toUpperCase();
+      if (!code) {
+        add('INVALID CODE.', 'error-msg');
+        privateState = null;
+        modeShown = false;
+        return showMode();
+      }
+
+      privateState = null;
+      return joinPrivate(code);
+    }
+
+    privateState = null;
+    modeShown = false;
+    return showMode();
+  }
+
+  async function joinPrivate(inviteCode) {
+    const username = localStorage.getItem(KEY_USER);
+    const password = localStorage.getItem(KEY_PASS);
+
+    try {
+      const res = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username,
+          password,
+          isPrivate: true,
+          privateMode: 'JOIN',
+          inviteCode
+        })
+      });
+
+      const data = await res.json();
+      if (data.ok) {
+        const idToStore = data.matchName || data.matchId || data.requestId || data.timestamp;
+        if (idToStore) localStorage.setItem(KEY_RID, idToStore);
+        stopPolling();
+        add('Private Link Success!', 'success-msg');
+
+        if (data.matchName) {
+          lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        } else if (data.requestId) {
+          startHostMatchWorkerPolling(data.requestId, "Awaiting Private Handshake");
+        }
+        return;
+      }
+
+      add(`Private Join Denied: ${data.error}`, 'error-msg');
+      modeShown = false;
+      return showMode();
+    } catch (e) {
+      add(`Worker Error: ${e.message}`, 'error-msg');
+      modeShown = false;
+      return showMode();
+    }
+  }
+
+  async function createPrivateRequest(color, privateTarget = null) {
+    const username = localStorage.getItem(KEY_USER);
+    const password = localStorage.getItem(KEY_PASS);
+
+    const privateRequestPayload = {
+      mode: 'PRIVATE_MATCH_REQUEST',
+      body: {
+        requester: username,
+        secret: password,
+        color,
+        target: privateTarget
+      }
+    };
+
+    try {
+      const res = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(privateRequestPayload)
+      });
+
+      const data = await res.json();
+      if (data.ok) {
+        const privateRequestId = data.requestId;
+        if (privateRequestId) localStorage.setItem(KEY_RID, privateRequestId);
+        
+        stopPolling();
+        
+        if (data.inviteCode) {
+          try { await navigator.clipboard.writeText(data.inviteCode); } catch(cErr){}
+          createLineWithCopy(`Private Request Generated! CODE: ${data.inviteCode} `, data.inviteCode, 'success-msg');
+        } else {
+          add('Private Request Generated!', 'success-msg');
+        }
+        
+        startHostMatchWorkerPolling(privateRequestId, `Awaiting Private Join [CODE: ${data.inviteCode}]`);
+        return;
+      }
+
+      add(`Private Request Denied: ${data.error}`, 'error-msg');
+      modeShown = false;
+      return showMode();
+    } catch (e) {
+      add(`Worker Error: ${e.message}`, 'error-msg');
+      modeShown = false;
+      return showMode();
+    }
+  }
+
+  async function registerHost(color, isIntercept = false, extra = {}) {
+    const username = localStorage.getItem(KEY_USER);
+    const password = localStorage.getItem(KEY_PASS);
+    try {
+      const res = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, color, isIntercept, ...extra })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const idToStore = data.matchName || data.requestId || data.timestamp;
+        if (idToStore) localStorage.setItem(KEY_RID, idToStore);
+        stopPolling();
+        add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
+
+        if (data.matchName) {
+          lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        } else {
+          const requestIdToPoll = data.requestId || data.timestamp;
+          if (requestIdToPoll) {
+            startHostMatchWorkerPolling(requestIdToPoll, isIntercept ? "Awaiting Intercept Handshake" : "Awaiting Public Match Intercept");
+          }
+        }
+
+        return;
+      } else {
+        add(`Uplink Denied: ${data.error}`, 'error-msg');
+        modeShown = false;
+        return showMode();
+      }
+    } catch (e) {
+      add(`Worker Error: ${e.message}`, 'error-msg');
+      modeShown = false;
+      return showMode();
+    }
+  }
+
+  function lockOntoMatch(id, entry) {
+    lockedMatchId = id;
+    localStorage.setItem(KEY_RID, id); 
+    stopPolling(); 
+    toggleWaiting(false);
+    
+    stopHostGamePolling();
+
+    modeShown = false;
+    add(`LINK ESTABLISHED: ${id}`, 'success-msg');
+    
+    const gameRef = dbGame.ref(`G/${id}`);
+    gameRef.on('value', snap => {
+        const state = snap.val();
+        if (state) {
+            add(`[SYNC] Turn: ${state.turn} | Board: ${state.board}`, 'system-msg');
+        } else {
+            add('MATCH TERMINATED.', 'error-msg');
+            localStorage.removeItem(KEY_RID);
+            lockedMatchId = null;
+            gameRef.off();
+            modeShown = false;
+            startPolling();
+        }
+    });
+  }
+
+  function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
+    if (active) {
+      if (waitAnimationInterval) return;
+      const l = createLine('wait-msg');
+      let dots = 0;
+      waitAnimationInterval = setInterval(() => { 
+        dots = (dots + 1) % 4; 
+        l.textContent = contextMsg + ".".repeat(dots); 
+      }, 500);
+    } else { 
+      if (waitAnimationInterval) { 
+        clearInterval(waitAnimationInterval); 
+        waitAnimationInterval = null; 
+      } 
+    }
+  }
+
+  async function handleAuth(v) {
+    if (!localStorage.getItem(KEY_USER)) {
+      if (!v) return add('User ID:', '', true, handleAuth);
+
+      const candidate = v.trim().toUpperCase();
+      if (!candidate) {
+        add('INVALID USER ID.', 'error-msg');
+        return add('User ID:', '', true, handleAuth);
+      }
+
+      const occupied = await isUsernameOccupied(candidate);
+      if (occupied) {
+        add('USER ID ALREADY OCCUPIED.', 'error-msg');
+        return add('User ID:', '', true, handleAuth);
+      }
+
+      localStorage.setItem(KEY_USER, candidate);
+      return boot();
+    }
+    if (!localStorage.getItem(KEY_PASS)) {
+      if (!v) return add('Access Key:', '', true, handleAuth);
+      localStorage.setItem(KEY_PASS, v);
+      return boot();
+    }
+  }
+
+  async function boot() {
+    const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
+    if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
+    
+    add('System Online.', 'success-msg');
+    
+    if (rid && rid.toString().includes('_')) {
+        const snap = await dbGame.ref(`G/${rid}`).once('value');
+        if (snap.exists()) return lockOntoMatch(rid, snap.val());
+
+        localStorage.removeItem(KEY_RID);
+    }
+
+    if (rid && !rid.toString().includes('_')) {
+        const rqdEntry = await verifyRequestIdByRQD(rid);
+        if (rqdEntry) {
+            add('Recovering uplink...', 'system-msg');
+            
+            if (rqdEntry.isPrivate && rqdEntry.inviteCode) {
+                createLineWithCopy(`Re-asserted Private Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg');
+                startHostMatchWorkerPolling(rid, `Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`);
+            } else {
+                startHostMatchWorkerPolling(rid, "Awaiting Public Match Intercept");
+            }
+            return;
+        }
+        localStorage.removeItem(KEY_RID);
+    }
+
+    const foundInGameDB = await searchForGameDBMatch();
+    if (!foundInGameDB) {
+      await startPolling();
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', async () => {
+    await boot();
+  });
+})();
 </script>
 </body>
 </html>
