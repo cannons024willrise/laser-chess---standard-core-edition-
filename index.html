@@ -169,23 +169,21 @@
   let selectedPiece = null;
   let latestState = null;
   let activeMatrixContainer = null;
-  let hasMoved = false; // Track if piece was moved this turn
-  let hasRotated = false; // Track if piece was rotated this turn
+  let hasMoved = false; 
+  let hasRotated = false; 
 
-  // Reserved squares - Blue Ankh squares (blue pieces only)
+  // Reserved squares - Blue Ankh squares
   const BLUE_RESERVED = [
     {x: 9, y: 0}, {x: 9, y: 1}, {x: 9, y: 2}, {x: 9, y: 3}, {x: 9, y: 4}, {x: 9, y: 5}, {x: 9, y: 6}, {x: 9, y: 7},
     {x: 1, y: 0}, {x: 1, y: 7}
   ];
 
-  // Reserved squares - Red Eye of Horus squares (red pieces only)
+  // Reserved squares - Red Eye of Horus squares
   const RED_RESERVED = [
-      {x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7},
+    {x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7},
     {x: 8, y: 0}, {x: 8, y: 7}
   ];
 
-  // STRICT LOCAL ROTATION TABLE
-  // Keys correspond to rotation index 0 (Up), 1 (Right), 2 (Down), 3 (Left)
   const ROTATION_TABLE = {
     KING: { 0: '◈', 1: '◈', 2: '◈', 3: '◈' }, 
     LASER: { 0: '⫝', 1: '⟜', 2: 'Ͳ', 3: 'Ð' },
@@ -206,7 +204,6 @@
 
   function createLineWithCopy(text, codeToCopy, cls='') {
     const container = createLine(cls);
-    
     const textSpan = document.createElement('span');
     textSpan.textContent = text;
     container.appendChild(textSpan);
@@ -229,7 +226,6 @@
         }
         setTimeout(() => { btn.textContent = '[COPY CODE]'; }, 2000);
     };
-    
     container.appendChild(btn);
     return container;
   }
@@ -284,14 +280,8 @@
       input.style.height = input.scrollHeight + 'px';
     };
 
-    const handleInput = () => { resize(); };
-
-    setTimeout(() => {
-      input.focus();
-      resize();
-    }, 0);
-
-    input.addEventListener('input', handleInput);
+    input.addEventListener('input', resize);
+    setTimeout(() => { input.focus(); resize(); }, 0);
 
     return new Promise(resolve => {
       input.addEventListener('keydown', e => {
@@ -312,197 +302,132 @@
 
   function getPieceChar(piece) {
     const type = String(piece.pieceType || '').toUpperCase();
-    
-    // Safely wrap rotation logic to exactly 0, 1, 2, or 3 (even for negative offsets)
-    const rawRot = Number(piece.rotation !== undefined ? piece.rotation : 0);
-    const safeRot = ((rawRot % 4) + 4) % 4;
-    
-    if (ROTATION_TABLE[type]) {
-      return ROTATION_TABLE[type][safeRot];
-    }
-    
-    return '?';
+    const safeRot = ((Number(piece.rotation || 0) % 4) + 4) % 4;
+    return ROTATION_TABLE[type] ? ROTATION_TABLE[type][safeRot] : '?';
   }
 
   function isReservedSquare(x, y, color) {
-    if (color === 'BLUE') {
-      return RED_RESERVED.some(s => s.x === x && s.y === y);
-    } else if (color === 'RED') {
-      return BLUE_RESERVED.some(s => s.x === x && s.y === y);
-    }
-    return false;
+    return color === 'BLUE' ? RED_RESERVED.some(s => s.x === x && s.y === y) : BLUE_RESERVED.some(s => s.x === x && s.y === y);
   }
 
   function getReservedSquareTint(x, y) {
-    if (BLUE_RESERVED.some(s => s.x === x && s.y === y)) {
-      return 'reserved-blue';
-    }
-    if (RED_RESERVED.some(s => s.x === x && s.y === y)) {
-      return 'reserved-red';
-    }
+    if (BLUE_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-blue';
+    if (RED_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-red';
     return null;
   }
 
-
+  // DIRECTION VECTOR DICTIONARY
   const DIRS = [
-    { dx: 0, dy: 1 },   // 0 = up
-    { dx: 1, dy: 0 },   // 1 = right
-    { dx: 0, dy: -1 },  // 2 = down
-    { dx: -1, dy: 0 },  // 3 = left
+    { dx: 0, dy: 1 },   // 0 = Up
+    { dx: 1, dy: 0 },   // 1 = Right
+    { dx: 0, dy: -1 },  // 2 = Down
+    { dx: -1, dy: 0 },  // 3 = Left
   ];
-
-  const MIRROR_SLASH = {
-    0: 1, // N -> E
-    1: 0, // E -> N
-    2: 3, // S -> W
-    3: 2, // W -> S
-  };
-
-  const MIRROR_BACKSLASH = {
-    0: 3, // N -> W
-    3: 0, // W -> N
-    2: 1, // S -> E
-    1: 2, // E -> S
-  };
 
   function normalizeRotation(rot) {
     return ((Number(rot) || 0) % 4 + 4) % 4;
   }
 
-  function resolveMatchRecord(state) {
-    if (!state || typeof state !== 'object') {
-      return { root: null, match: null, board: null };
+  // UNIFIED CORE INTERACTION ENGINE MATRIX
+  // Structure: [PIECE_TYPE][ROTATION][INCOMING_DIRECTION]
+  const INTERACTION_MAP = {
+    DEFLECTOR: {
+      // Rotation 0: ◤ (Hypotenuse faces South-East)
+      0: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 }, 1: { action: 'destroy' }, 2: { action: 'destroy' } },
+      // Rotation 1: ◥ (Hypotenuse faces South-West)
+      1: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+      // Rotation 2: ◢ (Hypotenuse faces North-West)
+      2: { 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 }, 0: { action: 'destroy' }, 3: { action: 'destroy' } },
+      // Rotation 3: ◣ (Hypotenuse faces North-East)
+      3: { 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 }, 0: { action: 'destroy' }, 1: { action: 'destroy' } }
+    },
+    SWITCH: {
+      // Two-sided diagonal mirror configurations (Cannot be destroyed)
+      0: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } },
+      1: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } },
+      2: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } },
+      3: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } }
+    },
+    DEFENDER: {
+      // Frontal shield block validation. Hits from sides/rear trigger instant destruction.
+      0: { 2: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 3: { action: 'destroy' } }, // Shield Facing Up
+      1: { 3: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } }, // Shield Facing Right
+      2: { 0: { action: 'block' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }, // Shield Facing Down
+      3: { 1: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } }  // Shield Facing Left
+    },
+    KING: {
+      // Pharaohs are entirely vulnerable from all 4 lines of attack
+      0: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+      1: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+      2: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+      3: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }
+    },
+    LASER: {
+      // Sphinx pieces absorb beams reaching their positions from any angle
+      0: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
+      1: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
+      2: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
+      3: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } }
     }
+  };
 
+  function resolveMatchRecord(state) {
+    if (!state || typeof state !== 'object') return { root: null, match: null, board: null };
     if (state.G && typeof state.G === 'object' && !Array.isArray(state.G)) {
       const matchId = lockedMatchId && state.G[lockedMatchId] ? lockedMatchId : Object.keys(state.G)[0];
       const match = matchId ? state.G[matchId] : null;
-      const board = match && match.board && typeof match.board === 'object' && !Array.isArray(match.board)
-        ? match.board
-        : null;
-      return { root: state, match, board };
+      return { root: state, match, board: match?.board || null };
     }
-
-    const board = state.board && typeof state.board === 'object' && !Array.isArray(state.board)
-      ? state.board
-      : null;
-
-    return {
-      root: state,
-      match: state,
-      board: board || state,
-    };
+    return { root: state, match: state, board: state.board || state };
   }
 
-  function getBoardRoot(state) {
-    return resolveMatchRecord(state).board || {};
-  }
+  function getBoardRoot(state) { return resolveMatchRecord(state).board || {}; }
 
   function getStateTurn(state) {
     const { match, board } = resolveMatchRecord(state);
-    return (
-      board?.turn ??
-      match?.turn ??
-      state?.turn ??
-      null
-    );
+    return board?.turn ?? match?.turn ?? state?.turn ?? null;
   }
 
   function setStateTurn(state, nextTurn) {
     const { match, board } = resolveMatchRecord(state);
     if (!match) return;
-
-    if (board && typeof board === 'object') {
-      board.turn = nextTurn;
-    }
+    if (board) board.turn = nextTurn;
     match.turn = nextTurn;
   }
 
   function getBoardPieces(state) {
     const src = getBoardRoot(state);
-
     if (Array.isArray(src.pieces)) return src.pieces;
     if (src.pieces && typeof src.pieces === 'object') return Object.values(src.pieces);
     if (Array.isArray(src.board)) return src.board;
-
-    if (typeof src.board === 'string') {
-      try { return JSON.parse(src.board); } catch (e) { return []; }
-    }
-
+    if (typeof src.board === 'string') { try { return JSON.parse(src.board); } catch (e) { return []; } }
     return [];
   }
 
-  function getPieceAt(pieces, x, y) {
-    return pieces.find(p => p && p.x === x && p.y === y) || null;
-  }
-
-  function inBounds(x, y) {
-    return x >= 0 && x <= 9 && y >= 0 && y <= 7;
-  }
-
-  function getLaserDirection(piece) {
-    const rot = normalizeRotation(piece?.rotation);
-    // These are already constrained by your UI logic:
-    // BLUE: 0 (up) or 3 (left), RED: 1 (right) or 2 (down)
-    return rot;
-  }
-
-  function getMirrorType(piece) {
-    const rot = normalizeRotation(piece?.rotation);
-
-    if (piece?.pieceType === 'SWITCH') {
-      // Scarab / switch: two diagonal mirror states.
-      // 0/2 = ⟋, 1/3 = ⟍
-      return (rot % 2 === 0) ? 'slash' : 'backslash';
-    }
-
-    if (piece?.pieceType === 'DEFLECTOR') {
-      // Pyramid orientations pair as 0/2 and 1/3.
-      // 0/2 = ⬄ backslash-style reflection, 1/3 = slash-style reflection.
-      return (rot === 0 || rot === 2) ? 'backslash' : 'slash';
-    }
-
-    return null;
-  }
-
-  function reflectDirection(incomingDir, mirrorType) {
-    if (mirrorType === 'slash') return MIRROR_SLASH[incomingDir] ?? null;
-    if (mirrorType === 'backslash') return MIRROR_BACKSLASH[incomingDir] ?? null;
-    return null;
-  }
-
-  function getAnubisShieldDir(piece) {
-    return normalizeRotation(piece?.rotation);
-  }
+  function getPieceAt(pieces, x, y) { return pieces.find(p => p && p.x === x && p.y === y) || null; }
+  function inBounds(x, y) { return x >= 0 && x <= 9 && y >= 0 && y <= 7; }
 
   function interactWithLaser(piece, incomingDir) {
     const type = String(piece?.pieceType || '').toUpperCase();
+    const rot = normalizeRotation(piece?.rotation);
 
-    if (type === 'SWITCH' || type === 'DEFLECTOR') {
-      const mirrorType = getMirrorType(piece);
-      const reflected = reflectDirection(incomingDir, mirrorType);
-      if (reflected === null || reflected === undefined) {
-        return { kind: 'stop', destroyed: false, reflected: null };
-      }
-      return { kind: 'reflect', destroyed: false, reflected };
+    const typeMap = INTERACTION_MAP[type];
+    if (!typeMap) return { kind: 'stop', destroyed: false };
+
+    const rotMap = typeMap[rot] || typeMap[0];
+    if (!rotMap) return { kind: 'stop', destroyed: false };
+
+    const outcome = rotMap[incomingDir];
+    if (!outcome) return { kind: 'stop', destroyed: false };
+
+    if (outcome.action === 'reflect') {
+      return { kind: 'reflect', destroyed: false, reflected: outcome.nextDir };
     }
-
-    if (type === 'DEFENDER') {
-      const shieldDir = getAnubisShieldDir(piece);
-      if (incomingDir === shieldDir) {
-        return { kind: 'stop', blocked: true, destroyed: false };
-      }
+    if (outcome.action === 'block') {
+      return { kind: 'stop', blocked: true, destroyed: false };
+    }
+    if (outcome.action === 'destroy') {
       return { kind: 'stop', destroyed: true };
-    }
-
-    if (type === 'KING') {
-      return { kind: 'stop', destroyed: true };
-    }
-
-    if (type === 'LASER') {
-      // Sphinx hit: stop the beam. If you want the Sphinx destructible,
-      // change this to { kind: 'stop', destroyed: true }.
-      return { kind: 'stop', destroyed: false };
     }
 
     return { kind: 'stop', destroyed: false };
@@ -516,26 +441,19 @@
       .map(color => pieces.find(p => p && String(p.pieceType || '').toUpperCase() === 'LASER' && String(p.color || '').toUpperCase() === color))
       .find(Boolean);
 
-    if (!shooter) {
-      return { path: [], hit: null, shooter: null, exit: null };
-    }
+    if (!shooter) return { path: [], hit: null, shooter: null, exit: null };
 
-    const startDir = getLaserDirection(shooter);
-    let dir = startDir;
+    let dir = normalizeRotation(shooter.rotation);
     let x = shooter.x + DIRS[dir].dx;
     let y = shooter.y + DIRS[dir].dy;
     const path = [];
     const seen = new Set();
 
     for (let steps = 0; steps < 256; steps++) {
-      if (!inBounds(x, y)) {
-        return { path, hit: null, shooter, exit: { x, y, dir } };
-      }
+      if (!inBounds(x, y)) return { path, hit: null, shooter, exit: { x, y, dir } };
 
       const stateKey = `${x},${y},${dir}`;
-      if (seen.has(stateKey)) {
-        return { path, hit: null, shooter, exit: { x, y, dir }, looped: true };
-      }
+      if (seen.has(stateKey)) return { path, hit: null, shooter, exit: { x, y, dir }, looped: true };
       seen.add(stateKey);
 
       path.push({ x, y, dir });
@@ -548,7 +466,6 @@
       }
 
       const outcome = interactWithLaser(piece, dir);
-
       if (outcome.kind === 'reflect') {
         dir = outcome.reflected;
         x += DIRS[dir].dx;
@@ -568,40 +485,32 @@
         exit: null,
       };
     }
-
     return { path, hit: null, shooter, exit: null, looped: true };
   }
 
   function applyLaserResolution(state, explicitColor = null) {
     const trace = traceLaserPath(state, explicitColor);
-    if (!trace.hit || !trace.hit.destroyed || !trace.hit.piece) {
-      return { state, trace };
-    }
+    if (!trace.hit || !trace.hit.destroyed || !trace.hit.piece) return { state, trace };
 
     const pieces = getBoardPieces(state);
     const target = trace.hit.piece;
-    const nextPieces = pieces.filter(p => !(p && p.x === target.x && p.y === target.y && String(p.pieceType || '').toUpperCase() === String(target.pieceType || '').toUpperCase() && String(p.color || '').toUpperCase() === String(target.color || '').toUpperCase()));
+    const nextPieces = pieces.filter(p => !(p && p.x === target.x && p.y === target.y));
 
-    const nextState = (typeof structuredClone === 'function') ? structuredClone(state) : JSON.parse(JSON.stringify(state));
+    const nextState = JSON.parse(JSON.stringify(state));
     const { board: nextBoard, match: nextMatch } = resolveMatchRecord(nextState);
     const nextSrc = nextBoard || nextMatch || nextState;
 
-    if (Array.isArray(nextSrc.pieces)) {
-      nextSrc.pieces = nextPieces;
-    } else if (nextSrc.pieces && typeof nextSrc.pieces === 'object') {
+    if (Array.isArray(nextSrc.pieces) || (nextSrc.pieces && typeof nextSrc.pieces === 'object')) {
       nextSrc.pieces = nextPieces;
     } else {
       nextSrc.board = nextPieces;
     }
-
     return { state: nextState, trace };
   }
 
   function advanceTurnWithLaser(state, explicitColor = null) {
     const fireColor = explicitColor || getStateTurn(state);
-    if (!fireColor) {
-      return { state, trace: null, firedColor: null, nextTurn: null };
-    }
+    if (!fireColor) return { state, trace: null, firedColor: null, nextTurn: null };
 
     const fired = applyLaserResolution(state, fireColor);
     const nextState = fired.state;
@@ -609,19 +518,13 @@
     const nextTurn = currentTurn === 'RED' ? 'BLUE' : 'RED';
     const board = getBoardRoot(nextState);
 
-    if (board && typeof board === 'object') {
+    if (board) {
       board.phase = 'MOVE';
       board.moveNumber = Number(board.moveNumber || 0) + 1;
     }
-
     setStateTurn(nextState, nextTurn);
 
-    return {
-      state: nextState,
-      trace: fired.trace,
-      firedColor: currentTurn,
-      nextTurn,
-    };
+    return { state: nextState, trace: fired.trace, firedColor: currentTurn, nextTurn };
   }
 
   function fireLaserAndAdvanceTurn(explicitColor = null, contextLabel = 'Turn End') {
@@ -663,19 +566,7 @@
   function printTerminalMatrix(state) {
     latestState = state;
     const laserTrace = traceLaserPath(state, getStateTurn(state));
-    let pieces = [];
-    
-    const src = getBoardRoot(state);
-
-    if (Array.isArray(src.pieces)) {
-        pieces = src.pieces;
-    } else if (src.pieces && typeof src.pieces === 'object') {
-        pieces = Object.values(src.pieces);
-    } else if (Array.isArray(src.board)) {
-        pieces = src.board;
-    } else if (typeof src.board === 'string') {
-        try { pieces = JSON.parse(src.board); } catch(e){}
-    }
+    const pieces = getBoardPieces(state);
 
     const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
     for (const piece of pieces) {
@@ -687,7 +578,6 @@
     const container = document.createElement('div');
     container.className = 'matrix-container';
 
-    // Top X Index Label Line
     let headerRow = document.createElement('div');
     headerRow.className = 'matrix-row';
     let cornerCell = document.createElement('span');
@@ -702,7 +592,6 @@
     }
     container.appendChild(headerRow);
 
-    // Grid row assembly (inverted Y axis projection)
     for (let y = 7; y >= 0; y--) {
       let rowEl = document.createElement('div');
       rowEl.className = 'matrix-row';
@@ -716,29 +605,21 @@
         let cellEl = document.createElement('span');
         cellEl.className = 'matrix-cell';
         
-        // Apply reserved square tinting
         const tint = getReservedSquareTint(x, y);
-        if (tint) {
-          cellEl.classList.add(tint);
-        }
+        if (tint) cellEl.classList.add(tint);
+        if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
         
-        // Active Navigation Cursor Highlights
-        if (x === cursorX && y === cursorY) {
-          cellEl.classList.add('cursor');
-        }
-        
-        // Target Location Dashed Movement Preview Updates
         if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) {
           cellEl.classList.add('selected');
         } else if (selectedPiece && x === cursorX && y === cursorY) {
           cellEl.classList.add('target-preview');
         }
 
-        const p = grid[y][x];
         if (laserTrace && Array.isArray(laserTrace.path) && laserTrace.path.some(step => step.x === x && step.y === y)) {
           cellEl.classList.add('laser-path');
         }
 
+        const p = grid[y][x];
         if (p) {
           cellEl.textContent = getPieceChar(p);
           cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue');
@@ -761,22 +642,12 @@
     window.scrollTo(0, document.body.scrollHeight);
   }
 
-  function updateMatrixView() {
-    if (latestState) {
-      printTerminalMatrix(latestState);
-    }
-  }
+  function updateMatrixView() { if (latestState) printTerminalMatrix(latestState); }
 
-  // Hardware Actions Strategy Handlers
   function handleGridAction() {
     if (!latestState) return;
 
-    const src = getBoardRoot(latestState);
-    let pieces = [];
-    
-    if (Array.isArray(src.pieces)) pieces = src.pieces;
-    else if (src.pieces && typeof src.pieces === 'object') pieces = Object.values(src.pieces);
-
+    const pieces = getBoardPieces(latestState);
     let pieceAtCursor = pieces.find(p => p && p.x === cursorX && p.y === cursorY);
 
     if (selectedPiece) {
@@ -791,7 +662,6 @@
             selectedPiece = null;
             return;
           }
-
           if (targetPiece.pieceType === 'LASER') {
             add("Action rejected: Sphinx pieces cannot be moved.", "error-msg");
             selectedPiece = null;
@@ -839,7 +709,6 @@
             add(`Piece moved to (${cursorX}, ${cursorY}).`, "success-msg");
             hasMoved = true;
           }
-          // Auto-fire laser at end of turn, then advance to the next player
           fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Move');
         }
         selectedPiece = null;
@@ -851,7 +720,6 @@
             add(`Action rejected: Piece belongs to ${pieceAtCursor.color}, turn is ${currentTurn}.`, "error-msg");
             return;
         }
-        
         selectedPiece = { x: cursorX, y: cursorY };
         add(`Piece selected at (${cursorX}, ${cursorY})`, "success-msg");
       } else {
@@ -866,31 +734,22 @@
       add("Action dropped: Select a piece before rotating.", "error-msg");
       return;
     }
-
     if (hasMoved) {
       add("Action rejected: Cannot rotate after moving this turn.", "error-msg");
       return;
     }
 
-    const src = getBoardRoot(latestState);
-    let pieces = [];
-    
-    if (Array.isArray(src.pieces)) pieces = src.pieces;
-    else if (src.pieces && typeof src.pieces === 'object') pieces = Object.values(src.pieces);
-
+    const pieces = getBoardPieces(latestState);
     let targetPiece = pieces.find(p => p && p.x === selectedPiece.x && p.y === selectedPiece.y);
     if (targetPiece) {
-      
-      // RULE: Kings cannot rotate
       if (targetPiece.pieceType === 'KING') {
         add("Action rejected: Pharaohs (Kings) cannot rotate.", "error-msg");
         return;
       }
 
-      let currentRot = Number(targetPiece.rotation !== undefined ? targetPiece.rotation : 0);
+      let currentRot = Number(targetPiece.rotation || 0);
       let newRot = dir === 'R' ? (currentRot + 1) % 4 : (currentRot + 3) % 4;
 
-      // RULE: Constraints on Blue and Red Lasers (Sphinxes)
       if (targetPiece.pieceType === 'LASER') {
         if (targetPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) {
           add("Action rejected: Blue Sphinx can only face Up (0) or Left (3).", "error-msg");
@@ -903,19 +762,15 @@
         targetPiece.rotation = newRot;
         add(`Sphinx rotated ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
       } 
-      // RULE: Switches have only 2 logical states (toggle between 0 and 1)
       else if (targetPiece.pieceType === 'SWITCH') {
         targetPiece.rotation = (currentRot + 1) % 2;
         add(`Scarab toggled.`, "success-msg");
       } 
-      // Standard 90-degree rotations
       else {
         targetPiece.rotation = newRot;
         add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
       }
       hasRotated = true;
-
-      // Auto-fire laser at end of turn, then advance to the next player
       fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Rotate');
     }
     updateMatrixView();
@@ -923,11 +778,9 @@
 
   async function pollFirstMatch({ silentEmpty = false } = {}) {
     if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
-
     try {
       const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
       const data = snapshot.val();
-
       if (!data) {
         currentHead = null;
         if (!silentEmpty && initialQueueScanDone && lastQueueState !== 'EMPTY') {
@@ -936,16 +789,13 @@
         }
         return false;
       }
-
       initialQueueScanDone = true;
       const firstKey = Object.keys(data)[0];
       currentHead = { id: firstKey, data: data[firstKey] };
-
       if (lastQueueState !== firstKey) {
         add(`[AUTO-SCAN] Head detected: ${data[firstKey].username} (${data[firstKey].color === 0 ? 'RED' : 'BLUE'})`, 'success-msg');
         lastQueueState = firstKey;
       }
-
       return true;
     } catch (e) {
       currentHead = null;
@@ -955,16 +805,11 @@
 
   async function showMode() {
     if (localStorage.getItem(KEY_RID)) return;
-
-    while (processing) {
-      await sleep(10);
-    }
-
+    while (processing) await sleep(10);
     if (modeShown) return;
     modeShown = true;
 
     const privateSuffix = ' | [P] Private Host | [J] Private Join';
-
     if (!currentHead) {
       add('Queue Empty. [R] Host Red | [B] Host Blue' + privateSuffix, 'system-msg');
     } else if (currentHead.data.color === 0) {
@@ -978,14 +823,10 @@
   async function startPolling() {
     if (isPollingStarting) return;
     isPollingStarting = true;
-
     if (rqPollInterval) clearInterval(rqPollInterval);
-
     await pollFirstMatch({ silentEmpty: true });
-
     modeShown = false;
     await showMode();
-
     if (!localStorage.getItem(KEY_RID) && !lockedMatchId) {
       rqPollInterval = setInterval(() => pollFirstMatch({ silentEmpty: false }), 6000);
     }
@@ -1000,155 +841,79 @@
   async function searchForGameDBMatch() {
     const myName = localStorage.getItem(KEY_USER);
     if (!myName) return false;
-
     try {
       const snap = await dbGame.ref('G').once('value');
       const games = snap.val();
       if (!games) return false;
-
       const upperName = myName.toUpperCase();
-
-      const matchID = Object.keys(games).find(key =>
-        String(key).toUpperCase().includes(upperName)
-      );
-
+      const matchID = Object.keys(games).find(key => String(key).toUpperCase().includes(upperName));
       if (matchID) {
         add(`[AUTO-JOIN] Match detected in /G: ${matchID}`, 'success-msg');
         lockOntoMatch(matchID, games[matchID]);
         return true;
       }
-    } catch (e) {
-      console.error(e);
-    }
-
+    } catch (e) { console.error(e); }
     return false;
   }
 
   function startHostMatchWorkerPolling(requestId, contextMsg = "Awaiting Handshake") {
     stopHostGamePolling();
-
     const passiveGamePoll = async () => {
       if (lockedMatchId) return;
-      const found = await searchForGameDBMatch();
-      if (found) {
-        stopHostGamePolling();
-        toggleWaiting(false);
-      }
+      if (await searchForGameDBMatch()) { stopHostGamePolling(); toggleWaiting(false); }
     };
-
     passiveGamePoll();
-    stopHostGamePolling();
     toggleWaiting(true, contextMsg);
 
     hostGamePollInterval = setInterval(async () => {
       if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId.toString()) {
-        stopHostGamePolling();
-        toggleWaiting(false);
-        return;
+        stopHostGamePolling(); toggleWaiting(false); return;
       }
-
       try {
         const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value');
         const data = snap.val();
-
         if (data && data.matchName) {
-          stopHostGamePolling();
-          toggleWaiting(false);
+          stopHostGamePolling(); toggleWaiting(false);
           lockOntoMatch(data.matchName, { status: 'SYNCING' });
         } else if (!data) {
-          stopHostGamePolling();
-          toggleWaiting(false);
-          
-          const foundMatchInG = await searchForGameDBMatch();
-          if (!foundMatchInG) {
+          stopHostGamePolling(); toggleWaiting(false);
+          if (!await searchForGameDBMatch()) {
             add('Match request expired or consumed.', 'error-msg');
-            localStorage.removeItem(KEY_RID);
-            modeShown = false;
-            await startPolling();
+            localStorage.removeItem(KEY_RID); modeShown = false; await startPolling();
           }
         }
-      } catch (e) {
-        console.error("RTDB match status polling error:", e);
-      }
+      } catch (e) { console.error(e); }
     }, 3000);
   }
 
-  function stopHostGamePolling() {
-    if (hostGamePollInterval) {
-      clearInterval(hostGamePollInterval);
-      hostGamePollInterval = null;
-    }
-  }
-
-  async function verifyRequestIdByRQD(requestId) {
-    if (!requestId) return false;
-    try {
-      const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value');
-      return snap.exists() ? snap.val() : false;
-    } catch (e) {
-      console.error(e);
-      return false;
-    }
-  }
-
-  async function isUsernameOccupied(username) {
-    if (!username) return true;
-    try {
-      const snap = await dbMatch.ref(`P/${username}`).once('value');
-      return snap.exists();
-    } catch (e) {
-      console.error(e);
-      return true;
-    }
-  }
+  function stopHostGamePolling() { if (hostGamePollInterval) { clearInterval(hostGamePollInterval); hostGamePollInterval = null; } }
+  async function verifyRequestIdByRQD(requestId) { if (!requestId) return false; try { const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value'); return snap.exists() ? snap.val() : false; } catch (e) { return false; } }
+  async function isUsernameOccupied(username) { if (!username) return true; try { const snap = await dbMatch.ref(`P/${username}`).once('value'); return snap.exists(); } catch (e) { return true; } }
 
   async function verifyRecoveryPath(requestId) {
     if (!requestId) return { state: 'missing', data: null };
-
     const qd = await verifyRequestIdByRQD(requestId);
-    if (qd) {
-      if (qd.matchName) return { state: 'matched', data: qd };
-      return { state: 'waiting', data: qd };
-    }
-
+    if (qd) return qd.matchName ? { state: 'matched', data: qd } : { state: 'waiting', data: qd };
     return { state: 'missing', data: null };
   }
 
-  function stopRecoveryPolling() {
-    if (recoveryPollInterval) {
-      clearInterval(recoveryPollInterval);
-      recoveryPollInterval = null;
-    }
-  }
+  function stopRecoveryPolling() { if (recoveryPollInterval) { clearInterval(recoveryPollInterval); recoveryPollInterval = null; } }
 
   function startRecoveryPolling(requestId) {
     stopRecoveryPolling();
     toggleWaiting(true, "Recovering Uplink Signal");
-
     let attempts = 0;
-    const maxAttempts = 18;
 
     const tick = async () => {
-      if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId) {
-        stopRecoveryPolling();
-        toggleWaiting(false);
-        return;
-      }
-
+      if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId) { stopRecoveryPolling(); toggleWaiting(false); return; }
       const recovered = await verifyRecoveryPath(requestId);
 
       if (recovered.state === 'matched') {
-        stopRecoveryPolling();
-        toggleWaiting(false);
-        add('Recovering uplink...', 'system-msg');
-        lockOntoMatch(recovered.data.matchName, recovered.data);
-        return;
+        stopRecoveryPolling(); toggleWaiting(false); add('Recovering uplink...', 'system-msg');
+        lockOntoMatch(recovered.data.matchName, recovered.data); return;
       }
-
       if (recovered.state === 'waiting') {
-        stopRecoveryPolling();
-        toggleWaiting(false);
-        add('Recovering uplink...', 'system-msg');
+        stopRecoveryPolling(); toggleWaiting(false); add('Recovering uplink...', 'system-msg');
         if (recovered.data.isPrivate && recovered.data.inviteCode) {
           startHostMatchWorkerPolling(requestId, `Awaiting Private Join [CODE: ${recovered.data.inviteCode}]`);
         } else {
@@ -1159,30 +924,17 @@
 
       attempts += 1;
       if (attempts === 1) add('Recovering uplink...', 'system-msg');
-
-      if (attempts >= maxAttempts) {
-        stopRecoveryPolling();
-        toggleWaiting(false);
-        stopHostGamePolling();
-
-        const foundMatchInG = await searchForGameDBMatch();
-        if (!foundMatchInG) {
-          localStorage.removeItem(KEY_RID);
-          modeShown = false;
-          await startPolling();
-        }
+      if (attempts >= 18) {
+        stopRecoveryPolling(); toggleWaiting(false); stopHostGamePolling();
+        if (!await searchForGameDBMatch()) { localStorage.removeItem(KEY_RID); modeShown = false; await startPolling(); }
       }
     };
-
     tick();
     recoveryPollInterval = setInterval(tick, 4000);
   }
 
   async function handleMode(val) {
-    if (privateState) {
-      return handlePrivateFlow(val);
-    }
-
+    if (privateState) return handlePrivateFlow(val);
     if (val === 'A') {
       if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); modeShown = false; return showMode(); }
       toggleWaiting(true, `Intercepting ${currentHead.id}`);
@@ -1190,252 +942,114 @@
     }
     if (val === 'R') return registerHost(0, false); 
     if (val === 'B') return registerHost(1, false);
+    if (val === 'P') { privateState = { step: 'TARGET', target: null }; return add('TARGET USER (OPTIONAL - ENTER TO SKIP):', '', true, handlePrivateFlow); }
+    if (val === 'J') { privateState = { step: 'CODE' }; return add('INVITE CODE:', '', true, handlePrivateFlow); }
 
-    if (val === 'P') {
-      privateState = { step: 'TARGET', target: null };
-      return add('TARGET USER (OPTIONAL - ENTER TO SKIP):', '', true, handlePrivateFlow);
-    }
-
-    if (val === 'J') {
-      privateState = { step: 'CODE' };
-      return add('INVITE CODE:', '', true, handlePrivateFlow);
-    }
-
-    add('Unknown Command.', 'error-msg');
-    modeShown = false;
-    return showMode();
+    add('Unknown Command.', 'error-msg'); modeShown = false; return showMode();
   }
 
   async function handlePrivateFlow(v) {
-    if (!privateState) {
-      modeShown = false;
-      return showMode();
-    }
-
+    if (!privateState) { modeShown = false; return showMode(); }
     if (privateState.step === 'TARGET') {
       const raw = (v || '').trim();
-
-      if (!raw) {
-        privateState.target = null;
-        privateState.step = 'COLOR';
-        return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
-      }
-
+      if (!raw) { privateState.step = 'COLOR'; return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow); }
       const target = raw.toUpperCase();
-
-      if (target === localStorage.getItem(KEY_USER)) {
-        add('CANNOT TARGET SELF.', 'error-msg');
-        privateState = null;
-        modeShown = false;
-        return showMode();
-      }
-
-      const exists = await isUsernameOccupied(target);
-      if (!exists) {
-        add('TARGET USER NOT FOUND.', 'error-msg');
-        privateState = null;
-        modeShown = false;
-        return showMode();
-      }
-
-      privateState.target = target;
-      privateState.step = 'COLOR';
-      return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
+      if (target === localStorage.getItem(KEY_USER)) { add('CANNOT TARGET SELF.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
+      if (!await isUsernameOccupied(target)) { add('TARGET USER NOT FOUND.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
+      privateState.target = target; privateState.step = 'COLOR'; return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
     }
-
     if (privateState.step === 'COLOR') {
       const input = (v || '').trim().toUpperCase();
-
       const colorChar = input.includes('R') ? 'R' : input.includes('B') ? 'B' : null;
       const color = colorChar === 'R' ? 0 : colorChar === 'B' ? 1 : null;
-
-      if (color === null) {
-        add('Unknown Command.', 'error-msg');
-        privateState = null;
-        modeShown = false;
-        return showMode();
-      }
-
-      const target = privateState.target;
-      privateState = null;
-
-      return createPrivateRequest(color, target);
+      if (color === null) { add('Unknown Command.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
+      const target = privateState.target; privateState = null; return createPrivateRequest(color, target);
     }
-
     if (privateState.step === 'CODE') {
       const code = (v || '').trim().toUpperCase();
-      if (!code) {
-        add('INVALID CODE.', 'error-msg');
-        privateState = null;
-        modeShown = false;
-        return showMode();
-      }
-
-      privateState = null;
-      return joinPrivate(code);
+      if (!code) { add('INVALID CODE.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
+      privateState = null; return joinPrivate(code);
     }
-
-    privateState = null;
-    modeShown = false;
-    return showMode();
+    privateState = null; modeShown = false; return showMode();
   }
 
   async function joinPrivate(inviteCode) {
-    const username = localStorage.getItem(KEY_USER);
-    const password = localStorage.getItem(KEY_PASS);
-
     try {
       const res = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username,
-          password,
-          isPrivate: true,
-          privateMode: 'JOIN',
-          inviteCode
-        })
+        body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), isPrivate: true, privateMode: 'JOIN', inviteCode })
       });
-
       const data = await res.json();
       if (data.ok) {
         const idToStore = data.matchName || data.matchId || data.requestId || data.timestamp;
         if (idToStore) localStorage.setItem(KEY_RID, idToStore);
-        stopPolling();
-        add('Private Link Success!', 'success-msg');
-
-        if (data.matchName) {
-          lockOntoMatch(data.matchName, { status: 'SYNCING' });
-        } else if (data.requestId) {
-          startHostMatchWorkerPolling(data.requestId, "Awaiting Private Handshake");
-        }
+        stopPolling(); add('Private Link Success!', 'success-msg');
+        if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        else if (data.requestId) startHostMatchWorkerPolling(data.requestId, "Awaiting Private Handshake");
         return;
       }
-
-      add(`Private Join Denied: ${data.error}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    } catch (e) {
-      add(`Worker Error: ${e.message}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    }
+      add(`Private Join Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
+    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
   }
 
   async function createPrivateRequest(color, privateTarget = null) {
-    const username = localStorage.getItem(KEY_USER);
-    const password = localStorage.getItem(KEY_PASS);
-
-    const privateRequestPayload = {
-      mode: 'PRIVATE_MATCH_REQUEST',
-      body: {
-        requester: username,
-        secret: password,
-        color,
-        target: privateTarget
-      }
-    };
-
     try {
       const res = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(privateRequestPayload)
+        body: JSON.stringify({ mode: 'PRIVATE_MATCH_REQUEST', body: { requester: localStorage.getItem(KEY_USER), secret: localStorage.getItem(KEY_PASS), color, target: privateTarget } })
       });
-
       const data = await res.json();
       if (data.ok) {
-        const privateRequestId = data.requestId;
-        if (privateRequestId) localStorage.setItem(KEY_RID, privateRequestId);
-        
+        if (data.requestId) localStorage.setItem(KEY_RID, data.requestId);
         stopPolling();
-        
         if (data.inviteCode) {
           try { await navigator.clipboard.writeText(data.inviteCode); } catch(cErr){}
           createLineWithCopy(`Private Request Generated! CODE: ${data.inviteCode} `, data.inviteCode, 'success-msg');
-        } else {
-          add('Private Request Generated!', 'success-msg');
-        }
-        
-        startHostMatchWorkerPolling(privateRequestId, `Awaiting Private Join [CODE: ${data.inviteCode}]`);
+        } else { add('Private Request Generated!', 'success-msg'); }
+        startHostMatchWorkerPolling(data.requestId, `Awaiting Private Join [CODE: ${data.inviteCode}]`);
         return;
       }
-
-      add(`Private Request Denied: ${data.error}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    } catch (e) {
-      add(`Worker Error: ${e.message}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    }
+      add(`Private Request Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
+    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
   }
 
   async function registerHost(color, isIntercept = false, extra = {}) {
-    const username = localStorage.getItem(KEY_USER);
-    const password = localStorage.getItem(KEY_PASS);
     try {
       const res = await fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, color, isIntercept, ...extra })
+        body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), color, isIntercept, ...extra })
       });
       const data = await res.json();
       if (data.ok) {
         const idToStore = data.matchName || data.requestId || data.timestamp;
         if (idToStore) localStorage.setItem(KEY_RID, idToStore);
-        stopPolling();
-        add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
-
-        if (data.matchName) {
-          lockOntoMatch(data.matchName, { status: 'SYNCING' });
-        } else {
-          const requestIdToPoll = data.requestId || data.timestamp;
-          if (requestIdToPoll) {
-            startHostMatchWorkerPolling(requestIdToPoll, isIntercept ? "Awaiting Intercept Handshake" : "Awaiting Public Match Intercept");
-          }
-        }
-
+        stopPolling(); add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
+        if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        else if (data.requestId || data.timestamp) startHostMatchWorkerPolling(data.requestId || data.timestamp, isIntercept ? "Awaiting Intercept Handshake" : "Awaiting Public Match Intercept");
         return;
-      } else {
-        add(`Uplink Denied: ${data.error}`, 'error-msg');
-        modeShown = false;
-        return showMode();
       }
-    } catch (e) {
-      add(`Worker Error: ${e.message}`, 'error-msg');
-      modeShown = false;
-      return showMode();
-    }
+      add(`Uplink Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
+    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
   }
 
   function lockOntoMatch(id, entry) {
-    lockedMatchId = id;
-    localStorage.setItem(KEY_RID, id); 
-    stopPolling(); 
-    toggleWaiting(false);
-    stopHostGamePolling();
-
-    modeShown = false;
+    lockedMatchId = id; localStorage.setItem(KEY_RID, id); 
+    stopPolling(); toggleWaiting(false); stopHostGamePolling(); modeShown = false;
     add(`LINK ESTABLISHED: ${id}`, 'success-msg');
     add('Controls: Arrow Keys=Move Cursor | Space/Enter=Select/Move | L/R=Rotate Piece | F=Fire & Skip Turn', 'system-msg');
-    add('F fires immediately using the active turn color and advances to the next player.', 'system-msg');
     
     const gameRef = dbGame.ref(`G/${id}`);
     gameRef.on('value', snap => {
         const state = snap.val();
         if (state) {
-            const turnDisplay = getStateTurn(state) ?? 'N/A';
-            add(`[SYNC] Turn: ${turnDisplay}`, 'system-msg');
+            add(`[SYNC] Turn: ${getStateTurn(state) ?? 'N/A'}`, 'system-msg');
             printTerminalMatrix(state);
         } else {
-            add('MATCH TERMINATED.', 'error-msg');
-            localStorage.removeItem(KEY_RID);
-            lockedMatchId = null;
-            activeMatrixContainer = null;
-            gameRef.off();
-            modeShown = false;
-            startPolling();
+            add('MATCH TERMINATED.', 'error-msg'); localStorage.removeItem(KEY_RID);
+            lockedMatchId = null; activeMatrixContainer = null; gameRef.off(); modeShown = false; startPolling();
         }
     });
   }
@@ -1445,139 +1059,67 @@
       if (waitAnimationInterval) return;
       const l = createLine('wait-msg');
       let dots = 0;
-      waitAnimationInterval = setInterval(() => { 
-        dots = (dots + 1) % 4; 
-        l.textContent = contextMsg + ".".repeat(dots); 
-      }, 500);
-    } else { 
-      if (waitAnimationInterval) { 
-        clearInterval(waitAnimationInterval); 
-        waitAnimationInterval = null; 
-      } 
-    }
+      waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = contextMsg + ".".repeat(dots); }, 500);
+    } else { if (waitAnimationInterval) { clearInterval(waitAnimationInterval); waitAnimationInterval = null; } }
   }
 
   async function handleAuth(v) {
     if (!localStorage.getItem(KEY_USER)) {
       if (!v) return add('User ID:', '', true, handleAuth);
-
       const candidate = v.trim().toUpperCase();
-      if (!candidate) {
-        add('INVALID USER ID.', 'error-msg');
-        return add('User ID:', '', true, handleAuth);
-      }
-
-      const occupied = await isUsernameOccupied(candidate);
-      if (occupied) {
-        add('USER ID ALREADY OCCUPIED.', 'error-msg');
-        return add('User ID:', '', true, handleAuth);
-      }
-
-      localStorage.setItem(KEY_USER, candidate);
-      return boot();
+      if (!candidate || await isUsernameOccupied(candidate)) { add(candidate ? 'USER ID ALREADY OCCUPIED.' : 'INVALID USER ID.', 'error-msg'); return add('User ID:', '', true, handleAuth); }
+      localStorage.setItem(KEY_USER, candidate); return boot();
     }
-    if (!localStorage.getItem(KEY_PASS)) {
-      if (!v) return add('Access Key:', '', true, handleAuth);
-      localStorage.setItem(KEY_PASS, v);
-      return boot();
-    }
+    if (!localStorage.getItem(KEY_PASS)) { if (!v) return add('Access Key:', '', true, handleAuth); localStorage.setItem(KEY_PASS, v); return boot(); }
   }
 
   async function boot() {
     const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
     if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
-    
-    add('System Online.', 'success-msg');
-    add('KHET 2.0 Rules Edition - Full rule enforcement active', 'system-msg');
+    add('System Online.', 'success-msg'); add('KHET 2.0 Rules Edition - Full rule enforcement active', 'system-msg');
     
     if (rid && rid.toString().includes('_')) {
         const snap = await dbGame.ref(`G/${rid}`).once('value');
         if (snap.exists()) return lockOntoMatch(rid, snap.val());
-
         localStorage.removeItem(KEY_RID);
     }
-
     if (rid && !rid.toString().includes('_')) {
         const rqdEntry = await verifyRequestIdByRQD(rid);
         if (rqdEntry) {
             add('Recovering uplink...', 'system-msg');
-            
             if (rqdEntry.isPrivate && rqdEntry.inviteCode) {
                 createLineWithCopy(`Re-asserted Private Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg');
                 startHostMatchWorkerPolling(rid, `Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`);
-            } else {
-                startHostMatchWorkerPolling(rid, "Awaiting Public Match Intercept");
-            }
+            } else { startHostMatchWorkerPolling(rid, "Awaiting Public Match Intercept"); }
             return;
         }
         localStorage.removeItem(KEY_RID);
     }
-
-    const foundInGameDB = await searchForGameDBMatch();
-    if (!foundInGameDB) {
-      await startPolling();
-    }
+    if (!await searchForGameDBMatch()) await startPolling();
   }
 
-  // Intercept Global Keyboard Stream for Active Matrix Controls
   window.addEventListener('keydown', e => {
     if (!lockedMatchId || !latestState) return;
-
-    // Relinquish event stream control safely if the user is typing message strings into input prompts
     if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
-      if (document.activeElement.value.trim().length > 0) {
-        return;
-      }
+      if (document.activeElement.value.trim().length > 0) return;
     }
-
     switch (e.key) {
-      case 'ArrowUp':
-        if (cursorY < 7) cursorY++;
-        updateMatrixView();
-        e.preventDefault();
-        break;
-      case 'ArrowDown':
-        if (cursorY > 0) cursorY--;
-        updateMatrixView();
-        e.preventDefault();
-        break;
-      case 'ArrowLeft':
-        if (cursorX > 0) cursorX--;
-        updateMatrixView();
-        e.preventDefault();
-        break;
-      case 'ArrowRight':
-        if (cursorX < 9) cursorX++;
-        updateMatrixView();
-        e.preventDefault();
-        break;
+      case 'ArrowUp': if (cursorY < 7) cursorY++; updateMatrixView(); e.preventDefault(); break;
+      case 'ArrowDown': if (cursorY > 0) cursorY--; updateMatrixView(); e.preventDefault(); break;
+      case 'ArrowLeft': if (cursorX > 0) cursorX--; updateMatrixView(); e.preventDefault(); break;
+      case 'ArrowRight': if (cursorX < 9) cursorX++; updateMatrixView(); e.preventDefault(); break;
       case ' ':
-      case 'Enter':
-        handleGridAction();
-        e.preventDefault();
-        break;
+      case 'Enter': handleGridAction(); e.preventDefault(); break;
       case 'l':
-      case 'L':
-        handleRotation('L');
-        e.preventDefault();
-        break;
+      case 'L': handleRotation('L'); e.preventDefault(); break;
       case 'r':
-      case 'R':
-        handleRotation('R');
-        e.preventDefault();
-        break;
+      case 'R': handleRotation('R'); e.preventDefault(); break;
       case 'f':
-      case 'F':
-        selectedPiece = null;
-        fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Manual Fire');
-        e.preventDefault();
-        break;
+      case 'F': selectedPiece = null; fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Manual Fire'); e.preventDefault(); break;
     }
   });
 
-  window.addEventListener('DOMContentLoaded', async () => {
-    await boot();
-  });
+  window.addEventListener('DOMContentLoaded', boot);
 })();
 </script>
 </body>
