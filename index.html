@@ -113,6 +113,11 @@
             outline: 1px dashed var(--blue) !important;
             background-color: rgba(0, 212, 255, 0.1);
         }
+        .laser-path {
+            outline: 2px solid var(--waiting) !important;
+            background-color: rgba(0, 255, 0, 0.2) !important;
+            color: var(--waiting) !important;
+        }
     </style>
 </head>
 <body>
@@ -159,7 +164,6 @@
   let isPollingStarting = false;
   let hostGamePollInterval = null; 
 
-  // Interactive UI State Properties
   let cursorX = 0;
   let cursorY = 0;
   let selectedPiece = null;
@@ -168,13 +172,11 @@
   let hasMoved = false; 
   let hasRotated = false; 
 
-  // Reserved squares - Blue Ankh squares
   const BLUE_RESERVED = [
     {x: 9, y: 0}, {x: 9, y: 1}, {x: 9, y: 2}, {x: 9, y: 3}, {x: 9, y: 4}, {x: 9, y: 5}, {x: 9, y: 6}, {x: 9, y: 7},
     {x: 1, y: 0}, {x: 1, y: 7}
   ];
 
-  // Reserved squares - Red Eye of Horus squares
   const RED_RESERVED = [
     {x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7},
     {x: 8, y: 0}, {x: 8, y: 7}
@@ -312,7 +314,6 @@
     return null;
   }
 
-  // DIRECTION VECTOR DICTIONARY
   const DIRS = [
     { dx: 0, dy: 1 },   // 0 = Up
     { dx: 1, dy: 0 },   // 1 = Right
@@ -324,7 +325,6 @@
     return ((Number(rot) || 0) % 4 + 4) % 4;
   }
 
-  // UNIFIED CORE INTERACTION ENGINE MATRIX
   const INTERACTION_MAP = {
     DEFLECTOR: {
       0: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 }, 1: { action: 'destroy' }, 2: { action: 'destroy' } },
@@ -525,24 +525,7 @@
 
     if (result.trace) {
       const trace = result.trace;
-      add(`[${contextLabel}] ${firedColor} laser fired. Tracing path...`, 'system-msg');
-
-      // EXPLICIT LASER PATH TERMINAL LOGGING
-      if (trace.path && trace.path.length > 0) {
-        let lastDir = -1;
-        for (const step of trace.path) {
-          if (step.dir !== lastDir) {
-            let dirStr = "";
-            if (step.dir === 0) dirStr = "^\n|\nNorth";
-            else if (step.dir === 1) dirStr = "->\nEast";
-            else if (step.dir === 2) dirStr = "|\nv\nSouth";
-            else if (step.dir === 3) dirStr = "<-\nWest";
-            
-            add(dirStr, 'wait-msg'); // Wait-msg gives it the green terminal highlight
-            lastDir = step.dir;
-          }
-        }
-      }
+      add(`[${contextLabel}] ${firedColor} laser fired.`, 'system-msg');
 
       if (trace.looped) {
         add('Laser path loop detected; shot aborted safely.', 'error-msg');
@@ -569,6 +552,7 @@
 
   function printTerminalMatrix(state) {
     latestState = state;
+    const laserTrace = traceLaserPath(state, getStateTurn(state));
     const pieces = getBoardPieces(state);
 
     const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
@@ -618,14 +602,23 @@
           cellEl.classList.add('target-preview');
         }
 
+        // --- UPDATED LASER RENDERING LOGIC ---
+        const pathStep = laserTrace && laserTrace.path ? laserTrace.path.find(s => s.x === x && s.y === y) : null;
+        
         const p = grid[y][x];
         if (p) {
           cellEl.textContent = getPieceChar(p);
           cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue');
+        } else if (pathStep) {
+          // Replace dot with direction arrow: 0:^, 1:>, 2:v, 3:<
+          cellEl.textContent = ['^', '>', 'v', '<'][pathStep.dir];
+          cellEl.classList.add('laser-path');
         } else {
           cellEl.textContent = '·';
           cellEl.style.color = 'var(--bright)';
         }
+        // ------------------------------------
+
         rowEl.appendChild(cellEl);
       }
       container.appendChild(rowEl);
