@@ -11,9 +11,10 @@
             --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; 
             --muted: #999999; --waiting: #00ff00; --blue: #00d4ff; --red: #ff3333;
             --blue-tint: rgba(0, 212, 255, 0.15); --red-tint: rgba(255, 51, 51, 0.15);
+            --laser: #ffff00;
         }
         body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
-        #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
+        #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; padding-bottom: 50px; }
         .history-line { white-space: pre-wrap; word-break: break-all; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
         .input-wrapper { display:flex; gap:8px; align-items:flex-start; width: 100%; }
         .prompt { white-space: pre; }
@@ -23,16 +24,22 @@
         .error-msg { color: var(--error); }
         .highlight { color: var(--bright); font-weight: 700; }
         .wait-msg { color: var(--waiting); }
-        .copy-btn { background: #2a2a2a; color: var(--waiting); border: 1px solid var(--waiting); font-family: 'Unifont', monospace; font-size: 12px; cursor: pointer; padding: 2px 6px; user-select: none; display: inline-block; }
-        .laser-path { color: var(--waiting) !important; font-weight: bold; }
-        .matrix-container { display: flex; flex-direction: column; margin: 6px 0 16px 0; font-family: 'Unifont', monospace; user-select: none; }
+        
+        /* MATRIX TERMINAL STYLES */
+        .matrix-container { display: flex; flex-direction: column; margin: 6px 0 24px 0; font-family: 'Unifont', monospace; user-select: none; border-left: 2px solid var(--line); padding-left: 12px; }
         .matrix-row { display: flex; height: 24px; align-items: center; }
-        .matrix-cell { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; font-weight: bold; transition: background-color 0.1s ease; }
+        .matrix-cell { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; font-weight: bold; }
         .matrix-lbl { color: var(--muted); font-weight: normal; }
         .p-blue { color: var(--blue); }
         .p-red { color: var(--red); }
+        
+        .laser-path { color: var(--laser) !important; font-weight: bold; text-shadow: 0 0 5px rgba(255,255,0,0.5); }
+        .laser-bounce { background-color: rgba(255, 255, 0, 0.2) !important; }
+        
         .reserved-blue { background-color: var(--blue-tint) !important; }
         .reserved-red { background-color: var(--red-tint) !important; }
+        
+        /* INTERACTIVE INPUT STYLES */
         .matrix-cell.cursor { background-color: rgba(255, 255, 255, 0.15); outline: 1px solid var(--bright); }
         .matrix-cell.selected { outline: 1px dashed var(--waiting) !important; background-color: rgba(0, 255, 0, 0.05); }
         .matrix-cell.target-preview { outline: 1px dashed var(--blue) !important; background-color: rgba(0, 212, 255, 0.1); }
@@ -40,11 +47,14 @@
 </head>
 <body>
 <div id="terminal-log"></div>
+
 <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
+
 <script>
 (() => {
   'use strict';
+
   const matchConfig = { apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4", authDomain: "lasercheowefficiencymanager.firebaseapp.com", databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com", projectId: "lasercheowefficiencymanager" };
   const gameConfig = { apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE", authDomain: "laser-chess-low-efficiency.firebaseapp.com", databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com", projectId: "laser-chess-low-efficiency" };
   const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
@@ -65,7 +75,6 @@
   const BLUE_RESERVED = [{x: 9, y: 0}, {x: 9, y: 1}, {x: 9, y: 2}, {x: 9, y: 3}, {x: 9, y: 4}, {x: 9, y: 5}, {x: 9, y: 6}, {x: 9, y: 7}, {x: 1, y: 0}, {x: 1, y: 7}];
   const RED_RESERVED = [{x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7}, {x: 8, y: 0}, {x: 8, y: 7}];
 
-  // ALIGNED VISUAL MATRIX
   const ROTATION_TABLE = { 
     KING: { 0: '◈', 1: '◈', 2: '◈', 3: '◈' }, 
     LASER: { 0: '⫝', 1: '⟜', 2: 'Ͳ', 3: 'Ð' }, 
@@ -80,18 +89,6 @@
     const d = document.createElement('div'); d.className = `history-line ${cls}`;
     if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap); else logContainer.appendChild(d);
     return d;
-  }
-
-  function createLineWithCopy(text, codeToCopy, cls='') {
-    const container = createLine(cls);
-    const textSpan = document.createElement('span'); textSpan.textContent = text; container.appendChild(textSpan);
-    const btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = '[COPY CODE]';
-    btn.onclick = async () => {
-        try { await navigator.clipboard.writeText(codeToCopy); btn.textContent = '[COPIED!]'; } 
-        catch (err) { const dummy = document.createElement('textarea'); dummy.value = codeToCopy; document.body.appendChild(dummy); dummy.select(); document.execCommand('copy'); document.body.removeChild(dummy); btn.textContent = '[COPIED!]'; }
-        setTimeout(() => { btn.textContent = '[COPY CODE]'; }, 2000);
-    };
-    container.appendChild(btn); return container;
   }
 
   function add(text, cls='', req=false, handler=null) {
@@ -122,28 +119,32 @@
   function isReservedSquare(x, y, color) { return color === 'BLUE' ? RED_RESERVED.some(s => s.x === x && s.y === y) : BLUE_RESERVED.some(s => s.x === x && s.y === y); }
   function getReservedSquareTint(x, y) { if (BLUE_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-blue'; if (RED_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-red'; return null; }
   
-  const DIRS = [ { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 } ]; // 0=Up, 1=Right, 2=Down, 3=Left
+  const DIRS = [ { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 } ]; 
   function normalizeRotation(rot) { return ((Number(rot) || 0) % 4 + 4) % 4; }
 
-  // CORRECTED GEOMETRY INTERACTION MATRIX
+  // CORRECTED & INVERTED PHYSICS MATRIX
   const INTERACTION_MAP = {
     DEFLECTOR: {
-      0: { 0: { action: 'reflect', nextDir: 1 }, 3: { action: 'reflect', nextDir: 2 }, 1: { action: 'destroy' }, 2: { action: 'destroy' } }, // ◤ (Mirror SE)
-      1: { 0: { action: 'reflect', nextDir: 3 }, 1: { action: 'reflect', nextDir: 2 }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }, // ◥ (Mirror SW)
-      2: { 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 0: { action: 'destroy' }, 3: { action: 'destroy' } }, // ◢ (Mirror NW)
-      3: { 2: { action: 'reflect', nextDir: 1 }, 3: { action: 'reflect', nextDir: 0 }, 0: { action: 'destroy' }, 1: { action: 'destroy' } }  // ◣ (Mirror NE)
+      // 0 (◤): Mirror faces North-West. Reflects beams from South and East.
+      0: { 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 0: { action: 'destroy' }, 3: { action: 'destroy' } },
+      // 1 (◥): Mirror faces North-East. Reflects beams from South and West.
+      1: { 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 0: { action: 'destroy' }, 1: { action: 'destroy' } },
+      // 2 (◢): Mirror faces South-East. Reflects beams from North and West.
+      2: { 3: { action: 'reflect', nextDir: 2 }, 0: { action: 'reflect', nextDir: 1 }, 2: { action: 'destroy' }, 1: { action: 'destroy' } },
+      // 3 (◣): Mirror faces South-West. Reflects beams from North and East.
+      3: { 1: { action: 'reflect', nextDir: 2 }, 0: { action: 'reflect', nextDir: 3 }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }
     },
     SWITCH: {
-      0: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } }, // ⟋ 
-      1: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } }, // ⟍
-      2: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } }, 
-      3: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } } 
+      0: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } },
+      1: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } },
+      2: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } },
+      3: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } }
     },
     DEFENDER: {
-      0: { 2: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 3: { action: 'destroy' } }, // ⬓ (Shield North)
-      1: { 3: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } }, // ◧ (Shield East)
-      2: { 0: { action: 'block' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }, // ⬒ (Shield South)
-      3: { 1: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } }  // ◨ (Shield West)
+      0: { 2: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 3: { action: 'destroy' } },
+      1: { 3: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } },
+      2: { 0: { action: 'block' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+      3: { 1: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } }
     },
     KING: {
       0: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
@@ -260,36 +261,26 @@
     return { state: nextState, trace: fired.trace, firedColor: currentTurn, nextTurn };
   }
 
-  function fireLaserAndAdvanceTurn(explicitColor = null, contextLabel = 'Turn End') {
-    if (!latestState || !lockedMatchId) return false;
-    const firedColor = explicitColor || getStateTurn(latestState);
-    if (!firedColor || (firedColor !== 'RED' && firedColor !== 'BLUE')) return false;
-
-    const result = advanceTurnWithLaser(latestState, firedColor);
-    latestState = result.state;
-
-    if (result.trace) {
-      const trace = result.trace;
-      add(`[${contextLabel}] ${firedColor} laser fired.`, 'system-msg');
-      if (trace.looped) { add('Laser path loop detected; shot aborted safely.', 'error-msg'); } 
-      else if (!trace.hit) { add(`${firedColor} laser cleared the board.`, 'system-msg'); } 
-      else if (trace.hit.blocked) { add(`Laser blocked by ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg'); } 
-      else if (trace.hit.destroyed) {
-        add(`Laser destroyed ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
-        if (String(trace.hit.piece.pieceType || '').toUpperCase() === 'KING') { add('KING DOWN. Match over.', 'error-msg'); }
-      }
-    }
-
-    hasMoved = false; hasRotated = false; selectedPiece = null;
-    dbGame.ref(`G/${lockedMatchId}`).set(latestState);
-    updateMatrixView();
-    return true;
-  }
-
-  function printTerminalMatrix(state) {
+  // CORE TERMINAL RENDERER
+  function printTerminalMatrix(state, laserTrace = null) {
     latestState = state;
     const pieces = getBoardPieces(state);
-    const trace = traceLaserPath(state, getStateTurn(state));
+
+    const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
+    for (const piece of pieces) {
+      if (!piece || !Number.isFinite(piece.x) || !Number.isFinite(piece.y)) continue;
+      if (piece.x < 0 || piece.x > 9 || piece.y < 0 || piece.y > 7) continue;
+      grid[piece.y][piece.x] = piece;
+    }
+
+    const laserPathMap = new Map();
+    if (laserTrace && laserTrace.path) {
+      laserTrace.path.forEach((step) => {
+        const key = `${step.x},${step.y}`;
+        if (!laserPathMap.has(key)) laserPathMap.set(key, { dir: step.dir });
+      });
+    }
+
     const container = document.createElement('div');
     container.className = 'matrix-container';
 
@@ -307,18 +298,27 @@
       for (let x = 0; x < 10; x++) {
         let cellEl = document.createElement('span');
         cellEl.className = 'matrix-cell';
-        const tint = getReservedSquareTint(x, y); if (tint) cellEl.classList.add(tint);
-        if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
-        if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) { cellEl.classList.add('selected'); } 
-        else if (selectedPiece && x === cursorX && y === cursorY) { cellEl.classList.add('target-preview'); }
+        
+        const tint = getReservedSquareTint(x, y); 
+        if (tint) cellEl.classList.add(tint);
+        
+        // Only apply interactive cursor if this is the live bottom board
+        if (activeMatrixContainer !== null) {
+            if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
+            if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) { cellEl.classList.add('selected'); } 
+            else if (selectedPiece && x === cursorX && y === cursorY) { cellEl.classList.add('target-preview'); }
+        }
 
-        const pathStep = trace && trace.path ? trace.path.find(s => s.x === x && s.y === y) : null;
-        const p = pieces.find(pi => pi.x === x && pi.y === y);
+        const pathStep = laserPathMap.get(`${x},${y}`);
+        const p = grid[y][x];
 
         if (p) {
           cellEl.textContent = getPieceChar(p);
           cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue');
+          // Add highlight if the laser bounced off/went through this piece
+          if (pathStep) cellEl.classList.add('laser-bounce');
         } else if (pathStep) {
+          // Trail logic: | for Vertical (0,2), - for Horizontal (1,3)
           cellEl.textContent = (pathStep.dir === 0 || pathStep.dir === 2) ? '|' : '-';
           cellEl.classList.add('laser-path');
         } else {
@@ -329,12 +329,62 @@
       }
       container.appendChild(rowEl);
     }
-    if (activeMatrixContainer && activeMatrixContainer.parentNode) { activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); } 
-    else { if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); else logContainer.appendChild(container); }
-    activeMatrixContainer = container; window.scrollTo(0, document.body.scrollHeight);
+    
+    // Always cascade down in the terminal log
+    if (activeMatrixContainer && activeMatrixContainer.parentNode) { 
+        activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); 
+    } else { 
+        if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); 
+        else logContainer.appendChild(container); 
+    }
+    
+    activeMatrixContainer = container; 
+    setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 50);
   }
 
   function updateMatrixView() { if (latestState) printTerminalMatrix(latestState); }
+
+  async function fireLaserAndAdvanceTurn(explicitColor = null, contextLabel = 'Turn End') {
+    if (!latestState || !lockedMatchId) return false;
+    const firedColor = explicitColor || getStateTurn(latestState);
+    if (!firedColor || (firedColor !== 'RED' && firedColor !== 'BLUE')) return false;
+
+    // 1. Calculate trace on CURRENT state (pre-destruction)
+    const laserTrace = traceLaserPath(latestState, firedColor);
+
+    // 2. FREEZE the old input board
+    if (activeMatrixContainer) {
+        const cursors = activeMatrixContainer.querySelectorAll('.cursor, .selected, .target-preview');
+        cursors.forEach(c => c.classList.remove('cursor', 'selected', 'target-preview'));
+        activeMatrixContainer = null; // Forces a brand new append
+    }
+
+    // 3. Render the static Laser Path Board underneath
+    printTerminalMatrix(latestState, laserTrace);
+    activeMatrixContainer = null; // Freeze it
+
+    // 4. Calculate final next state
+    const result = advanceTurnWithLaser(latestState, firedColor);
+
+    if (result.trace) {
+      const trace = result.trace;
+      await type(`[${contextLabel}] ${firedColor} laser fired. Tracing path...`, 'system-msg');
+      if (trace.looped) { await type('Laser path loop detected; shot aborted safely.', 'error-msg'); } 
+      else if (!trace.hit) { await type(`${firedColor} laser cleared the board.`, 'system-msg'); } 
+      else if (trace.hit.blocked) { await type(`Laser blocked by ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg'); } 
+      else if (trace.hit.destroyed) {
+        await type(`Laser destroyed ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
+        if (String(trace.hit.piece.pieceType || '').toUpperCase() === 'KING') { await type('KING DOWN. Match over.', 'error-msg'); }
+      }
+    }
+
+    hasMoved = false; hasRotated = false; selectedPiece = null;
+    latestState = result.state;
+    
+    // 5. Sync to DB. Firebase will trigger a clean board append.
+    dbGame.ref(`G/${lockedMatchId}`).set(latestState);
+    return true;
+  }
 
   function handleGridAction() {
     if (!latestState) return;
@@ -360,7 +410,9 @@
               } else { add(`Action rejected: Scarab can only swap with Pyramid or Anubis, not ${pieceAtCursor.pieceType}.`, "error-msg"); selectedPiece = null; return; }
             } else { add("Action rejected: Square occupied.", "error-msg"); selectedPiece = null; return; }
           } else { targetPiece.x = cursorX; targetPiece.y = cursorY; add(`Piece moved to (${cursorX}, ${cursorY}).`, "success-msg"); hasMoved = true; }
+          
           fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Move');
+          return;
         }
         selectedPiece = null;
       }
@@ -390,7 +442,9 @@
       } 
       else if (targetPiece.pieceType === 'SWITCH') { targetPiece.rotation = (currentRot + 1) % 2; add(`Scarab toggled.`, "success-msg"); } 
       else { targetPiece.rotation = newRot; add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg"); }
-      hasRotated = true; fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Rotate');
+      hasRotated = true; 
+      fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Rotate');
+      return; 
     }
     updateMatrixView();
   }
@@ -436,10 +490,21 @@
   function lockOntoMatch(id, entry) {
     lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); toggleWaiting(false); stopHostGamePolling(); modeShown = false;
     add(`LINK ESTABLISHED: ${id}`, 'success-msg'); add('Controls: Arrow Keys=Move Cursor | Space/Enter=Select/Move | L/R=Rotate Piece | F=Fire & Skip Turn', 'system-msg');
+    
     const gameRef = dbGame.ref(`G/${id}`);
     gameRef.on('value', snap => {
         const state = snap.val();
-        if (state) { add(`[SYNC] Turn: ${getStateTurn(state) ?? 'N/A'}`, 'system-msg'); printTerminalMatrix(state); } 
+        if (state) { 
+            add(`[SYNC] Turn: ${getStateTurn(state) ?? 'N/A'}`, 'system-msg'); 
+            
+            // Cleanly append the fresh board on Firebase update
+            if (activeMatrixContainer) {
+                const cursors = activeMatrixContainer.querySelectorAll('.cursor, .selected, .target-preview');
+                cursors.forEach(c => c.classList.remove('cursor', 'selected', 'target-preview'));
+                activeMatrixContainer = null;
+            }
+            printTerminalMatrix(state); 
+        } 
         else { add('MATCH TERMINATED.', 'error-msg'); localStorage.removeItem(KEY_RID); lockedMatchId = null; activeMatrixContainer = null; gameRef.off(); modeShown = false; startPolling(); }
     });
   }
