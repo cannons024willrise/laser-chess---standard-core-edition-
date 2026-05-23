@@ -343,326 +343,13 @@
     return null;
   }
 
-
-  const DIRS = [
-    { dx: 0, dy: 1 },   // 0 = up
-    { dx: 1, dy: 0 },   // 1 = right
-    { dx: 0, dy: -1 },  // 2 = down
-    { dx: -1, dy: 0 },  // 3 = left
-  ];
-
-  const MIRROR_SLASH = {
-    0: 1, // N -> E
-    1: 0, // E -> N
-    2: 3, // S -> W
-    3: 2, // W -> S
-  };
-
-  const MIRROR_BACKSLASH = {
-    0: 3, // N -> W
-    3: 0, // W -> N
-    2: 1, // S -> E
-    1: 2, // E -> S
-  };
-
-  function normalizeRotation(rot) {
-    return ((Number(rot) || 0) % 4 + 4) % 4;
-  }
-
-  function resolveMatchRecord(state) {
-    if (!state || typeof state !== 'object') {
-      return { root: null, match: null, board: null };
-    }
-
-    if (state.G && typeof state.G === 'object' && !Array.isArray(state.G)) {
-      const matchId = lockedMatchId && state.G[lockedMatchId] ? lockedMatchId : Object.keys(state.G)[0];
-      const match = matchId ? state.G[matchId] : null;
-      const board = match && match.board && typeof match.board === 'object' && !Array.isArray(match.board)
-        ? match.board
-        : null;
-      return { root: state, match, board };
-    }
-
-    const board = state.board && typeof state.board === 'object' && !Array.isArray(state.board)
-      ? state.board
-      : null;
-
-    return {
-      root: state,
-      match: state,
-      board: board || state,
-    };
-  }
-
-  function getBoardRoot(state) {
-    return resolveMatchRecord(state).board || {};
-  }
-
-  function getStateTurn(state) {
-    const { match, board } = resolveMatchRecord(state);
-    return (
-      board?.turn ??
-      match?.turn ??
-      state?.turn ??
-      null
-    );
-  }
-
-  function setStateTurn(state, nextTurn) {
-    const { match, board } = resolveMatchRecord(state);
-    if (!match) return;
-
-    if (board && typeof board === 'object') {
-      board.turn = nextTurn;
-    }
-    match.turn = nextTurn;
-  }
-
-  function getBoardPieces(state) {
-    const src = getBoardRoot(state);
-
-    if (Array.isArray(src.pieces)) return src.pieces;
-    if (src.pieces && typeof src.pieces === 'object') return Object.values(src.pieces);
-    if (Array.isArray(src.board)) return src.board;
-
-    if (typeof src.board === 'string') {
-      try { return JSON.parse(src.board); } catch (e) { return []; }
-    }
-
-    return [];
-  }
-
-  function getPieceAt(pieces, x, y) {
-    return pieces.find(p => p && p.x === x && p.y === y) || null;
-  }
-
-  function inBounds(x, y) {
-    return x >= 0 && x <= 9 && y >= 0 && y <= 7;
-  }
-
-  function getLaserDirection(piece) {
-    const rot = normalizeRotation(piece?.rotation);
-    // These are already constrained by your UI logic:
-    // BLUE: 0 (up) or 3 (left), RED: 1 (right) or 2 (down)
-    return rot;
-  }
-
-  function getMirrorType(piece) {
-    const rot = normalizeRotation(piece?.rotation);
-
-    if (piece?.pieceType === 'SWITCH') {
-      // Scarab / switch: two diagonal mirror states.
-      return (rot % 2 === 0) ? 'slash' : 'backslash';
-    }
-
-    if (piece?.pieceType === 'DEFLECTOR') {
-      // Pyramid: corner-based orientations collapse into the same 2 mirror families.
-      return (rot === 0 || rot === 3) ? 'backslash' : 'slash';
-    }
-
-    return null;
-  }
-
-  function reflectDirection(incomingDir, mirrorType) {
-    if (mirrorType === 'slash') return MIRROR_SLASH[incomingDir] ?? null;
-    if (mirrorType === 'backslash') return MIRROR_BACKSLASH[incomingDir] ?? null;
-    return null;
-  }
-
-  function getAnubisShieldDir(piece) {
-    return normalizeRotation(piece?.rotation);
-  }
-
-  function interactWithLaser(piece, incomingDir) {
-    const type = String(piece?.pieceType || '').toUpperCase();
-
-    if (type === 'SWITCH' || type === 'DEFLECTOR') {
-      const mirrorType = getMirrorType(piece);
-      const reflected = reflectDirection(incomingDir, mirrorType);
-      if (reflected === null || reflected === undefined) {
-        return { kind: 'stop', destroyed: false, reflected: null };
-      }
-      return { kind: 'reflect', destroyed: false, reflected };
-    }
-
-    if (type === 'DEFENDER') {
-      const shieldDir = getAnubisShieldDir(piece);
-      if (incomingDir === shieldDir) {
-        return { kind: 'stop', blocked: true, destroyed: false };
-      }
-      return { kind: 'stop', destroyed: true };
-    }
-
-    if (type === 'KING') {
-      return { kind: 'stop', destroyed: true };
-    }
-
-    if (type === 'LASER') {
-      // Sphinx hit: stop the beam. If you want the Sphinx destructible,
-      // change this to { kind: 'stop', destroyed: true }.
-      return { kind: 'stop', destroyed: false };
-    }
-
-    return { kind: 'stop', destroyed: false };
-  }
-
-  function traceLaserPath(state, explicitColor = null) {
-    const pieces = getBoardPieces(state);
-    const colors = explicitColor ? [explicitColor] : ['RED', 'BLUE'];
-
-    const shooter = colors
-      .map(color => pieces.find(p => p && String(p.pieceType || '').toUpperCase() === 'LASER' && String(p.color || '').toUpperCase() === color))
-      .find(Boolean);
-
-    if (!shooter) {
-      return { path: [], hit: null, shooter: null, exit: null };
-    }
-
-    const startDir = getLaserDirection(shooter);
-    let dir = startDir;
-    let x = shooter.x + DIRS[dir].dx;
-    let y = shooter.y + DIRS[dir].dy;
-    const path = [];
-    const seen = new Set();
-
-    for (let steps = 0; steps < 256; steps++) {
-      if (!inBounds(x, y)) {
-        return { path, hit: null, shooter, exit: { x, y, dir } };
-      }
-
-      const stateKey = `${x},${y},${dir}`;
-      if (seen.has(stateKey)) {
-        return { path, hit: null, shooter, exit: { x, y, dir }, looped: true };
-      }
-      seen.add(stateKey);
-
-      path.push({ x, y, dir });
-
-      const piece = getPieceAt(pieces, x, y);
-      if (!piece) {
-        x += DIRS[dir].dx;
-        y += DIRS[dir].dy;
-        continue;
-      }
-
-      const outcome = interactWithLaser(piece, dir);
-
-      if (outcome.kind === 'reflect') {
-        dir = outcome.reflected;
-        x += DIRS[dir].dx;
-        y += DIRS[dir].dy;
-        continue;
-      }
-
-      return {
-        path,
-        hit: {
-          piece,
-          blocked: !!outcome.blocked,
-          destroyed: !!outcome.destroyed,
-          kind: outcome.kind,
-        },
-        shooter,
-        exit: null,
-      };
-    }
-
-    return { path, hit: null, shooter, exit: null, looped: true };
-  }
-
-  function applyLaserResolution(state, explicitColor = null) {
-    const trace = traceLaserPath(state, explicitColor);
-    if (!trace.hit || !trace.hit.destroyed || !trace.hit.piece) {
-      return { state, trace };
-    }
-
-    const pieces = getBoardPieces(state);
-    const target = trace.hit.piece;
-    const nextPieces = pieces.filter(p => !(p && p.x === target.x && p.y === target.y && String(p.pieceType || '').toUpperCase() === String(target.pieceType || '').toUpperCase() && String(p.color || '').toUpperCase() === String(target.color || '').toUpperCase()));
-
-    const nextState = (typeof structuredClone === 'function') ? structuredClone(state) : JSON.parse(JSON.stringify(state));
-    const nextSrc = nextState.board && typeof nextState.board === 'object' && !Array.isArray(nextState.board) ? nextState.board : nextState;
-
-    if (Array.isArray(nextSrc.pieces)) {
-      nextSrc.pieces = nextPieces;
-    } else if (nextSrc.pieces && typeof nextSrc.pieces === 'object') {
-      nextSrc.pieces = nextPieces;
-    } else {
-      nextSrc.board = nextPieces;
-    }
-
-    return { state: nextState, trace };
-  }
-
-  function advanceTurnWithLaser(state, explicitColor = null) {
-    const fireColor = explicitColor || getStateTurn(state);
-    if (!fireColor) {
-      return { state, trace: null, firedColor: null, nextTurn: null };
-    }
-
-    const fired = applyLaserResolution(state, fireColor);
-    const nextState = fired.state;
-    const currentTurn = fireColor;
-    const nextTurn = currentTurn === 'RED' ? 'BLUE' : 'RED';
-    const board = getBoardRoot(nextState);
-
-    if (board && typeof board === 'object') {
-      board.phase = 'MOVE';
-      board.moveNumber = Number(board.moveNumber || 0) + 1;
-    }
-
-    setStateTurn(nextState, nextTurn);
-
-    return {
-      state: nextState,
-      trace: fired.trace,
-      firedColor: currentTurn,
-      nextTurn,
-    };
-  }
-
-  function fireLaserAndAdvanceTurn(explicitColor = null, contextLabel = 'Turn End') {
-    if (!latestState || !lockedMatchId) return false;
-
-    const firedColor = explicitColor || getStateTurn(latestState);
-    if (!firedColor) return false;
-
-    const result = advanceTurnWithLaser(latestState, firedColor);
-    latestState = result.state;
-
-    if (result.trace) {
-      const trace = result.trace;
-      add(`[${contextLabel}] ${firedColor} laser fired.`, 'system-msg');
-
-      if (trace.looped) {
-        add('Laser path loop detected; shot aborted safely.', 'error-msg');
-      } else if (!trace.hit) {
-        add(`${firedColor} laser cleared the board.`, 'system-msg');
-      } else if (trace.hit.blocked) {
-        add(`Laser blocked by ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
-      } else if (trace.hit.destroyed) {
-        add(`Laser destroyed ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
-        if (String(trace.hit.piece.pieceType || '').toUpperCase() === 'KING') {
-          add('KING DOWN. Match over.', 'error-msg');
-        }
-      }
-    }
-
-    hasMoved = false;
-    hasRotated = false;
-    selectedPiece = null;
-
-    dbGame.ref(`G/${lockedMatchId}`).set(latestState);
-    updateMatrixView();
-    return true;
-  }
-
   function printTerminalMatrix(state) {
     latestState = state;
-    const laserTrace = traceLaserPath(state, getStateTurn(state));
     let pieces = [];
     
-    const src = getBoardRoot(state);
+    const src = state.board && typeof state.board === 'object' && !Array.isArray(state.board)
+        ? state.board
+        : state;
 
     if (Array.isArray(src.pieces)) {
         pieces = src.pieces;
@@ -732,10 +419,6 @@
         }
 
         const p = grid[y][x];
-        if (laserTrace && Array.isArray(laserTrace.path) && laserTrace.path.some(step => step.x === x && step.y === y)) {
-          cellEl.classList.add('laser-path');
-        }
-
         if (p) {
           cellEl.textContent = getPieceChar(p);
           cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue');
@@ -768,7 +451,7 @@
   function handleGridAction() {
     if (!latestState) return;
 
-    const src = getBoardRoot(latestState);
+    const src = latestState.board && typeof latestState.board === 'object' && !Array.isArray(latestState.board) ? latestState.board : latestState;
     let pieces = [];
     
     if (Array.isArray(src.pieces)) pieces = src.pieces;
@@ -836,16 +519,23 @@
             add(`Piece moved to (${cursorX}, ${cursorY}).`, "success-msg");
             hasMoved = true;
           }
-          // Auto-fire laser at end of turn, then advance to the next player
-          fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Move');
+          
+          // Switch Turn Logic Executed After Valid Move
+          if (src.turn !== undefined) {
+            src.turn = src.turn === 'RED' ? 'BLUE' : 'RED';
+          }
+          hasMoved = false;
+          hasRotated = false;
+          selectedPiece = null;
+          
+          dbGame.ref(`G/${lockedMatchId}`).set(latestState);
         }
         selectedPiece = null;
       }
     } else {
       if (pieceAtCursor) {
-        const currentTurn = getStateTurn(latestState);
-        if (currentTurn && pieceAtCursor.color !== currentTurn) {
-            add(`Action rejected: Piece belongs to ${pieceAtCursor.color}, turn is ${currentTurn}.`, "error-msg");
+        if (src.turn && pieceAtCursor.color !== src.turn) {
+            add(`Action rejected: Piece belongs to ${pieceAtCursor.color}, turn is ${src.turn}.`, "error-msg");
             return;
         }
         
@@ -869,7 +559,7 @@
       return;
     }
 
-    const src = getBoardRoot(latestState);
+    const src = latestState.board && typeof latestState.board === 'object' && !Array.isArray(latestState.board) ? latestState.board : latestState;
     let pieces = [];
     
     if (Array.isArray(src.pieces)) pieces = src.pieces;
@@ -910,10 +600,18 @@
         targetPiece.rotation = newRot;
         add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
       }
+      
       hasRotated = true;
+      
+      // Switch Turn Logic Executed After Valid Rotation
+      if (src.turn !== undefined) {
+        src.turn = src.turn === 'RED' ? 'BLUE' : 'RED';
+      }
+      hasMoved = false;
+      hasRotated = false;
+      selectedPiece = null;
 
-      // Auto-fire laser at end of turn, then advance to the next player
-      fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Rotate');
+      dbGame.ref(`G/${lockedMatchId}`).set(latestState);
     }
     updateMatrixView();
   }
@@ -1421,7 +1119,7 @@
     gameRef.on('value', snap => {
         const state = snap.val();
         if (state) {
-            const turnDisplay = getStateTurn(state) ?? 'N/A';
+            const turnDisplay = state.board?.turn ?? state.turn ?? 'N/A';
             add(`[SYNC] Turn: ${turnDisplay}`, 'system-msg');
             printTerminalMatrix(state);
         } else {
@@ -1560,12 +1258,6 @@
       case 'r':
       case 'R':
         handleRotation('R');
-        e.preventDefault();
-        break;
-      case 'f':
-      case 'F':
-        selectedPiece = null;
-        fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Manual Fire');
         e.preventDefault();
         break;
     }
