@@ -526,6 +526,7 @@
           }
           hasMoved = false;
           hasRotated = false;
+          selectedPiece = null;
           
           dbGame.ref(`G/${lockedMatchId}`).set(latestState);
         }
@@ -574,14 +575,29 @@
       }
 
       let currentRot = Number(targetPiece.rotation !== undefined ? targetPiece.rotation : 0);
+      let newRot = dir === 'R' ? (currentRot + 1) % 4 : (currentRot + 3) % 4;
 
+      // RULE: Constraints on Blue and Red Lasers (Sphinxes)
+      if (targetPiece.pieceType === 'LASER') {
+        if (targetPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) {
+          add("Action rejected: Blue Sphinx can only face Up (0) or Left (3).", "error-msg");
+          return;
+        }
+        if (targetPiece.color === 'RED' && (newRot === 3 || newRot === 0)) {
+          add("Action rejected: Red Sphinx can only face Right (1) or Down (2).", "error-msg");
+          return;
+        }
+        targetPiece.rotation = newRot;
+        add(`Sphinx rotated ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
+      } 
       // RULE: Switches have only 2 logical states (toggle between 0 and 1)
-      if (targetPiece.pieceType === 'SWITCH') {
+      else if (targetPiece.pieceType === 'SWITCH') {
         targetPiece.rotation = (currentRot + 1) % 2;
         add(`Scarab toggled.`, "success-msg");
-      } else {
-        // Standard 90-degree rotations (locked to 90 degrees strictly via +1 or +3 logic)
-        targetPiece.rotation = dir === 'R' ? (currentRot + 1) % 4 : (currentRot + 3) % 4;
+      } 
+      // Standard 90-degree rotations
+      else {
+        targetPiece.rotation = newRot;
         add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
       }
       
@@ -593,58 +609,10 @@
       }
       hasMoved = false;
       hasRotated = false;
+      selectedPiece = null;
 
       dbGame.ref(`G/${lockedMatchId}`).set(latestState);
     }
-    updateMatrixView();
-  }
-
-  function handleSphinxRotation(dir) {
-    if (!latestState) {
-      add("Action rejected: No game state available.", "error-msg");
-      return;
-    }
-
-    const src = latestState.board && typeof latestState.board === 'object' && !Array.isArray(latestState.board) ? latestState.board : latestState;
-    let pieces = [];
-    
-    if (Array.isArray(src.pieces)) pieces = src.pieces;
-    else if (src.pieces && typeof src.pieces === 'object') pieces = Object.values(src.pieces);
-
-    const currentTurn = src.turn || 'BLUE';
-    const sphinx = pieces.find(p => p && p.pieceType === 'LASER' && p.color === currentTurn);
-    
-    if (!sphinx) {
-      add("ERROR: Sphinx not found for current player.", "error-msg");
-      return;
-    }
-
-    let currentRot = Number(sphinx.rotation !== undefined ? sphinx.rotation : 0);
-    
-    // Attempted rotation mathematically constrained to a single 90 degree step
-    let newRot = dir === 'R' ? (currentRot + 1) % 4 : (currentRot + 3) % 4;
-    
-    // RULE: Constraints on Blue and Red Lasers (Sphinxes)
-    if (sphinx.color === 'BLUE' && (newRot === 1 || newRot === 2)) {
-      add("Action rejected: Blue Sphinx can only face Up (0) or Left (3).", "error-msg");
-      return;
-    }
-    
-    if (sphinx.color === 'RED' && (newRot === 3 || newRot === 0)) {
-      add("Action rejected: Red Sphinx can only face Right (1) or Down (2).", "error-msg");
-      return;
-    }
-
-    sphinx.rotation = newRot;
-    
-    add(`Sphinx rotated ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
-    
-    // Switch Turn Logic Executed After Valid Sphinx Action
-    if (src.turn !== undefined) {
-      src.turn = src.turn === 'RED' ? 'BLUE' : 'RED';
-    }
-
-    dbGame.ref(`G/${lockedMatchId}`).set(latestState);
     updateMatrixView();
   }
 
@@ -1145,7 +1113,7 @@
 
     modeShown = false;
     add(`LINK ESTABLISHED: ${id}`, 'success-msg');
-    add('Controls: Arrow Keys=Move Cursor | Space/Enter=Select/Move | L/R=Rotate Piece | S=Rotate Sphinx', 'system-msg');
+    add('Controls: Arrow Keys=Move Cursor | Space/Enter=Select/Move | L/R=Rotate Piece', 'system-msg');
     
     const gameRef = dbGame.ref(`G/${id}`);
     gameRef.on('value', snap => {
@@ -1290,12 +1258,6 @@
       case 'r':
       case 'R':
         handleRotation('R');
-        e.preventDefault();
-        break;
-      case 's':
-      case 'S':
-        // Sphinx rotation as a turn
-        handleSphinxRotation('R');
         e.preventDefault();
         break;
     }
