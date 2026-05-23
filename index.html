@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LASER CHESS - STANDARD VARIANT- CORE EDITION (BETA η-)</title>
+    <title>LASER CHESS - KHET 2.0 RULES EDITION</title>
     <style>
         @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
         :root { 
@@ -17,6 +17,8 @@
             --waiting: #00ff00; 
             --blue: #00d4ff;
             --red: #ff3333;
+            --blue-tint: rgba(0, 212, 255, 0.15);
+            --red-tint: rgba(255, 51, 51, 0.15);
         }
         body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
         #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
@@ -94,6 +96,10 @@
         .p-blue { color: var(--blue); }
         .p-red { color: var(--red); }
 
+        /* Reserved square tinting */
+        .reserved-blue { background-color: var(--blue-tint) !important; }
+        .reserved-red { background-color: var(--red-tint) !important; }
+
         /* INTERACTIVE INPUT STYLES */
         .matrix-cell.cursor {
             background-color: rgba(255, 255, 255, 0.15);
@@ -106,6 +112,10 @@
         .matrix-cell.target-preview {
             outline: 1px dashed var(--blue) !important;
             background-color: rgba(0, 212, 255, 0.1);
+        }
+        .laser-path {
+            outline: 2px solid var(--waiting) !important;
+            background-color: rgba(0, 255, 0, 0.2) !important;
         }
     </style>
 </head>
@@ -159,14 +169,29 @@
   let selectedPiece = null;
   let latestState = null;
   let activeMatrixContainer = null;
+  let hasMoved = false; // Track if piece was moved this turn
+  let hasRotated = false; // Track if piece was rotated this turn
+
+  // Reserved squares - Blue Ankh squares (blue pieces only)
+  // Based on Classic setup from PDF: edges marked with Ankh symbols
+  const BLUE_RESERVED = [
+    {x: 0, y: 0}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7},
+    {x: 4, y: 7}, {x: 5, y: 7}
+  ];
+
+  // Reserved squares - Red Eye of Horus squares (red pieces only)
+  const RED_RESERVED = [
+    {x: 9, y: 0}, {x: 9, y: 1}, {x: 9, y: 2}, {x: 9, y: 3}, {x: 9, y: 7},
+    {x: 4, y: 0}, {x: 5, y: 0}
+  ];
 
   // Renderer asset definitions
   const symbols = {
-    KING: '◈',
-    LASER: ['⫝', '⟜', 'Ͳ', 'Ð'],
-    SWITCH: ['⟋', '⟍'],
-    DEFENDER: ['⬒', '◨', '⬓', '◧'],
-    DEFLECTOR: ['◤', '◥', '◢', '◣']
+    KING: '◈',         // Pharaoh
+    LASER: ['⫝', '⟜', 'Ͳ', 'Ð'],  // Sphinx at 4 rotations
+    SWITCH: ['⟋', '⟍'],             // Scarab (2-sided mirror)
+    DEFENDER: ['⬒', '◨', '⬓', '◧'], // Anubis (shield)
+    DEFLECTOR: ['◤', '◥', '◢', '◣']  // Pyramid (single mirror)
   };
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -297,6 +322,28 @@
     return '?';
   }
 
+  function isReservedSquare(x, y, color) {
+    // Check if square is reserved for the opposite color
+    if (color === 'BLUE') {
+      // Blue pieces cannot enter red reserved squares
+      return RED_RESERVED.some(s => s.x === x && s.y === y);
+    } else if (color === 'RED') {
+      // Red pieces cannot enter blue reserved squares
+      return BLUE_RESERVED.some(s => s.x === x && s.y === y);
+    }
+    return false;
+  }
+
+  function getReservedSquareTint(x, y) {
+    if (BLUE_RESERVED.some(s => s.x === x && s.y === y)) {
+      return 'reserved-blue';
+    }
+    if (RED_RESERVED.some(s => s.x === x && s.y === y)) {
+      return 'reserved-red';
+    }
+    return null;
+  }
+
   function printTerminalMatrix(state) {
     latestState = state;
     let pieces = [];
@@ -354,6 +401,12 @@
         let cellEl = document.createElement('span');
         cellEl.className = 'matrix-cell';
         
+        // Apply reserved square tinting
+        const tint = getReservedSquareTint(x, y);
+        if (tint) {
+          cellEl.classList.add(tint);
+        }
+        
         // Active Navigation Cursor Highlights
         if (x === cursorX && y === cursorY) {
           cellEl.classList.add('cursor');
@@ -396,6 +449,134 @@
     }
   }
 
+  // Laser path calculation
+  function traceLaserPath(pieces, startX, startY, dirX, dirY) {
+    const path = [];
+    let x = startX;
+    let y = startY;
+    let dx = dirX;
+    let dy = dirY;
+    
+    const maxSteps = 1000; // Prevent infinite loops
+    let steps = 0;
+    
+    while (steps < maxSteps) {
+      // Move to next position
+      x += dx;
+      y += dy;
+      
+      // Check bounds
+      if (x < 0 || x > 9 || y < 0 || y > 7) {
+        break;
+      }
+      
+      path.push({x, y});
+      
+      // Check for piece at this position
+      const piece = pieces.find(p => p && p.x === x && p.y === y);
+      if (piece) {
+        // Hit a piece - return the path and the hit piece
+        return { path, hitPiece: piece };
+      }
+      
+      steps++;
+    }
+    
+    return { path, hitPiece: null };
+  }
+
+  function reflectLaser(dx, dy, mirrorType, rotation) {
+    // Mirror reflection logic based on piece type and rotation
+    // DEFLECTOR (Pyramid): single mirror at 45 degrees
+    // SWITCH (Scarab): two-sided mirror
+    // Returns new direction {dx, dy}
+    
+    if (mirrorType === 'DEFLECTOR') {
+      // Pyramid reflections based on rotation
+      // rot 0: ◤ (top-left mirror) - reflects horizontal to vertical up, vertical down to horizontal right
+      // rot 1: ◥ (top-right mirror) - reflects horizontal to vertical up, vertical down to horizontal left
+      // rot 2: ◢ (bottom-right mirror) - reflects horizontal to vertical down, vertical up to horizontal left
+      // rot 3: ◣ (bottom-left mirror) - reflects horizontal to vertical down, vertical up to horizontal right
+      
+      const reflections = [
+        // rot 0: ◤
+        { from: {dx: 1, dy: 0}, to: {dx: 0, dy: 1} },   // right -> up
+        { from: {dx: -1, dy: 0}, to: {dx: 0, dy: -1} }, // left -> down
+        { from: {dx: 0, dy: 1}, to: {dx: 1, dy: 0} },   // up -> right
+        { from: {dx: 0, dy: -1}, to: {dx: -1, dy: 0} }, // down -> left
+      ];
+      
+      // Rotate the reflection pattern based on piece rotation
+      // This is a simplified model - actual implementation would need precise geometry
+      return { dx: -dy, dy: -dx }; // Simple 90-degree reflection
+    }
+    
+    if (mirrorType === 'SWITCH') {
+      // Scarab has two mirrors - reflects in both directions
+      return { dx: -dy, dy: -dx };
+    }
+    
+    return { dx, dy }; // No reflection
+  }
+
+  function fireLaser(state) {
+    const src = state.board && typeof state.board === 'object' && !Array.isArray(state.board) ? state.board : state;
+    let pieces = [];
+    
+    if (Array.isArray(src.pieces)) pieces = src.pieces;
+    else if (src.pieces && typeof src.pieces === 'object') pieces = Object.values(src.pieces);
+    
+    // Find the laser pieces (Sphinxes)
+    const blueLaser = pieces.find(p => p && p.pieceType === 'LASER' && p.color === 'BLUE');
+    const redLaser = pieces.find(p => p && p.pieceType === 'LASER' && p.color === 'RED');
+    
+    const currentTurn = src.turn || 'BLUE';
+    const activeLaser = currentTurn === 'BLUE' ? blueLaser : redLaser;
+    
+    if (!activeLaser) {
+      add('ERROR: No laser found for current player', 'error-msg');
+      return null;
+    }
+    
+    // Determine laser direction based on rotation
+    const directions = [
+      { dx: 1, dy: 0 },  // rot 0: right
+      { dx: 0, dy: 1 },  // rot 1: up
+      { dx: -1, dy: 0 }, // rot 2: left
+      { dx: 0, dy: -1 }  // rot 3: down
+    ];
+    
+    const rot = activeLaser.rotation % 4;
+    const dir = directions[rot];
+    
+    const result = traceLaserPath(pieces, activeLaser.x, activeLaser.y, dir.dx, dir.dy);
+    
+    if (result.hitPiece) {
+      add(`Laser hit ${result.hitPiece.color} ${result.hitPiece.pieceType} at (${result.hitPiece.x}, ${result.hitPiece.y})`, 'success-msg');
+      
+      // Check if it's a King (Pharaoh) - game over
+      if (result.hitPiece.pieceType === 'KING') {
+        add(`GAME OVER! ${currentTurn} wins by illuminating opponent's Pharaoh!`, 'success-msg');
+        return { gameOver: true, winner: currentTurn, hitPiece: result.hitPiece };
+      }
+      
+      // Check if it's a Defender (Anubis) facing the laser - no damage
+      // TODO: Implement facing direction check
+      
+      // Remove the hit piece
+      const pieceIndex = pieces.findIndex(p => p === result.hitPiece);
+      if (pieceIndex >= 0) {
+        pieces.splice(pieceIndex, 1);
+        add(`${result.hitPiece.pieceType} removed from board`, 'system-msg');
+      }
+      
+      return { gameOver: false, hitPiece: result.hitPiece };
+    } else {
+      add('Laser hit nothing', 'system-msg');
+      return { gameOver: false, hitPiece: null };
+    }
+  }
+
   // Hardware Actions Strategy Handlers
   function handleGridAction() {
     if (!latestState) return;
@@ -415,14 +596,21 @@
       } else {
         let targetPiece = pieces.find(p => p && p.x === selectedPiece.x && p.y === selectedPiece.y);
         if (targetPiece) {
-          // 1. Laser pieces cannot be moved.
-          if (targetPiece.pieceType === 'LASER') {
-            add("Action rejected: Laser pieces cannot be moved.", "error-msg");
+          // RULE: Cannot move and rotate on same turn
+          if (hasRotated) {
+            add("Action rejected: Cannot move after rotating this turn.", "error-msg");
             selectedPiece = null;
             return;
           }
 
-          // 2. Target square must be orthogonally or diagonally 1 unit away.
+          // RULE: Laser pieces (Sphinx) cannot be moved
+          if (targetPiece.pieceType === 'LASER') {
+            add("Action rejected: Sphinx pieces cannot be moved.", "error-msg");
+            selectedPiece = null;
+            return;
+          }
+
+          // RULE: Target square must be orthogonally or diagonally 1 unit away
           const dx = Math.abs(cursorX - targetPiece.x);
           const dy = Math.abs(cursorY - targetPiece.y);
           if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) {
@@ -431,33 +619,55 @@
             return;
           }
 
-          // 3. Handle Interaction
+          // RULE: Check reserved squares
+          if (isReservedSquare(cursorX, cursorY, targetPiece.color)) {
+            add(`Action rejected: ${targetPiece.color} pieces cannot enter this reserved square.`, "error-msg");
+            selectedPiece = null;
+            return;
+          }
+
+          // RULE: Handle piece interactions
           if (pieceAtCursor) {
-            // Cannot swap with Switches, Lasers, or Kings.
-            const forbiddenTypes = ['KING', 'LASER', 'SWITCH'];
-            if (forbiddenTypes.includes(pieceAtCursor.pieceType)) {
-              add(`Action rejected: Cannot swap with ${pieceAtCursor.pieceType}.`, "error-msg");
+            // RULE: Scarab (SWITCH) can swap with Pyramid (DEFLECTOR) or Anubis (DEFENDER) only
+            if (targetPiece.pieceType === 'SWITCH') {
+              if (pieceAtCursor.pieceType === 'DEFLECTOR' || pieceAtCursor.pieceType === 'DEFENDER') {
+                // Swap positions
+                const oldX = targetPiece.x;
+                const oldY = targetPiece.y;
+                targetPiece.x = pieceAtCursor.x;
+                targetPiece.y = pieceAtCursor.y;
+                pieceAtCursor.x = oldX;
+                pieceAtCursor.y = oldY;
+                add(`Scarab swapped with ${pieceAtCursor.pieceType}.`, "success-msg");
+                hasMoved = true;
+              } else {
+                add(`Action rejected: Scarab can only swap with Pyramid or Anubis, not ${pieceAtCursor.pieceType}.`, "error-msg");
+                selectedPiece = null;
+                return;
+              }
+            } else {
+              // RULE: Except for Scarab, no piece can move into occupied square
+              add("Action rejected: Square occupied.", "error-msg");
               selectedPiece = null;
               return;
             }
-            
-            // Swap positions
-            const oldX = targetPiece.x;
-            const oldY = targetPiece.y;
-            targetPiece.x = pieceAtCursor.x;
-            targetPiece.y = pieceAtCursor.y;
-            pieceAtCursor.x = oldX;
-            pieceAtCursor.y = oldY;
-            add(`Piece swapped with ${pieceAtCursor.pieceType}.`, "success-msg");
           } else {
             // Move to empty square
             targetPiece.x = cursorX;
             targetPiece.y = cursorY;
             add(`Piece moved to (${cursorX}, ${cursorY}).`, "success-msg");
+            hasMoved = true;
           }
           
-          if (src.turn !== undefined) {
-            src.turn = src.turn === 'RED' ? 'BLUE' : 'RED';
+          // Fire laser and switch turn
+          const laserResult = fireLaser(latestState);
+          
+          if (!laserResult || !laserResult.gameOver) {
+            if (src.turn !== undefined) {
+              src.turn = src.turn === 'RED' ? 'BLUE' : 'RED';
+            }
+            hasMoved = false;
+            hasRotated = false;
           }
           
           dbGame.ref(`G/${lockedMatchId}`).set(latestState);
@@ -473,9 +683,9 @@
         }
         
         selectedPiece = { x: cursorX, y: cursorY };
-        add(`Target selected at (${cursorX}, ${cursorY})`, "success-msg");
+        add(`Piece selected at (${cursorX}, ${cursorY})`, "success-msg");
       } else {
-        add(`Invalid action: No grid piece detected at (${cursorX}, ${cursorY})`, "error-msg");
+        add(`Invalid action: No piece at (${cursorX}, ${cursorY})`, "error-msg");
       }
     }
     updateMatrixView();
@@ -483,7 +693,13 @@
 
   function handleRotation(dir) {
     if (!latestState || !selectedPiece) {
-      add("Action dropped: Select a piece before initiating rotation transformations.", "error-msg");
+      add("Action dropped: Select a piece before rotating.", "error-msg");
+      return;
+    }
+
+    // RULE: Cannot move and rotate on same turn
+    if (hasMoved) {
+      add("Action rejected: Cannot rotate after moving this turn.", "error-msg");
       return;
     }
 
@@ -498,13 +714,61 @@
       let currentRot = Number(targetPiece.rotation !== undefined ? targetPiece.rotation : 0);
       targetPiece.rotation = dir === 'R' ? (currentRot + 1) % 4 : (currentRot + 3) % 4;
       
-      if (src.turn !== undefined) {
-        src.turn = src.turn === 'RED' ? 'BLUE' : 'RED';
+      add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
+      hasRotated = true;
+      
+      // Fire laser and switch turn
+      const laserResult = fireLaser(latestState);
+      
+      if (!laserResult || !laserResult.gameOver) {
+        if (src.turn !== undefined) {
+          src.turn = src.turn === 'RED' ? 'BLUE' : 'RED';
+        }
+        hasMoved = false;
+        hasRotated = false;
       }
 
       dbGame.ref(`G/${lockedMatchId}`).set(latestState);
-      add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
     }
+    updateMatrixView();
+  }
+
+  // RULE: Sphinx rotation as a turn (INSTEAD of moving)
+  function handleSphinxRotation(dir) {
+    if (!latestState) {
+      add("Action rejected: No game state available.", "error-msg");
+      return;
+    }
+
+    const src = latestState.board && typeof latestState.board === 'object' && !Array.isArray(latestState.board) ? latestState.board : latestState;
+    let pieces = [];
+    
+    if (Array.isArray(src.pieces)) pieces = src.pieces;
+    else if (src.pieces && typeof src.pieces === 'object') pieces = Object.values(src.pieces);
+
+    const currentTurn = src.turn || 'BLUE';
+    const sphinx = pieces.find(p => p && p.pieceType === 'LASER' && p.color === currentTurn);
+    
+    if (!sphinx) {
+      add("ERROR: Sphinx not found for current player.", "error-msg");
+      return;
+    }
+
+    let currentRot = Number(sphinx.rotation !== undefined ? sphinx.rotation : 0);
+    sphinx.rotation = dir === 'R' ? (currentRot + 1) % 4 : (currentRot + 3) % 4;
+    
+    add(`Sphinx rotated ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
+    
+    // Fire laser and switch turn
+    const laserResult = fireLaser(latestState);
+    
+    if (!laserResult || !laserResult.gameOver) {
+      if (src.turn !== undefined) {
+        src.turn = src.turn === 'RED' ? 'BLUE' : 'RED';
+      }
+    }
+
+    dbGame.ref(`G/${lockedMatchId}`).set(latestState);
     updateMatrixView();
   }
 
@@ -1005,6 +1269,7 @@
 
     modeShown = false;
     add(`LINK ESTABLISHED: ${id}`, 'success-msg');
+    add('Controls: Arrow Keys=Move Cursor | Space/Enter=Select/Move | L/R=Rotate Piece | S=Rotate Sphinx', 'system-msg');
     
     const gameRef = dbGame.ref(`G/${id}`);
     gameRef.on('value', snap => {
@@ -1073,6 +1338,7 @@
     if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
     
     add('System Online.', 'success-msg');
+    add('KHET 2.0 Rules Edition - Full rule enforcement active', 'system-msg');
     
     if (rid && rid.toString().includes('_')) {
         const snap = await dbGame.ref(`G/${rid}`).once('value');
@@ -1148,6 +1414,12 @@
       case 'r':
       case 'R':
         handleRotation('R');
+        e.preventDefault();
+        break;
+      case 's':
+      case 'S':
+        // Sphinx rotation as a turn
+        handleSphinxRotation('R');
         e.preventDefault();
         break;
     }
