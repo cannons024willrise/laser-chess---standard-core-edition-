@@ -7,46 +7,138 @@
     <style>
         @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
         :root { 
-            --bg0: #0a0a0a; --bg1: #1a1a1a; --line: #2a2a2a;
-            --text: #b0b0b0; --bright: #ffffff; --error: #ff5555; 
-            --muted: #999999; --waiting: #00ff00; --blue: #00d4ff; --red: #ff3333;
-            --blue-tint: rgba(0, 212, 255, 0.15); --red-tint: rgba(255, 51, 51, 0.15);
+            --bg0: #0a0a0a; 
+            --bg1: #1a1a1a; 
+            --line: #2a2a2a;
+            --text: #b0b0b0; 
+            --bright: #ffffff; 
+            --error: #ff5555; 
+            --muted: #999999; 
+            --waiting: #00ff00; 
+            --blue: #00d4ff;
+            --red: #ff3333;
+            --blue-tint: rgba(0, 212, 255, 0.15);
+            --red-tint: rgba(255, 51, 51, 0.15);
         }
         body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
         #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
         .history-line { white-space: pre-wrap; word-break: break-all; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
         .input-wrapper { display:flex; gap:8px; align-items:flex-start; width: 100%; }
         .prompt { white-space: pre; }
-        .user-input-line { flex: 1; background: transparent; border: none; color: var(--bright); font: inherit; outline: none; resize: none; overflow: hidden; min-height: 1.2em; line-height: 1.2; padding: 0; margin: 0; white-space: pre-wrap; }
+        .user-input-line {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--bright);
+            font: inherit;
+            outline: none;
+            resize: none;
+            overflow: hidden;
+            min-height: 1.2em;
+            line-height: 1.2;
+            padding: 0;
+            margin: 0;
+            white-space: pre-wrap;
+        }
         .system-msg { color: var(--muted); }
         .success-msg { color: var(--bright); font-weight: 700; }
         .error-msg { color: var(--error); }
         .highlight { color: var(--bright); font-weight: 700; }
         .wait-msg { color: var(--waiting); }
-        .copy-btn { background: #2a2a2a; color: var(--waiting); border: 1px solid var(--waiting); font-family: 'Unifont', monospace; font-size: 12px; cursor: pointer; padding: 2px 6px; user-select: none; display: inline-block; }
-        .laser-path { color: var(--waiting) !important; font-weight: bold; }
-        .matrix-container { display: flex; flex-direction: column; margin: 6px 0 16px 0; font-family: 'Unifont', monospace; user-select: none; }
-        .matrix-row { display: flex; height: 24px; align-items: center; }
-        .matrix-cell { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; font-weight: bold; transition: background-color 0.1s ease; }
-        .matrix-lbl { color: var(--muted); font-weight: normal; }
+        
+        .copy-btn {
+            background: #2a2a2a;
+            color: var(--waiting);
+            border: 1px solid var(--waiting);
+            font-family: 'Unifont', monospace;
+            font-size: 12px;
+            cursor: pointer;
+            padding: 2px 6px;
+            user-select: none;
+            display: inline-block;
+        }
+        .copy-btn:hover {
+            background: var(--waiting);
+            color: var(--bg0);
+        }
+        .copy-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* MATRIX TERMINAL RENDERER STYLES */
+        .matrix-container {
+            display: flex;
+            flex-direction: column;
+            margin: 6px 0 16px 0;
+            font-family: 'Unifont', monospace;
+            user-select: none;
+        }
+        .matrix-row {
+            display: flex;
+            height: 24px;
+            align-items: center;
+        }
+        .matrix-cell {
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            box-sizing: border-box;
+            font-weight: bold;
+            transition: background-color 0.1s ease;
+        }
+        .matrix-lbl {
+            color: var(--muted);
+            font-weight: normal;
+        }
         .p-blue { color: var(--blue); }
         .p-red { color: var(--red); }
+
+        /* Reserved square tinting */
         .reserved-blue { background-color: var(--blue-tint) !important; }
         .reserved-red { background-color: var(--red-tint) !important; }
-        .matrix-cell.cursor { background-color: rgba(255, 255, 255, 0.15); outline: 1px solid var(--bright); }
-        .matrix-cell.selected { outline: 1px dashed var(--waiting) !important; background-color: rgba(0, 255, 0, 0.05); }
-        .matrix-cell.target-preview { outline: 1px dashed var(--blue) !important; background-color: rgba(0, 212, 255, 0.1); }
+
+        /* INTERACTIVE INPUT STYLES */
+        .matrix-cell.cursor {
+            background-color: rgba(255, 255, 255, 0.15);
+            outline: 1px solid var(--bright);
+        }
+        .matrix-cell.selected {
+            outline: 1px dashed var(--waiting) !important;
+            background-color: rgba(0, 255, 0, 0.05);
+        }
+        .matrix-cell.target-preview {
+            outline: 1px dashed var(--blue) !important;
+            background-color: rgba(0, 212, 255, 0.1);
+        }
     </style>
 </head>
 <body>
 <div id="terminal-log"></div>
+
 <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.12.1/firebase-database-compat.js"></script>
+
 <script>
 (() => {
   'use strict';
-  const matchConfig = { apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4", authDomain: "lasercheowefficiencymanager.firebaseapp.com", databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com", projectId: "lasercheowefficiencymanager" };
-  const gameConfig = { apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE", authDomain: "laser-chess-low-efficiency.firebaseapp.com", databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com", projectId: "laser-chess-low-efficiency" };
+
+  const matchConfig = {
+    apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4",
+    authDomain: "lasercheowefficiencymanager.firebaseapp.com",
+    databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com",
+    projectId: "lasercheowefficiencymanager"
+  };
+
+  const gameConfig = {
+    apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE",
+    authDomain: "laser-chess-low-efficiency.firebaseapp.com",
+    databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com",
+    projectId: "laser-chess-low-efficiency"
+  };
+
   const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
   
   const matchApp = firebase.initializeApp(matchConfig, "matchApp");
@@ -58,31 +150,285 @@
   const logContainer = document.getElementById('terminal-log');
   const queue = [];
   let processing = false, currentPromptWrap = null, lockedMatchId = null;
-  let cursorX = 0, cursorY = 0, selectedPiece = null, latestState = null, activeMatrixContainer = null, hasMoved = false, hasRotated = false;
+  let rqPollInterval = null, recoveryPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
+  let currentHead = null;
+  let initialQueueScanDone = false;
+  let modeShown = false;
+  let privateState = null;
+  
+  let isPollingStarting = false;
+  let hostGamePollInterval = null; 
 
-  const BLUE_RESERVED = [{x: 9, y: 0}, {x: 9, y: 1}, {x: 9, y: 2}, {x: 9, y: 3}, {x: 9, y: 4}, {x: 9, y: 5}, {x: 9, y: 6}, {x: 9, y: 7}, {x: 1, y: 0}, {x: 1, y: 7}];
-  const RED_RESERVED = [{x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7}, {x: 8, y: 0}, {x: 8, y: 7}];
-  const ROTATION_TABLE = { KING: { 0: '◈', 1: '◈', 2: '◈', 3: '◈' }, LASER: { 0: '⫝', 1: '⟜', 2: 'Ͳ', 3: 'Ð' }, SWITCH: { 0: '⟋', 1: '⟍', 2: '⟋', 3: '⟍' }, DEFENDER: { 0: '⬒', 1: '◨', 2: '⬓', 3: '◧' }, DEFLECTOR: { 0: '◤', 1: '◥', 2: '◢', 3: '◣' } };
-  const DIRS = [{ dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 }];
+  // Interactive UI State Properties
+  let cursorX = 0;
+  let cursorY = 0;
+  let selectedPiece = null;
+  let latestState = null;
+  let activeMatrixContainer = null;
+  let hasMoved = false; 
+  let hasRotated = false; 
 
-  function add(text, cls='') { const l = document.createElement('div'); l.className = `history-line ${cls}`; l.textContent = text; logContainer.appendChild(l); }
-  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-  function getBoardPieces(state) { const src = state.board || state; return Array.isArray(src.pieces) ? src.pieces : Object.values(src.pieces || {}); }
-  function getStateTurn(state) { return state.board?.turn ?? state.turn; }
-  function normalizeRotation(rot) { return ((Number(rot) || 0) % 4 + 4) % 4; }
-  function inBounds(x, y) { return x >= 0 && x <= 9 && y >= 0 && y <= 7; }
+  // Reserved squares - Blue Ankh squares
+  const BLUE_RESERVED = [
+    {x: 9, y: 0}, {x: 9, y: 1}, {x: 9, y: 2}, {x: 9, y: 3}, {x: 9, y: 4}, {x: 9, y: 5}, {x: 9, y: 6}, {x: 9, y: 7},
+    {x: 1, y: 0}, {x: 1, y: 7}
+  ];
 
-  function getPieceChar(piece) { return ROTATION_TABLE[String(piece.pieceType || '').toUpperCase()]?.[normalizeRotation(piece.rotation)] || '?'; }
+  // Reserved squares - Red Eye of Horus squares
+  const RED_RESERVED = [
+    {x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7},
+    {x: 8, y: 0}, {x: 8, y: 7}
+  ];
+
+  const ROTATION_TABLE = {
+    KING: { 0: '◈', 1: '◈', 2: '◈', 3: '◈' }, 
+    LASER: { 0: '⫝', 1: '⟜', 2: 'Ͳ', 3: 'Ð' },
+    SWITCH: { 0: '⟋', 1: '⟍', 2: '⟋', 3: '⟍' }, 
+    DEFENDER: { 0: '⬒', 1: '◨', 2: '⬓', 3: '◧' }, 
+    DEFLECTOR: { 0: '◤', 1: '◥', 2: '◢', 3: '◣' }  
+  };
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  function createLine(cls='') {
+    const d = document.createElement('div');
+    d.className = `history-line ${cls}`;
+    if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap);
+    else logContainer.appendChild(d);
+    return d;
+  }
+
+  function createLineWithCopy(text, codeToCopy, cls='') {
+    const container = createLine(cls);
+    const textSpan = document.createElement('span');
+    textSpan.textContent = text;
+    container.appendChild(textSpan);
+    
+    const btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.textContent = '[COPY CODE]';
+    btn.onclick = async () => {
+        try {
+            await navigator.clipboard.writeText(codeToCopy);
+            btn.textContent = '[COPIED!]';
+        } catch (err) {
+            const dummy = document.createElement('textarea');
+            dummy.value = codeToCopy;
+            document.body.appendChild(dummy);
+            dummy.select();
+            document.execCommand('copy');
+            document.body.removeChild(dummy);
+            btn.textContent = '[COPIED!]';
+        }
+        setTimeout(() => { btn.textContent = '[COPY CODE]'; }, 2000);
+    };
+    container.appendChild(btn);
+    return container;
+  }
+
+  function add(text, cls='', req=false, handler=null) {
+    if (!req && processing) { type(text, cls, true); return; }
+    queue.push({text,cls,req,handler});
+    if (!processing) run();
+  }
+
+  async function run() {
+    processing = true;
+    while(queue.length) {
+      const i = queue.shift();
+      if (i.req) await prompt(i.text, i.cls, i.handler || handleAuth);
+      else await type(i.text, i.cls);
+    }
+    processing = false;
+  }
+
+  async function type(text, cls, immediate=false) {
+    const l = createLine(cls);
+    if (immediate) { l.textContent = text; return l; }
+    for (const c of text) { l.textContent += c; await sleep(10); }
+    return l;
+  }
+
+  async function prompt(text, cls, handler) {
+    const wrap = document.createElement('div');
+    wrap.className = 'input-wrapper history-line';
+
+    const p = document.createElement('span');
+    p.className = 'prompt';
+    wrap.appendChild(p);
+
+    const input = document.createElement('textarea');
+    input.className = 'user-input-line';
+    input.rows = 1;
+    input.spellcheck = false;
+    input.autocapitalize = 'off';
+    input.autocomplete = 'off';
+    input.autocorrect = 'off';
+    wrap.appendChild(input);
+
+    logContainer.appendChild(wrap);
+    currentPromptWrap = wrap;
+
+    for (const c of text) { p.textContent += c; await sleep(8); }
+
+    const resize = () => {
+      input.style.height = 'auto';
+      input.style.height = input.scrollHeight + 'px';
+    };
+
+    input.addEventListener('input', resize);
+    setTimeout(() => { input.focus(); resize(); }, 0);
+
+    return new Promise(resolve => {
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          const v = input.value.trim().toUpperCase();
+          input.disabled = true;
+          const finalLine = createLine('highlight');
+          finalLine.textContent = p.textContent + v;
+          wrap.remove();
+          currentPromptWrap = null;
+          handler(v);
+          resolve();
+        }
+      });
+    });
+  }
+
+  function getPieceChar(piece) {
+    const type = String(piece.pieceType || '').toUpperCase();
+    const safeRot = ((Number(piece.rotation || 0) % 4) + 4) % 4;
+    return ROTATION_TABLE[type] ? ROTATION_TABLE[type][safeRot] : '?';
+  }
+
+  function isReservedSquare(x, y, color) {
+    return color === 'BLUE' ? RED_RESERVED.some(s => s.x === x && s.y === y) : BLUE_RESERVED.some(s => s.x === x && s.y === y);
+  }
+
   function getReservedSquareTint(x, y) {
     if (BLUE_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-blue';
     if (RED_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-red';
     return null;
   }
 
-  function traceLaserPath(state, color) {
+  // DIRECTION VECTOR DICTIONARY
+  const DIRS = [
+    { dx: 0, dy: 1 },   // 0 = Up
+    { dx: 1, dy: 0 },   // 1 = Right
+    { dx: 0, dy: -1 },  // 2 = Down
+    { dx: -1, dy: 0 },  // 3 = Left
+  ];
+
+  function normalizeRotation(rot) {
+    return ((Number(rot) || 0) % 4 + 4) % 4;
+  }
+
+  // UNIFIED CORE INTERACTION ENGINE MATRIX
+  const INTERACTION_MAP = {
+    DEFLECTOR: {
+      0: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 }, 1: { action: 'destroy' }, 2: { action: 'destroy' } },
+      1: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+      2: { 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 }, 0: { action: 'destroy' }, 3: { action: 'destroy' } },
+      3: { 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 }, 0: { action: 'destroy' }, 1: { action: 'destroy' } }
+    },
+    SWITCH: {
+      0: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } },
+      1: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } },
+      2: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } },
+      3: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } }
+    },
+    DEFENDER: {
+      0: { 2: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 3: { action: 'destroy' } },
+      1: { 3: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } },
+      2: { 0: { action: 'block' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+      3: { 1: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } }
+    },
+    KING: {
+      0: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+      1: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+      2: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+      3: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }
+    },
+    LASER: {
+      0: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
+      1: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
+      2: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
+      3: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } }
+    }
+  };
+
+  function resolveMatchRecord(state) {
+    if (!state || typeof state !== 'object') return { root: null, match: null, board: null };
+    if (state.G && typeof state.G === 'object' && !Array.isArray(state.G)) {
+      const matchId = lockedMatchId && state.G[lockedMatchId] ? lockedMatchId : Object.keys(state.G)[0];
+      const match = matchId ? state.G[matchId] : null;
+      return { root: state, match, board: match?.board || null };
+    }
+    return { root: state, match: state, board: state.board || state };
+  }
+
+  function getBoardRoot(state) { return resolveMatchRecord(state).board || {}; }
+
+  function getStateTurn(state) {
+    const { match, board } = resolveMatchRecord(state);
+    return board?.turn ?? match?.turn ?? state?.turn ?? null;
+  }
+
+  function setStateTurn(state, nextTurn) {
+    const { match, board } = resolveMatchRecord(state);
+    if (!match) return;
+    if (board) board.turn = nextTurn;
+    match.turn = nextTurn;
+  }
+
+  function getBoardPieces(state) {
+    const src = getBoardRoot(state);
+    if (Array.isArray(src.pieces)) return src.pieces;
+    if (src.pieces && typeof src.pieces === 'object') return Object.values(src.pieces);
+    if (Array.isArray(src.board)) return src.board;
+    if (typeof src.board === 'string') { try { return JSON.parse(src.board); } catch (e) { return []; } }
+    return [];
+  }
+
+  function getPieceAt(pieces, x, y) { return pieces.find(p => p && p.x === x && p.y === y) || null; }
+  function inBounds(x, y) { return x >= 0 && x <= 9 && y >= 0 && y <= 7; }
+
+  function interactWithLaser(piece, incomingDir) {
+    const type = String(piece?.pieceType || '').toUpperCase();
+    const rot = normalizeRotation(piece?.rotation);
+
+    const typeMap = INTERACTION_MAP[type];
+    if (!typeMap) return { kind: 'stop', destroyed: false };
+
+    const rotMap = typeMap[rot] || typeMap[0];
+    if (!rotMap) return { kind: 'stop', destroyed: false };
+
+    const outcome = rotMap[incomingDir];
+    if (!outcome) return { kind: 'stop', destroyed: false };
+
+    if (outcome.action === 'reflect') {
+      return { kind: 'reflect', destroyed: false, reflected: outcome.nextDir };
+    }
+    if (outcome.action === 'block') {
+      return { kind: 'stop', blocked: true, destroyed: false };
+    }
+    if (outcome.action === 'destroy') {
+      return { kind: 'stop', destroyed: true };
+    }
+
+    return { kind: 'stop', destroyed: false };
+  }
+
+  function traceLaserPath(state, explicitColor = null) {
     const pieces = getBoardPieces(state);
-    const shooter = pieces.find(p => String(p.pieceType || '').toUpperCase() === 'LASER' && String(p.color || '').toUpperCase() === color);
-    if (!shooter) return { path: [] };
+    const colors = explicitColor ? [explicitColor] : ['RED', 'BLUE'];
+
+    const shooter = colors
+      .map(color => pieces.find(p => p && String(p.pieceType || '').toUpperCase() === 'LASER' && String(p.color || '').toUpperCase() === color))
+      .find(Boolean);
+
+    if (!shooter) return { path: [], hit: null, shooter: null, exit: null };
 
     let dir = normalizeRotation(shooter.rotation);
     let x = shooter.x + DIRS[dir].dx;
@@ -91,82 +437,686 @@
     const seen = new Set();
 
     for (let steps = 0; steps < 256; steps++) {
-      if (!inBounds(x, y)) break;
-      const key = `${x},${y},${dir}`;
-      if (seen.has(key)) break;
-      seen.add(key);
+      if (!inBounds(x, y)) return { path, hit: null, shooter, exit: { x, y, dir } };
+
+      const stateKey = `${x},${y},${dir}`;
+      if (seen.has(stateKey)) return { path, hit: null, shooter, exit: { x, y, dir }, looped: true };
+      seen.add(stateKey);
+
       path.push({ x, y, dir });
-      
-      const p = pieces.find(pi => pi.x === x && pi.y === y);
-      if (p) {
-        // Simple mock reflection logic
-        const type = String(p.pieceType || '').toUpperCase();
-        if (type === 'DEFLECTOR' || type === 'SWITCH') {
-            // simplified: turn right
-            dir = (dir + 1) % 4; 
-        } else if (type !== 'KING' && type !== 'LASER') {
-            break; // Blocked
+
+      const piece = getPieceAt(pieces, x, y);
+      if (!piece) {
+        x += DIRS[dir].dx;
+        y += DIRS[dir].dy;
+        continue;
+      }
+
+      const outcome = interactWithLaser(piece, dir);
+      if (outcome.kind === 'reflect') {
+        dir = outcome.reflected;
+        x += DIRS[dir].dx;
+        y += DIRS[dir].dy;
+        continue;
+      }
+
+      return {
+        path,
+        hit: {
+          piece,
+          blocked: !!outcome.blocked,
+          destroyed: !!outcome.destroyed,
+          kind: outcome.kind,
+        },
+        shooter,
+        exit: null,
+      };
+    }
+    return { path, hit: null, shooter, exit: null, looped: true };
+  }
+
+  function applyLaserResolution(state, explicitColor = null) {
+    const trace = traceLaserPath(state, explicitColor);
+    if (!trace.hit || !trace.hit.destroyed || !trace.hit.piece) return { state, trace };
+
+    const pieces = getBoardPieces(state);
+    const target = trace.hit.piece;
+    const nextPieces = pieces.filter(p => !(p && p.x === target.x && p.y === target.y));
+
+    const nextState = JSON.parse(JSON.stringify(state));
+    const { board: nextBoard, match: nextMatch } = resolveMatchRecord(nextState);
+    const nextSrc = nextBoard || nextMatch || nextState;
+
+    if (Array.isArray(nextSrc.pieces) || (nextSrc.pieces && typeof nextSrc.pieces === 'object')) {
+      nextSrc.pieces = nextPieces;
+    } else {
+      nextSrc.board = nextPieces;
+    }
+    return { state: nextState, trace };
+  }
+
+  function advanceTurnWithLaser(state, explicitColor = null) {
+    const fireColor = explicitColor || getStateTurn(state);
+    if (!fireColor) return { state, trace: null, firedColor: null, nextTurn: null };
+
+    const fired = applyLaserResolution(state, fireColor);
+    const nextState = fired.state;
+    const currentTurn = fireColor;
+    const nextTurn = currentTurn === 'RED' ? 'BLUE' : 'RED';
+    const board = getBoardRoot(nextState);
+
+    if (board) {
+      board.phase = 'MOVE';
+      board.moveNumber = Number(board.moveNumber || 0) + 1;
+    }
+    setStateTurn(nextState, nextTurn);
+
+    return { state: nextState, trace: fired.trace, firedColor: currentTurn, nextTurn };
+  }
+
+  function fireLaserAndAdvanceTurn(explicitColor = null, contextLabel = 'Turn End') {
+    if (!latestState || !lockedMatchId) return false;
+
+    const firedColor = explicitColor || getStateTurn(latestState);
+    if (!firedColor || (firedColor !== 'RED' && firedColor !== 'BLUE')) return false;
+
+    const result = advanceTurnWithLaser(latestState, firedColor);
+    latestState = result.state;
+
+    if (result.trace) {
+      const trace = result.trace;
+      add(`[${contextLabel}] ${firedColor} laser fired. Tracing path...`, 'system-msg');
+
+      // EXPLICIT LASER PATH TERMINAL LOGGING
+      if (trace.path && trace.path.length > 0) {
+        let lastDir = -1;
+        for (const step of trace.path) {
+          if (step.dir !== lastDir) {
+            let dirStr = "";
+            if (step.dir === 0) dirStr = "^\n|\nNorth";
+            else if (step.dir === 1) dirStr = "->\nEast";
+            else if (step.dir === 2) dirStr = "|\nv\nSouth";
+            else if (step.dir === 3) dirStr = "<-\nWest";
+            
+            add(dirStr, 'wait-msg'); // Wait-msg gives it the green terminal highlight
+            lastDir = step.dir;
+          }
         }
       }
-      x += DIRS[dir].dx; y += DIRS[dir].dy;
+
+      if (trace.looped) {
+        add('Laser path loop detected; shot aborted safely.', 'error-msg');
+      } else if (!trace.hit) {
+        add(`${firedColor} laser cleared the board.`, 'system-msg');
+      } else if (trace.hit.blocked) {
+        add(`Laser blocked by ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
+      } else if (trace.hit.destroyed) {
+        add(`Laser destroyed ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
+        if (String(trace.hit.piece.pieceType || '').toUpperCase() === 'KING') {
+          add('KING DOWN. Match over.', 'error-msg');
+        }
+      }
     }
-    return { path };
+
+    hasMoved = false;
+    hasRotated = false;
+    selectedPiece = null;
+
+    dbGame.ref(`G/${lockedMatchId}`).set(latestState);
+    updateMatrixView();
+    return true;
   }
 
   function printTerminalMatrix(state) {
     latestState = state;
     const pieces = getBoardPieces(state);
-    const turn = getStateTurn(state);
-    const trace = traceLaserPath(state, turn);
 
     const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
-    for (const piece of pieces) if(inBounds(piece.x, piece.y)) grid[piece.y][piece.x] = piece;
+    for (const piece of pieces) {
+      if (!piece || !Number.isFinite(piece.x) || !Number.isFinite(piece.y)) continue;
+      if (piece.x < 0 || piece.x > 9 || piece.y < 0 || piece.y > 7) continue;
+      grid[piece.y][piece.x] = piece;
+    }
 
     const container = document.createElement('div');
     container.className = 'matrix-container';
 
+    let headerRow = document.createElement('div');
+    headerRow.className = 'matrix-row';
+    let cornerCell = document.createElement('span');
+    cornerCell.className = 'matrix-cell matrix-lbl';
+    cornerCell.innerHTML = '&nbsp;';
+    headerRow.appendChild(cornerCell);
+    for (let x = 0; x < 10; x++) {
+      let lblCell = document.createElement('span');
+      lblCell.className = 'matrix-cell matrix-lbl';
+      lblCell.textContent = x;
+      headerRow.appendChild(lblCell);
+    }
+    container.appendChild(headerRow);
+
     for (let y = 7; y >= 0; y--) {
       let rowEl = document.createElement('div');
       rowEl.className = 'matrix-row';
+      
+      let yLbl = document.createElement('span');
+      yLbl.className = 'matrix-cell matrix-lbl';
+      yLbl.textContent = y;
+      rowEl.appendChild(yLbl);
+
       for (let x = 0; x < 10; x++) {
         let cellEl = document.createElement('span');
         cellEl.className = 'matrix-cell';
-        const pathStep = trace.path.find(s => s.x === x && s.y === y);
         
         const tint = getReservedSquareTint(x, y);
         if (tint) cellEl.classList.add(tint);
+        if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
         
+        if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) {
+          cellEl.classList.add('selected');
+        } else if (selectedPiece && x === cursorX && y === cursorY) {
+          cellEl.classList.add('target-preview');
+        }
+
         const p = grid[y][x];
         if (p) {
           cellEl.textContent = getPieceChar(p);
           cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue');
-        } else if (pathStep) {
-          cellEl.textContent = (pathStep.dir === 0 || pathStep.dir === 2) ? '|' : '-';
-          cellEl.classList.add('laser-path');
         } else {
           cellEl.textContent = '·';
-          cellEl.style.color = 'var(--muted)';
+          cellEl.style.color = 'var(--bright)';
         }
         rowEl.appendChild(cellEl);
       }
       container.appendChild(rowEl);
     }
 
-    if (activeMatrixContainer && activeMatrixContainer.parentNode) activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer);
-    else logContainer.appendChild(container);
+    if (activeMatrixContainer && activeMatrixContainer.parentNode) {
+      activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer);
+    } else {
+      if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap);
+      else logContainer.appendChild(container);
+    }
     activeMatrixContainer = container;
+    window.scrollTo(0, document.body.scrollHeight);
   }
 
-  function fireLaserAndAdvanceTurn(color, label) {
-    add(`${label}: Laser firing...`, 'system-msg');
-    // ... logic to update state via DB ...
-    // State change triggers printTerminalMatrix via Firebase listener
+  function updateMatrixView() { if (latestState) printTerminalMatrix(latestState); }
+
+  function handleGridAction() {
+    if (!latestState) return;
+
+    const pieces = getBoardPieces(latestState);
+    let pieceAtCursor = pieces.find(p => p && p.x === cursorX && p.y === cursorY);
+
+    if (selectedPiece) {
+      if (selectedPiece.x === cursorX && selectedPiece.y === cursorY) {
+        selectedPiece = null;
+        add("Selection dropped.", "system-msg");
+      } else {
+        let targetPiece = pieces.find(p => p && p.x === selectedPiece.x && p.y === selectedPiece.y);
+        if (targetPiece) {
+          if (hasRotated) {
+            add("Action rejected: Cannot move after rotating this turn.", "error-msg");
+            selectedPiece = null;
+            return;
+          }
+          if (targetPiece.pieceType === 'LASER') {
+            add("Action rejected: Sphinx pieces cannot be moved.", "error-msg");
+            selectedPiece = null;
+            return;
+          }
+
+          const dx = Math.abs(cursorX - targetPiece.x);
+          const dy = Math.abs(cursorY - targetPiece.y);
+          if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) {
+            add("Action rejected: Move range 1 square.", "error-msg");
+            selectedPiece = null;
+            return;
+          }
+
+          if (isReservedSquare(cursorX, cursorY, targetPiece.color)) {
+            add(`Action rejected: ${targetPiece.color} pieces cannot enter this reserved square.`, "error-msg");
+            selectedPiece = null;
+            return;
+          }
+
+          if (pieceAtCursor) {
+            if (targetPiece.pieceType === 'SWITCH') {
+              if (pieceAtCursor.pieceType === 'DEFLECTOR' || pieceAtCursor.pieceType === 'DEFENDER') {
+                const oldX = targetPiece.x;
+                const oldY = targetPiece.y;
+                targetPiece.x = pieceAtCursor.x;
+                targetPiece.y = pieceAtCursor.y;
+                pieceAtCursor.x = oldX;
+                pieceAtCursor.y = oldY;
+                add(`Scarab swapped with ${pieceAtCursor.pieceType}.`, "success-msg");
+                hasMoved = true;
+              } else {
+                add(`Action rejected: Scarab can only swap with Pyramid or Anubis, not ${pieceAtCursor.pieceType}.`, "error-msg");
+                selectedPiece = null;
+                return;
+              }
+            } else {
+              add("Action rejected: Square occupied.", "error-msg");
+              selectedPiece = null;
+              return;
+            }
+          } else {
+            targetPiece.x = cursorX;
+            targetPiece.y = cursorY;
+            add(`Piece moved to (${cursorX}, ${cursorY}).`, "success-msg");
+            hasMoved = true;
+          }
+          fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Move');
+        }
+        selectedPiece = null;
+      }
+    } else {
+      if (pieceAtCursor) {
+        const currentTurn = getStateTurn(latestState);
+        if (currentTurn && pieceAtCursor.color !== currentTurn) {
+            add(`Action rejected: Piece belongs to ${pieceAtCursor.color}, turn is ${currentTurn}.`, "error-msg");
+            return;
+        }
+        selectedPiece = { x: cursorX, y: cursorY };
+        add(`Piece selected at (${cursorX}, ${cursorY})`, "success-msg");
+      } else {
+        add(`Invalid action: No piece at (${cursorX}, ${cursorY})`, "error-msg");
+      }
+    }
+    updateMatrixView();
   }
 
-  // Initialization/boot logic assumed to persist from original file...
-  function boot() {
-      // Logic for Firebase listeners...
+  function handleRotation(dir) {
+    if (!latestState || !selectedPiece) {
+      add("Action dropped: Select a piece before rotating.", "error-msg");
+      return;
+    }
+    if (hasMoved) {
+      add("Action rejected: Cannot rotate after moving this turn.", "error-msg");
+      return;
+    }
+
+    const pieces = getBoardPieces(latestState);
+    let targetPiece = pieces.find(p => p && p.x === selectedPiece.x && p.y === selectedPiece.y);
+    if (targetPiece) {
+      if (targetPiece.pieceType === 'KING') {
+        add("Action rejected: Pharaohs (Kings) cannot rotate.", "error-msg");
+        return;
+      }
+
+      let currentRot = Number(targetPiece.rotation || 0);
+      let newRot = dir === 'R' ? (currentRot + 1) % 4 : (currentRot + 3) % 4;
+
+      if (targetPiece.pieceType === 'LASER') {
+        if (targetPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) {
+          add("Action rejected: Blue Sphinx can only face Up (0) or Left (3).", "error-msg");
+          return;
+        }
+        if (targetPiece.color === 'RED' && (newRot === 3 || newRot === 0)) {
+          add("Action rejected: Red Sphinx can only face Right (1) or Down (2).", "error-msg");
+          return;
+        }
+        targetPiece.rotation = newRot;
+        add(`Sphinx rotated ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
+      } 
+      else if (targetPiece.pieceType === 'SWITCH') {
+        targetPiece.rotation = (currentRot + 1) % 2;
+        add(`Scarab toggled.`, "success-msg");
+      } 
+      else {
+        targetPiece.rotation = newRot;
+        add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
+      }
+      hasRotated = true;
+      fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Rotate');
+    }
+    updateMatrixView();
   }
+
+  async function pollFirstMatch({ silentEmpty = false } = {}) {
+    if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
+    try {
+      const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value');
+      const data = snapshot.val();
+      if (!data) {
+        currentHead = null;
+        if (!silentEmpty && initialQueueScanDone && lastQueueState !== 'EMPTY') {
+          add('RQ_Q: Empty (Idle)', 'system-msg');
+          lastQueueState = 'EMPTY';
+        }
+        return false;
+      }
+      initialQueueScanDone = true;
+      const firstKey = Object.keys(data)[0];
+      currentHead = { id: firstKey, data: data[firstKey] };
+      if (lastQueueState !== firstKey) {
+        add(`[AUTO-SCAN] Head detected: ${data[firstKey].username} (${data[firstKey].color === 0 ? 'RED' : 'BLUE'})`, 'success-msg');
+        lastQueueState = firstKey;
+      }
+      return true;
+    } catch (e) {
+      currentHead = null;
+      return false;
+    }
+  }
+
+  async function showMode() {
+    if (localStorage.getItem(KEY_RID)) return;
+    while (processing) await sleep(10);
+    if (modeShown) return;
+    modeShown = true;
+
+    const privateSuffix = ' | [P] Private Host | [J] Private Join';
+    if (!currentHead) {
+      add('Queue Empty. [R] Host Red | [B] Host Blue' + privateSuffix, 'system-msg');
+    } else if (currentHead.data.color === 0) {
+      add('RED at head. [A] Join as Blue | [R] Host Red' + privateSuffix, 'system-msg');
+    } else {
+      add('BLUE at head. [A] Join as Red | [B] Host Blue' + privateSuffix, 'system-msg');
+    }
+    add('MODE:', '', true, handleMode);
+  }
+
+  async function startPolling() {
+    if (isPollingStarting) return;
+    isPollingStarting = true;
+    if (rqPollInterval) clearInterval(rqPollInterval);
+    await pollFirstMatch({ silentEmpty: true });
+    modeShown = false;
+    await showMode();
+    if (!localStorage.getItem(KEY_RID) && !lockedMatchId) {
+      rqPollInterval = setInterval(() => pollFirstMatch({ silentEmpty: false }), 6000);
+    }
+    isPollingStarting = false;
+  }
+
+  function stopPolling() { 
+    if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } 
+    lastQueueState = 'STOPPED';
+  }
+
+  async function searchForGameDBMatch() {
+    const myName = localStorage.getItem(KEY_USER);
+    if (!myName) return false;
+    try {
+      const snap = await dbGame.ref('G').once('value');
+      const games = snap.val();
+      if (!games) return false;
+      const upperName = myName.toUpperCase();
+      const matchID = Object.keys(games).find(key => String(key).toUpperCase().includes(upperName));
+      if (matchID) {
+        add(`[AUTO-JOIN] Match detected in /G: ${matchID}`, 'success-msg');
+        lockOntoMatch(matchID, games[matchID]);
+        return true;
+      }
+    } catch (e) { console.error(e); }
+    return false;
+  }
+
+  function startHostMatchWorkerPolling(requestId, contextMsg = "Awaiting Handshake") {
+    stopHostGamePolling();
+    const passiveGamePoll = async () => {
+      if (lockedMatchId) return;
+      if (await searchForGameDBMatch()) { stopHostGamePolling(); toggleWaiting(false); }
+    };
+    passiveGamePoll();
+    toggleWaiting(true, contextMsg);
+
+    hostGamePollInterval = setInterval(async () => {
+      if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId.toString()) {
+        stopHostGamePolling(); toggleWaiting(false); return;
+      }
+      try {
+        const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value');
+        const data = snap.val();
+        if (data && data.matchName) {
+          stopHostGamePolling(); toggleWaiting(false);
+          lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        } else if (!data) {
+          stopHostGamePolling(); toggleWaiting(false);
+          if (!await searchForGameDBMatch()) {
+            add('Match request expired or consumed.', 'error-msg');
+            localStorage.removeItem(KEY_RID); modeShown = false; await startPolling();
+          }
+        }
+      } catch (e) { console.error(e); }
+    }, 3000);
+  }
+
+  function stopHostGamePolling() { if (hostGamePollInterval) { clearInterval(hostGamePollInterval); hostGamePollInterval = null; } }
+  async function verifyRequestIdByRQD(requestId) { if (!requestId) return false; try { const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value'); return snap.exists() ? snap.val() : false; } catch (e) { return false; } }
+  async function isUsernameOccupied(username) { if (!username) return true; try { const snap = await dbMatch.ref(`P/${username}`).once('value'); return snap.exists(); } catch (e) { return true; } }
+
+  async function verifyRecoveryPath(requestId) {
+    if (!requestId) return { state: 'missing', data: null };
+    const qd = await verifyRequestIdByRQD(requestId);
+    if (qd) return qd.matchName ? { state: 'matched', data: qd } : { state: 'waiting', data: qd };
+    return { state: 'missing', data: null };
+  }
+
+  function stopRecoveryPolling() { if (recoveryPollInterval) { clearInterval(recoveryPollInterval); recoveryPollInterval = null; } }
+
+  function startRecoveryPolling(requestId) {
+    stopRecoveryPolling();
+    toggleWaiting(true, "Recovering Uplink Signal");
+    let attempts = 0;
+
+    const tick = async () => {
+      if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId) { stopRecoveryPolling(); toggleWaiting(false); return; }
+      const recovered = await verifyRecoveryPath(requestId);
+
+      if (recovered.state === 'matched') {
+        stopRecoveryPolling(); toggleWaiting(false); add('Recovering uplink...', 'system-msg');
+        lockOntoMatch(recovered.data.matchName, recovered.data); return;
+      }
+      if (recovered.state === 'waiting') {
+        stopRecoveryPolling(); toggleWaiting(false); add('Recovering uplink...', 'system-msg');
+        if (recovered.data.isPrivate && recovered.data.inviteCode) {
+          startHostMatchWorkerPolling(requestId, `Awaiting Private Join [CODE: ${recovered.data.inviteCode}]`);
+        } else {
+          startHostMatchWorkerPolling(requestId, "Awaiting Public Match Intercept");
+        }
+        return;
+      }
+
+      attempts += 1;
+      if (attempts === 1) add('Recovering uplink...', 'system-msg');
+      if (attempts >= 18) {
+        stopRecoveryPolling(); toggleWaiting(false); stopHostGamePolling();
+        if (!await searchForGameDBMatch()) { localStorage.removeItem(KEY_RID); modeShown = false; await startPolling(); }
+      }
+    };
+    tick();
+    recoveryPollInterval = setInterval(tick, 4000);
+  }
+
+  async function handleMode(val) {
+    if (privateState) return handlePrivateFlow(val);
+    if (val === 'A') {
+      if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); modeShown = false; return showMode(); }
+      toggleWaiting(true, `Intercepting ${currentHead.id}`);
+      return registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
+    }
+    if (val === 'R') return registerHost(0, false); 
+    if (val === 'B') return registerHost(1, false);
+    if (val === 'P') { privateState = { step: 'TARGET', target: null }; return add('TARGET USER (OPTIONAL - ENTER TO SKIP):', '', true, handlePrivateFlow); }
+    if (val === 'J') { privateState = { step: 'CODE' }; return add('INVITE CODE:', '', true, handlePrivateFlow); }
+
+    add('Unknown Command.', 'error-msg'); modeShown = false; return showMode();
+  }
+
+  async function handlePrivateFlow(v) {
+    if (!privateState) { modeShown = false; return showMode(); }
+    if (privateState.step === 'TARGET') {
+      const raw = (v || '').trim();
+      if (!raw) { privateState.step = 'COLOR'; return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow); }
+      const target = raw.toUpperCase();
+      if (target === localStorage.getItem(KEY_USER)) { add('CANNOT TARGET SELF.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
+      if (!await isUsernameOccupied(target)) { add('TARGET USER NOT FOUND.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
+      privateState.target = target; privateState.step = 'COLOR'; return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
+    }
+    if (privateState.step === 'COLOR') {
+      const input = (v || '').trim().toUpperCase();
+      const colorChar = input.includes('R') ? 'R' : input.includes('B') ? 'B' : null;
+      const color = colorChar === 'R' ? 0 : colorChar === 'B' ? 1 : null;
+      if (color === null) { add('Unknown Command.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
+      const target = privateState.target; privateState = null; return createPrivateRequest(color, target);
+    }
+    if (privateState.step === 'CODE') {
+      const code = (v || '').trim().toUpperCase();
+      if (!code) { add('INVALID CODE.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
+      privateState = null; return joinPrivate(code);
+    }
+    privateState = null; modeShown = false; return showMode();
+  }
+
+  async function joinPrivate(inviteCode) {
+    try {
+      const res = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), isPrivate: true, privateMode: 'JOIN', inviteCode })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const idToStore = data.matchName || data.matchId || data.requestId || data.timestamp;
+        if (idToStore) localStorage.setItem(KEY_RID, idToStore);
+        stopPolling(); add('Private Link Success!', 'success-msg');
+        if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        else if (data.requestId) startHostMatchWorkerPolling(data.requestId, "Awaiting Private Handshake");
+        return;
+      }
+      add(`Private Join Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
+    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
+  }
+
+  async function createPrivateRequest(color, privateTarget = null) {
+    try {
+      const res = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'PRIVATE_MATCH_REQUEST', body: { requester: localStorage.getItem(KEY_USER), secret: localStorage.getItem(KEY_PASS), color, target: privateTarget } })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        if (data.requestId) localStorage.setItem(KEY_RID, data.requestId);
+        stopPolling();
+        if (data.inviteCode) {
+          try { await navigator.clipboard.writeText(data.inviteCode); } catch(cErr){}
+          createLineWithCopy(`Private Request Generated! CODE: ${data.inviteCode} `, data.inviteCode, 'success-msg');
+        } else { add('Private Request Generated!', 'success-msg'); }
+        startHostMatchWorkerPolling(data.requestId, `Awaiting Private Join [CODE: ${data.inviteCode}]`);
+        return;
+      }
+      add(`Private Request Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
+    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
+  }
+
+  async function registerHost(color, isIntercept = false, extra = {}) {
+    try {
+      const res = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), color, isIntercept, ...extra })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        const idToStore = data.matchName || data.requestId || data.timestamp;
+        if (idToStore) localStorage.setItem(KEY_RID, idToStore);
+        stopPolling(); add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
+        if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' });
+        else if (data.requestId || data.timestamp) startHostMatchWorkerPolling(data.requestId || data.timestamp, isIntercept ? "Awaiting Intercept Handshake" : "Awaiting Public Match Intercept");
+        return;
+      }
+      add(`Uplink Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
+    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
+  }
+
+  function lockOntoMatch(id, entry) {
+    lockedMatchId = id; localStorage.setItem(KEY_RID, id); 
+    stopPolling(); toggleWaiting(false); stopHostGamePolling(); modeShown = false;
+    add(`LINK ESTABLISHED: ${id}`, 'success-msg');
+    add('Controls: Arrow Keys=Move Cursor | Space/Enter=Select/Move | L/R=Rotate Piece | F=Fire & Skip Turn', 'system-msg');
+    
+    const gameRef = dbGame.ref(`G/${id}`);
+    gameRef.on('value', snap => {
+        const state = snap.val();
+        if (state) {
+            add(`[SYNC] Turn: ${getStateTurn(state) ?? 'N/A'}`, 'system-msg');
+            printTerminalMatrix(state);
+        } else {
+            add('MATCH TERMINATED.', 'error-msg'); localStorage.removeItem(KEY_RID);
+            lockedMatchId = null; activeMatrixContainer = null; gameRef.off(); modeShown = false; startPolling();
+        }
+    });
+  }
+
+  function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
+    if (active) {
+      if (waitAnimationInterval) return;
+      const l = createLine('wait-msg');
+      let dots = 0;
+      waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = contextMsg + ".".repeat(dots); }, 500);
+    } else { if (waitAnimationInterval) { clearInterval(waitAnimationInterval); waitAnimationInterval = null; } }
+  }
+
+  async function handleAuth(v) {
+    if (!localStorage.getItem(KEY_USER)) {
+      if (!v) return add('User ID:', '', true, handleAuth);
+      const candidate = v.trim().toUpperCase();
+      if (!candidate || await isUsernameOccupied(candidate)) { add(candidate ? 'USER ID ALREADY OCCUPIED.' : 'INVALID USER ID.', 'error-msg'); return add('User ID:', '', true, handleAuth); }
+      localStorage.setItem(KEY_USER, candidate); return boot();
+    }
+    if (!localStorage.getItem(KEY_PASS)) { if (!v) return add('Access Key:', '', true, handleAuth); localStorage.setItem(KEY_PASS, v); return boot(); }
+  }
+
+  async function boot() {
+    const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
+    if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
+    add('System Online.', 'success-msg'); add('KHET 2.0 Rules Edition - Full rule enforcement active', 'system-msg');
+    
+    if (rid && rid.toString().includes('_')) {
+        const snap = await dbGame.ref(`G/${rid}`).once('value');
+        if (snap.exists()) return lockOntoMatch(rid, snap.val());
+        localStorage.removeItem(KEY_RID);
+    }
+    if (rid && !rid.toString().includes('_')) {
+        const rqdEntry = await verifyRequestIdByRQD(rid);
+        if (rqdEntry) {
+            add('Recovering uplink...', 'system-msg');
+            if (rqdEntry.isPrivate && rqdEntry.inviteCode) {
+                createLineWithCopy(`Re-asserted Private Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg');
+                startHostMatchWorkerPolling(rid, `Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`);
+            } else { startHostMatchWorkerPolling(rid, "Awaiting Public Match Intercept"); }
+            return;
+        }
+        localStorage.removeItem(KEY_RID);
+    }
+    if (!await searchForGameDBMatch()) await startPolling();
+  }
+
+  window.addEventListener('keydown', e => {
+    if (!lockedMatchId || !latestState) return;
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+      if (document.activeElement.value.trim().length > 0) return;
+    }
+    switch (e.key) {
+      case 'ArrowUp': if (cursorY < 7) cursorY++; updateMatrixView(); e.preventDefault(); break;
+      case 'ArrowDown': if (cursorY > 0) cursorY--; updateMatrixView(); e.preventDefault(); break;
+      case 'ArrowLeft': if (cursorX > 0) cursorX--; updateMatrixView(); e.preventDefault(); break;
+      case 'ArrowRight': if (cursorX < 9) cursorX++; updateMatrixView(); e.preventDefault(); break;
+      case ' ':
+      case 'Enter': handleGridAction(); e.preventDefault(); break;
+      case 'l':
+      case 'L': handleRotation('L'); e.preventDefault(); break;
+      case 'r':
+      case 'R': handleRotation('R'); e.preventDefault(); break;
+      case 'f':
+      case 'F': selectedPiece = null; fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Manual Fire'); e.preventDefault(); break;
+    }
+  });
 
   window.addEventListener('DOMContentLoaded', boot);
 })();
