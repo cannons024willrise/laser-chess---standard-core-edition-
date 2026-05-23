@@ -17,8 +17,10 @@
             --waiting: #00ff00; 
             --blue: #00d4ff;
             --red: #ff3333;
+            --laser: #ffff00;
             --blue-tint: rgba(0, 212, 255, 0.15);
             --red-tint: rgba(255, 51, 51, 0.15);
+            --laser-tint: rgba(255, 255, 0, 0.25);
         }
         body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
         #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
@@ -72,7 +74,14 @@
             margin: 6px 0 16px 0;
             font-family: 'Unifont', monospace;
             user-select: none;
+            opacity: 0;
+            animation: fadeIn 0.5s forwards;
         }
+        
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+        
         .matrix-row {
             display: flex;
             height: 24px;
@@ -88,7 +97,24 @@
             box-sizing: border-box;
             font-weight: bold;
             transition: background-color 0.1s ease;
+            position: relative;
         }
+        
+        .matrix-cell .laser-overlay {
+            position: absolute;
+            color: var(--laser);
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 10;
+            text-shadow: 0 0 3px var(--laser);
+            animation: laserPulse 1s infinite;
+        }
+        
+        @keyframes laserPulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+        
         .matrix-lbl {
             color: var(--muted);
             font-weight: normal;
@@ -99,6 +125,7 @@
         /* Reserved square tinting */
         .reserved-blue { background-color: var(--blue-tint) !important; }
         .reserved-red { background-color: var(--red-tint) !important; }
+        .laser-path { background-color: var(--laser-tint) !important; }
 
         /* INTERACTIVE INPUT STYLES */
         .matrix-cell.cursor {
@@ -166,7 +193,10 @@
   let latestState = null;
   let activeMatrixContainer = null;
   let hasMoved = false; 
-  let hasRotated = false; 
+  let hasRotated = false;
+  
+  // Board history - keep all previous boards
+  let boardHistory = [];
 
   // Reserved squares - Blue Ankh squares
   const BLUE_RESERVED = [
@@ -245,7 +275,11 @@
   async function type(text, cls, immediate=false) {
     const l = createLine(cls);
     if (immediate) { l.textContent = text; return l; }
-    for (const c of text) { l.textContent += c; await sleep(10); }
+    // SLOW TYPEWRITER EFFECT
+    for (const c of text) { 
+      l.textContent += c; 
+      await sleep(30); // Slower for terminal feel
+    }
     return l;
   }
 
@@ -269,7 +303,11 @@
     logContainer.appendChild(wrap);
     currentPromptWrap = wrap;
 
-    for (const c of text) { p.textContent += c; await sleep(8); }
+    // SLOW TYPEWRITER for prompts
+    for (const c of text) { 
+      p.textContent += c; 
+      await sleep(25); 
+    }
 
     const resize = () => {
       input.style.height = 'auto';
@@ -514,46 +552,58 @@
     return { state: nextState, trace: fired.trace, firedColor: currentTurn, nextTurn };
   }
 
-  function fireLaserAndAdvanceTurn(explicitColor = null, contextLabel = 'Turn End') {
+  function getLaserChar(dir, isStart = false, isEnd = false) {
+    if (dir === 0) return isStart ? '^' : '|'; // Up
+    if (dir === 1) return '→'; // Right
+    if (dir === 2) return isEnd ? 'v' : '|'; // Down
+    if (dir === 3) return '←'; // Left
+    return '·';
+  }
+
+  async function fireLaserAndAdvanceTurn(explicitColor = null, contextLabel = 'Turn End') {
     if (!latestState || !lockedMatchId) return false;
 
     const firedColor = explicitColor || getStateTurn(latestState);
     if (!firedColor || (firedColor !== 'RED' && firedColor !== 'BLUE')) return false;
 
     const result = advanceTurnWithLaser(latestState, firedColor);
+    
+    // Calculate laser trace BEFORE applying the move
+    const laserTrace = traceLaserPath(latestState, firedColor);
+    
     latestState = result.state;
 
     if (result.trace) {
       const trace = result.trace;
-      add(`[${contextLabel}] ${firedColor} laser fired. Tracing path...`, 'system-msg');
+      await type(`[${contextLabel}] ${firedColor} laser fired. Tracing path...`, 'system-msg');
 
-      // EXPLICIT LASER PATH TERMINAL LOGGING
+      // LASER PATH TERMINAL LOGGING
       if (trace.path && trace.path.length > 0) {
         let lastDir = -1;
         for (const step of trace.path) {
           if (step.dir !== lastDir) {
             let dirStr = "";
-            if (step.dir === 0) dirStr = "^\n|\nNorth";
-            else if (step.dir === 1) dirStr = "->\nEast";
-            else if (step.dir === 2) dirStr = "|\nv\nSouth";
-            else if (step.dir === 3) dirStr = "<-\nWest";
+            if (step.dir === 0) dirStr = "^\n|";
+            else if (step.dir === 1) dirStr = "→";
+            else if (step.dir === 2) dirStr = "|\nv";
+            else if (step.dir === 3) dirStr = "←";
             
-            add(dirStr, 'wait-msg'); // Wait-msg gives it the green terminal highlight
+            await type(dirStr, 'wait-msg');
             lastDir = step.dir;
           }
         }
       }
 
       if (trace.looped) {
-        add('Laser path loop detected; shot aborted safely.', 'error-msg');
+        await type('Laser path loop detected; shot aborted safely.', 'error-msg');
       } else if (!trace.hit) {
-        add(`${firedColor} laser cleared the board.`, 'system-msg');
+        await type(`${firedColor} laser cleared the board.`, 'system-msg');
       } else if (trace.hit.blocked) {
-        add(`Laser blocked by ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
+        await type(`Laser blocked by ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
       } else if (trace.hit.destroyed) {
-        add(`Laser destroyed ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
+        await type(`Laser destroyed ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
         if (String(trace.hit.piece.pieceType || '').toUpperCase() === 'KING') {
-          add('KING DOWN. Match over.', 'error-msg');
+          await type('KING DOWN. Match over.', 'error-msg');
         }
       }
     }
@@ -563,11 +613,14 @@
     selectedPiece = null;
 
     dbGame.ref(`G/${lockedMatchId}`).set(latestState);
-    updateMatrixView();
+    
+    // Render new board with laser path
+    await printTerminalMatrix(latestState, laserTrace);
+    
     return true;
   }
 
-  function printTerminalMatrix(state) {
+  async function printTerminalMatrix(state, laserTrace = null) {
     latestState = state;
     const pieces = getBoardPieces(state);
 
@@ -578,9 +631,23 @@
       grid[piece.y][piece.x] = piece;
     }
 
+    // Create laser path map
+    const laserPathMap = new Map();
+    if (laserTrace && laserTrace.path) {
+      laserTrace.path.forEach((step, idx) => {
+        const key = `${step.x},${step.y}`;
+        if (!laserPathMap.has(key)) {
+          const isStart = idx === 0;
+          const isEnd = idx === laserTrace.path.length - 1;
+          laserPathMap.set(key, { dir: step.dir, isStart, isEnd });
+        }
+      });
+    }
+
     const container = document.createElement('div');
     container.className = 'matrix-container';
 
+    // TYPEWRITER EFFECT: Build matrix slowly
     let headerRow = document.createElement('div');
     headerRow.className = 'matrix-row';
     let cornerCell = document.createElement('span');
@@ -619,6 +686,9 @@
         }
 
         const p = grid[y][x];
+        const laserKey = `${x},${y}`;
+        const laserInfo = laserPathMap.get(laserKey);
+        
         if (p) {
           cellEl.textContent = getPieceChar(p);
           cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue');
@@ -626,22 +696,67 @@
           cellEl.textContent = '·';
           cellEl.style.color = 'var(--bright)';
         }
+        
+        // Add laser overlay if laser passes through this cell
+        if (laserInfo) {
+          cellEl.classList.add('laser-path');
+          const laserOverlay = document.createElement('span');
+          laserOverlay.className = 'laser-overlay';
+          laserOverlay.textContent = getLaserChar(laserInfo.dir, laserInfo.isStart, laserInfo.isEnd);
+          cellEl.appendChild(laserOverlay);
+        }
+        
         rowEl.appendChild(cellEl);
       }
       container.appendChild(rowEl);
     }
 
-    if (activeMatrixContainer && activeMatrixContainer.parentNode) {
-      activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer);
-    } else {
-      if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap);
-      else logContainer.appendChild(container);
-    }
+    // Always append new boards, never replace
+    if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap);
+    else logContainer.appendChild(container);
+    
     activeMatrixContainer = container;
+    
+    // Auto-scroll with slight delay
+    await sleep(100);
     window.scrollTo(0, document.body.scrollHeight);
   }
 
-  function updateMatrixView() { if (latestState) printTerminalMatrix(latestState); }
+  function updateMatrixView() { 
+    if (latestState) {
+      // For cursor movement updates, still update the active matrix
+      if (activeMatrixContainer && activeMatrixContainer.parentNode) {
+        const pieces = getBoardPieces(latestState);
+        const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
+        for (const piece of pieces) {
+          if (!piece || !Number.isFinite(piece.x) || !Number.isFinite(piece.y)) continue;
+          if (piece.x < 0 || piece.x > 9 || piece.y < 0 || piece.y > 7) continue;
+          grid[piece.y][piece.x] = piece;
+        }
+        
+        // Update cursor positions
+        const rows = activeMatrixContainer.querySelectorAll('.matrix-row');
+        for (let y = 7, rowIdx = 1; y >= 0; y--, rowIdx++) {
+          const row = rows[rowIdx];
+          if (!row) continue;
+          const cells = row.querySelectorAll('.matrix-cell:not(.matrix-lbl)');
+          for (let x = 0; x < 10; x++) {
+            const cellEl = cells[x];
+            if (!cellEl) continue;
+            
+            cellEl.classList.remove('cursor', 'selected', 'target-preview');
+            
+            if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
+            if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) {
+              cellEl.classList.add('selected');
+            } else if (selectedPiece && x === cursorX && y === cursorY) {
+              cellEl.classList.add('target-preview');
+            }
+          }
+        }
+      }
+    }
+  }
 
   function handleGridAction() {
     if (!latestState) return;
@@ -855,6 +970,90 @@
     return false;
   }
 
+  function lockOntoMatch(id, entry) {
+    lockedMatchId = id; localStorage.setItem(KEY_RID, id); 
+    stopPolling(); toggleWaiting(false); stopHostGamePolling(); modeShown = false;
+    add(`LINK ESTABLISHED: ${id}`, 'success-msg');
+    add('Controls: Arrow Keys=Move Cursor | Space/Enter=Select/Move | L/R=Rotate Piece | F=Fire & Skip Turn', 'system-msg');
+    
+    const gameRef = dbGame.ref(`G/${id}`);
+    gameRef.on('value', snap => {
+        const state = snap.val();
+        if (state) {
+            add(`[SYNC] Turn: ${getStateTurn(state) ?? 'N/A'}`, 'system-msg');
+            printTerminalMatrix(state);
+        } else {
+            add('MATCH TERMINATED.', 'error-msg'); localStorage.removeItem(KEY_RID);
+            lockedMatchId = null; activeMatrixContainer = null; gameRef.off(); modeShown = false; startPolling();
+        }
+    });
+  }
+
+  function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
+    if (active) {
+      if (waitAnimationInterval) return;
+      const l = createLine('wait-msg');
+      let dots = 0;
+      waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = contextMsg + ".".repeat(dots); }, 500);
+    } else { if (waitAnimationInterval) { clearInterval(waitAnimationInterval); waitAnimationInterval = null; } }
+  }
+
+  async function handleAuth(v) {
+    if (!localStorage.getItem(KEY_USER)) {
+      if (!v) return add('User ID:', '', true, handleAuth);
+      const candidate = v.trim().toUpperCase();
+      if (!candidate || await isUsernameOccupied(candidate)) { add(candidate ? 'USER ID ALREADY OCCUPIED.' : 'INVALID USER ID.', 'error-msg'); return add('User ID:', '', true, handleAuth); }
+      localStorage.setItem(KEY_USER, candidate); return boot();
+    }
+    if (!localStorage.getItem(KEY_PASS)) { if (!v) return add('Access Key:', '', true, handleAuth); localStorage.setItem(KEY_PASS, v); return boot(); }
+  }
+
+  async function boot() {
+    const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
+    if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
+    add('System Online.', 'success-msg'); add('KHET 2.0 Rules Edition - Full rule enforcement active', 'system-msg');
+    
+    if (rid && rid.toString().includes('_')) {
+        const snap = await dbGame.ref(`G/${rid}`).once('value');
+        if (snap.exists()) return lockOntoMatch(rid, snap.val());
+        localStorage.removeItem(KEY_RID);
+    }
+    if (rid && !rid.toString().includes('_')) {
+        const rqdEntry = await verifyRequestIdByRQD(rid);
+        if (rqdEntry) {
+            add('Recovering uplink...', 'system-msg');
+            if (rqdEntry.isPrivate && rqdEntry.inviteCode) {
+                createLineWithCopy(`Re-asserted Private Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg');
+                startHostMatchWorkerPolling(rid, `Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`);
+            } else { startHostMatchWorkerPolling(rid, "Awaiting Public Match Intercept"); }
+            return;
+        }
+        localStorage.removeItem(KEY_RID);
+    }
+    if (!await searchForGameDBMatch()) await startPolling();
+  }
+
+  window.addEventListener('keydown', e => {
+    if (!lockedMatchId || !latestState) return;
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+      if (document.activeElement.value.trim().length > 0) return;
+    }
+    switch (e.key) {
+      case 'ArrowUp': if (cursorY < 7) cursorY++; updateMatrixView(); e.preventDefault(); break;
+      case 'ArrowDown': if (cursorY > 0) cursorY--; updateMatrixView(); e.preventDefault(); break;
+      case 'ArrowLeft': if (cursorX > 0) cursorX--; updateMatrixView(); e.preventDefault(); break;
+      case 'ArrowRight': if (cursorX < 9) cursorX++; updateMatrixView(); e.preventDefault(); break;
+      case ' ':
+      case 'Enter': handleGridAction(); e.preventDefault(); break;
+      case 'l':
+      case 'L': handleRotation('L'); e.preventDefault(); break;
+      case 'r':
+      case 'R': handleRotation('R'); e.preventDefault(); break;
+      case 'f':
+      case 'F': selectedPiece = null; fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Manual Fire'); e.preventDefault(); break;
+    }
+  });
+
   function startHostMatchWorkerPolling(requestId, contextMsg = "Awaiting Handshake") {
     stopHostGamePolling();
     const passiveGamePoll = async () => {
@@ -1033,90 +1232,6 @@
       add(`Uplink Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
     } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
   }
-
-  function lockOntoMatch(id, entry) {
-    lockedMatchId = id; localStorage.setItem(KEY_RID, id); 
-    stopPolling(); toggleWaiting(false); stopHostGamePolling(); modeShown = false;
-    add(`LINK ESTABLISHED: ${id}`, 'success-msg');
-    add('Controls: Arrow Keys=Move Cursor | Space/Enter=Select/Move | L/R=Rotate Piece | F=Fire & Skip Turn', 'system-msg');
-    
-    const gameRef = dbGame.ref(`G/${id}`);
-    gameRef.on('value', snap => {
-        const state = snap.val();
-        if (state) {
-            add(`[SYNC] Turn: ${getStateTurn(state) ?? 'N/A'}`, 'system-msg');
-            printTerminalMatrix(state);
-        } else {
-            add('MATCH TERMINATED.', 'error-msg'); localStorage.removeItem(KEY_RID);
-            lockedMatchId = null; activeMatrixContainer = null; gameRef.off(); modeShown = false; startPolling();
-        }
-    });
-  }
-
-  function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
-    if (active) {
-      if (waitAnimationInterval) return;
-      const l = createLine('wait-msg');
-      let dots = 0;
-      waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = contextMsg + ".".repeat(dots); }, 500);
-    } else { if (waitAnimationInterval) { clearInterval(waitAnimationInterval); waitAnimationInterval = null; } }
-  }
-
-  async function handleAuth(v) {
-    if (!localStorage.getItem(KEY_USER)) {
-      if (!v) return add('User ID:', '', true, handleAuth);
-      const candidate = v.trim().toUpperCase();
-      if (!candidate || await isUsernameOccupied(candidate)) { add(candidate ? 'USER ID ALREADY OCCUPIED.' : 'INVALID USER ID.', 'error-msg'); return add('User ID:', '', true, handleAuth); }
-      localStorage.setItem(KEY_USER, candidate); return boot();
-    }
-    if (!localStorage.getItem(KEY_PASS)) { if (!v) return add('Access Key:', '', true, handleAuth); localStorage.setItem(KEY_PASS, v); return boot(); }
-  }
-
-  async function boot() {
-    const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
-    if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
-    add('System Online.', 'success-msg'); add('KHET 2.0 Rules Edition - Full rule enforcement active', 'system-msg');
-    
-    if (rid && rid.toString().includes('_')) {
-        const snap = await dbGame.ref(`G/${rid}`).once('value');
-        if (snap.exists()) return lockOntoMatch(rid, snap.val());
-        localStorage.removeItem(KEY_RID);
-    }
-    if (rid && !rid.toString().includes('_')) {
-        const rqdEntry = await verifyRequestIdByRQD(rid);
-        if (rqdEntry) {
-            add('Recovering uplink...', 'system-msg');
-            if (rqdEntry.isPrivate && rqdEntry.inviteCode) {
-                createLineWithCopy(`Re-asserted Private Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg');
-                startHostMatchWorkerPolling(rid, `Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`);
-            } else { startHostMatchWorkerPolling(rid, "Awaiting Public Match Intercept"); }
-            return;
-        }
-        localStorage.removeItem(KEY_RID);
-    }
-    if (!await searchForGameDBMatch()) await startPolling();
-  }
-
-  window.addEventListener('keydown', e => {
-    if (!lockedMatchId || !latestState) return;
-    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
-      if (document.activeElement.value.trim().length > 0) return;
-    }
-    switch (e.key) {
-      case 'ArrowUp': if (cursorY < 7) cursorY++; updateMatrixView(); e.preventDefault(); break;
-      case 'ArrowDown': if (cursorY > 0) cursorY--; updateMatrixView(); e.preventDefault(); break;
-      case 'ArrowLeft': if (cursorX > 0) cursorX--; updateMatrixView(); e.preventDefault(); break;
-      case 'ArrowRight': if (cursorX < 9) cursorX++; updateMatrixView(); e.preventDefault(); break;
-      case ' ':
-      case 'Enter': handleGridAction(); e.preventDefault(); break;
-      case 'l':
-      case 'L': handleRotation('L'); e.preventDefault(); break;
-      case 'r':
-      case 'R': handleRotation('R'); e.preventDefault(); break;
-      case 'f':
-      case 'F': selectedPiece = null; fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Manual Fire'); e.preventDefault(); break;
-    }
-  });
 
   window.addEventListener('DOMContentLoaded', boot);
 })();
