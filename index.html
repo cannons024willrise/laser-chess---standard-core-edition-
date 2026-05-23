@@ -113,10 +113,6 @@
             outline: 1px dashed var(--blue) !important;
             background-color: rgba(0, 212, 255, 0.1);
         }
-        .laser-path {
-            outline: 2px solid var(--waiting) !important;
-            background-color: rgba(0, 255, 0, 0.2) !important;
-        }
     </style>
 </head>
 <body>
@@ -329,41 +325,32 @@
   }
 
   // UNIFIED CORE INTERACTION ENGINE MATRIX
-  // Structure: [PIECE_TYPE][ROTATION][INCOMING_DIRECTION]
   const INTERACTION_MAP = {
     DEFLECTOR: {
-      // Rotation 0: ◤ (Hypotenuse faces South-East)
       0: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 }, 1: { action: 'destroy' }, 2: { action: 'destroy' } },
-      // Rotation 1: ◥ (Hypotenuse faces South-West)
       1: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
-      // Rotation 2: ◢ (Hypotenuse faces North-West)
       2: { 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 }, 0: { action: 'destroy' }, 3: { action: 'destroy' } },
-      // Rotation 3: ◣ (Hypotenuse faces North-East)
       3: { 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 }, 0: { action: 'destroy' }, 1: { action: 'destroy' } }
     },
     SWITCH: {
-      // Two-sided diagonal mirror configurations (Cannot be destroyed)
       0: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } },
       1: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } },
       2: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } },
       3: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } }
     },
     DEFENDER: {
-      // Frontal shield block validation. Hits from sides/rear trigger instant destruction.
-      0: { 2: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 3: { action: 'destroy' } }, // Shield Facing Up
-      1: { 3: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } }, // Shield Facing Right
-      2: { 0: { action: 'block' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }, // Shield Facing Down
-      3: { 1: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } }  // Shield Facing Left
+      0: { 2: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 3: { action: 'destroy' } },
+      1: { 3: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } },
+      2: { 0: { action: 'block' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+      3: { 1: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } }
     },
     KING: {
-      // Pharaohs are entirely vulnerable from all 4 lines of attack
       0: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
       1: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
       2: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
       3: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }
     },
     LASER: {
-      // Sphinx pieces absorb beams reaching their positions from any angle
       0: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
       1: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
       2: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
@@ -538,7 +525,24 @@
 
     if (result.trace) {
       const trace = result.trace;
-      add(`[${contextLabel}] ${firedColor} laser fired.`, 'system-msg');
+      add(`[${contextLabel}] ${firedColor} laser fired. Tracing path...`, 'system-msg');
+
+      // EXPLICIT LASER PATH TERMINAL LOGGING
+      if (trace.path && trace.path.length > 0) {
+        let lastDir = -1;
+        for (const step of trace.path) {
+          if (step.dir !== lastDir) {
+            let dirStr = "";
+            if (step.dir === 0) dirStr = "^\n|\nNorth";
+            else if (step.dir === 1) dirStr = "->\nEast";
+            else if (step.dir === 2) dirStr = "|\nv\nSouth";
+            else if (step.dir === 3) dirStr = "<-\nWest";
+            
+            add(dirStr, 'wait-msg'); // Wait-msg gives it the green terminal highlight
+            lastDir = step.dir;
+          }
+        }
+      }
 
       if (trace.looped) {
         add('Laser path loop detected; shot aborted safely.', 'error-msg');
@@ -565,7 +569,6 @@
 
   function printTerminalMatrix(state) {
     latestState = state;
-    const laserTrace = traceLaserPath(state, getStateTurn(state));
     const pieces = getBoardPieces(state);
 
     const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
@@ -613,10 +616,6 @@
           cellEl.classList.add('selected');
         } else if (selectedPiece && x === cursorX && y === cursorY) {
           cellEl.classList.add('target-preview');
-        }
-
-        if (laserTrace && Array.isArray(laserTrace.path) && laserTrace.path.some(step => step.x === x && step.y === y)) {
-          cellEl.classList.add('laser-path');
         }
 
         const p = grid[y][x];
