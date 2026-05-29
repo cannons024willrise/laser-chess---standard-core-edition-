@@ -201,39 +201,68 @@
     return { kind: 'stop', destroyed: false };
   }
 
+  // =========================================================
+  // FUNCTIONAL COMPATIBLE RECURSIVE ENGINE
+  // =========================================================
+  function resolveLaserVector(x, y, dir, pieces, path = [], seen = new Set()) {
+    // 1. Boundary evaluation
+    if (!inBounds(x, y)) {
+      return { path, hit: null, exit: { x, y, dir }, looped: false };
+    }
+
+    // 2. Local loop verification
+    const stateKey = `${x},${y},${dir}`;
+    if (seen.has(stateKey)) {
+      return { path, hit: null, exit: { x, y, dir }, looped: true };
+    }
+    seen.add(stateKey);
+
+    // 3. Accumulate coordinate vector sequence step
+    path.push({ x, y, dir });
+
+    // 4. Object presence collision evaluation
+    const piece = getPieceAt(pieces, x, y);
+    if (!piece) {
+      return resolveLaserVector(x + DIRS[dir].dx, y + DIRS[dir].dy, dir, pieces, path, seen);
+    }
+
+    // 5. State logic modification phase
+    const outcome = interactWithLaser(piece, dir);
+    if (outcome.kind === 'reflect') {
+      const nextDir = outcome.reflected;
+      return resolveLaserVector(x + DIRS[nextDir].dx, y + DIRS[nextDir].dy, nextDir, pieces, path, seen);
+    }
+
+    // 6. Terminal block or hit evaluation
+    return { 
+      path, 
+      hit: { piece, blocked: !!outcome.blocked, destroyed: !!outcome.destroyed, kind: outcome.kind }, 
+      exit: null, 
+      looped: false 
+    };
+  }
+
   function traceLaserPath(state, explicitColor = null) {
     const pieces = getBoardPieces(state);
     const colors = explicitColor ? [explicitColor] : ['RED', 'BLUE'];
     const shooter = colors.map(color => pieces.find(p => p && String(p.pieceType || '').toUpperCase() === 'LASER' && String(p.color || '').toUpperCase() === color)).find(Boolean);
-    if (!shooter) return { path: [], hit: null, shooter: null, exit: null };
+    if (!shooter) return { path: [], hit: null, shooter: null, exit: null, looped: false };
 
-    let dir = normalizeRotation(shooter.rotation);
-    let x = shooter.x + DIRS[dir].dx;
-    let y = shooter.y + DIRS[dir].dy;
-    const path = [];
-    const seen = new Set();
+    const startDir = normalizeRotation(shooter.rotation);
+    const startX = shooter.x + DIRS[startDir].dx;
+    const startY = shooter.y + DIRS[startDir].dy;
 
-    for (let steps = 0; steps < 256; steps++) {
-      if (!inBounds(x, y)) return { path, hit: null, shooter, exit: { x, y, dir } };
-      const stateKey = `${x},${y},${dir}`;
-      if (seen.has(stateKey)) return { path, hit: null, shooter, exit: { x, y, dir }, looped: true };
-      seen.add(stateKey);
-      path.push({ x, y, dir });
-
-      const piece = getPieceAt(pieces, x, y);
-      if (!piece) { x += DIRS[dir].dx; y += DIRS[dir].dy; continue; }
-
-      const outcome = interactWithLaser(piece, dir);
-      if (outcome.kind === 'reflect') {
-        dir = outcome.reflected;
-        x += DIRS[dir].dx;
-        y += DIRS[dir].dy;
-        continue;
-      }
-      return { path, hit: { piece, blocked: !!outcome.blocked, destroyed: !!outcome.destroyed, kind: outcome.kind }, shooter, exit: null };
-    }
-    return { path, hit: null, shooter, exit: null, looped: true };
+    const resolution = resolveLaserVector(startX, startY, startDir, pieces);
+    
+    return {
+      path: resolution.path,
+      hit: resolution.hit,
+      shooter: shooter,
+      exit: resolution.exit,
+      looped: resolution.looped
+    };
   }
+  // =========================================================
 
   function applyLaserResolution(state, explicitColor = null) {
     const trace = traceLaserPath(state, explicitColor);
@@ -535,28 +564,13 @@
         const rqdEntry = await verifyRequestIdByRQD(rid);
         if (rqdEntry) {
             add('Recovering uplink...', 'system-msg');
-            if (rqdEntry.isPrivate && rqdEntry.inviteCode) { createLineWithCopy(`Re-asserted Private Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg'); startHostMatchWorkerPolling(rid, `Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`); } 
+            if (rqdEntry.isPrivate && rqdEntry.inviteCode) { startHostMatchWorkerPolling(rid, `Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`); } 
             else { startHostMatchWorkerPolling(rid, "Awaiting Public Match Intercept"); } return;
         }
         localStorage.removeItem(KEY_RID);
     }
     if (!await searchForGameDBMatch()) await startPolling();
   }
-
-  window.addEventListener('keydown', e => {
-    if (!lockedMatchId || !latestState) return;
-    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) { if (document.activeElement.value.trim().length > 0) return; }
-    switch (e.key) {
-      case 'ArrowUp': if (cursorY < 7) cursorY++; updateMatrixView(); e.preventDefault(); break;
-      case 'ArrowDown': if (cursorY > 0) cursorY--; updateMatrixView(); e.preventDefault(); break;
-      case 'ArrowLeft': if (cursorX > 0) cursorX--; updateMatrixView(); e.preventDefault(); break;
-      case 'ArrowRight': if (cursorX < 9) cursorX++; updateMatrixView(); e.preventDefault(); break;
-      case ' ': case 'Enter': handleGridAction(); e.preventDefault(); break;
-      case 'l': case 'L': handleRotation('L'); e.preventDefault(); break;
-      case 'r': case 'R': handleRotation('R'); e.preventDefault(); break;
-      case 'f': case 'F': selectedPiece = null; fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Manual Fire'); e.preventDefault(); break;
-    }
-  });
 
   function startHostMatchWorkerPolling(requestId, contextMsg = "Awaiting Handshake") {
     stopHostGamePolling(); const passiveGamePoll = async () => { if (lockedMatchId) return; if (await searchForGameDBMatch()) { stopHostGamePolling(); toggleWaiting(false); } }; passiveGamePoll(); toggleWaiting(true, contextMsg);
@@ -613,7 +627,7 @@
       const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'PRIVATE_MATCH_REQUEST', body: { requester: localStorage.getItem(KEY_USER), secret: localStorage.getItem(KEY_PASS), color, target: privateTarget } }) }); const data = await res.json();
       if (data.ok) {
         if (data.requestId) localStorage.setItem(KEY_RID, data.requestId); stopPolling();
-        if (data.inviteCode) { try { await navigator.clipboard.writeText(data.inviteCode); } catch(cErr){} createLineWithCopy(`Private Request Generated! CODE: ${data.inviteCode} `, data.inviteCode, 'success-msg'); } else { add('Private Request Generated!', 'success-msg'); }
+        add('Private Request Generated!', 'success-msg');
         startHostMatchWorkerPolling(data.requestId, `Awaiting Private Join [CODE: ${data.inviteCode}]`); return;
       }
       add(`Private Request Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
