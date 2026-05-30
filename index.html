@@ -464,10 +464,17 @@
   async function pollFirstMatch({ silentEmpty = false } = {}) {
     if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
     try {
-      const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value'); const data = snapshot.val();
+      const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value'); 
+      if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
+      const data = snapshot.val();
       if (!data) { currentHead = null; if (!silentEmpty && initialQueueScanDone && lastQueueState !== 'EMPTY') { add('RQ_Q: Empty (Idle)', 'system-msg'); lastQueueState = 'EMPTY'; } return false; }
-      initialQueueScanDone = true; const firstKey = Object.keys(data)[0]; currentHead = { id: firstKey, data: data[firstKey] };
-      if (lastQueueState !== firstKey) { add(`[AUTO-SCAN] Head detected: ${data[firstKey].username} (${data[firstKey].color === 0 ? 'RED' : 'BLUE'})`, 'success-msg'); lastQueueState = firstKey; }
+      initialQueueScanDone = true; 
+      const firstKey = Object.keys(data)[0]; 
+      const matchData = data[firstKey];
+      const myName = localStorage.getItem(KEY_USER) || '';
+      if (matchData.username && matchData.username.toUpperCase() === myName.toUpperCase()) { return false; }
+      currentHead = { id: firstKey, data: matchData };
+      if (lastQueueState !== firstKey) { add(`[AUTO-SCAN] Head detected: ${matchData.username} (${matchData.color === 0 ? 'RED' : 'BLUE'})`, 'success-msg'); lastQueueState = firstKey; }
       return true;
     } catch (e) { currentHead = null; return false; }
   }
