@@ -13,7 +13,7 @@
             --blue-tint: rgba(0, 212, 255, 0.15); --red-tint: rgba(255, 51, 51, 0.15);
             --laser: #ffff00;
         }
-        body { margin: 0; padding: 30px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
+        body { margin: 0; padding: 30px; font-size: 22px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
         #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; padding-bottom: 50px; }
         .history-line { white-space: pre-wrap; word-break: break-all; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
         .input-wrapper { display:flex; gap:8px; align-items:flex-start; width: 100%; }
@@ -26,8 +26,8 @@
         .wait-msg { color: var(--waiting); }
         
         .matrix-container { display: flex; flex-direction: column; margin: 6px 0 24px 0; font-family: 'Unifont', monospace; user-select: none; border-left: 2px solid var(--line); padding-left: 12px; }
-        .matrix-row { display: flex; height: 24px; align-items: center; }
-        .matrix-cell { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; font-weight: bold; }
+        .matrix-row { display: flex; height: 36px; align-items: center; }
+        .matrix-cell { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; font-weight: bold; }
         .matrix-lbl { color: var(--muted); font-weight: normal; }
         .p-blue { color: var(--blue); }
         .p-red { color: var(--red); }
@@ -132,7 +132,6 @@
   const DIRS = [ { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 } ]; 
   function normalizeRotation(rot) { return ((Number(rot) || 0) % 4 + 4) % 4; }
 
-  // PERFECTED KHET GEOMETRY MATRIX
   const INTERACTION_MAP = {
     DEFLECTOR: {
       0: { 0: { action: 'reflect', nextDir: 1 }, 3: { action: 'reflect', nextDir: 2 }, 1: { action: 'destroy' }, 2: { action: 'destroy' } },
@@ -266,7 +265,6 @@
     return { state: nextState, trace: fired.trace, firedColor: currentTurn, nextTurn };
   }
 
-  // TERMINAL CASCADING RENDERER
   function printTerminalMatrix(state, laserTrace = null) {
     latestState = state;
     const pieces = getBoardPieces(state);
@@ -321,7 +319,8 @@
           cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue');
           if (pathStep) cellEl.classList.add('laser-bounce');
         } else if (pathStep) {
-          cellEl.textContent = (pathStep.dir === 0 || pathStep.dir === 2) ? '|' : '-';
+          const dirCharMap = { 0: '^', 1: '>', 2: 'v', 3: '<' };
+          cellEl.textContent = dirCharMap[pathStep.dir] || '*';
           cellEl.classList.add('laser-path');
         } else {
           cellEl.textContent = '·';
@@ -350,7 +349,6 @@
     const firedColor = explicitColor || getStateTurn(latestState);
     if (!firedColor || (firedColor !== 'RED' && firedColor !== 'BLUE')) return false;
 
-    // Freeze board to output trace
     if (activeMatrixContainer) {
         const cursors = activeMatrixContainer.querySelectorAll('.cursor, .selected, .target-preview');
         cursors.forEach(c => c.classList.remove('cursor', 'selected', 'target-preview'));
