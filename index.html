@@ -434,7 +434,7 @@
         if (currentTurn && pieceAtCursor.color !== currentTurn) { 
           const turnLabel = (currentTurn === myColor) ? "You" : "Opponent";
           const pieceLabel = (pieceAtCursor.color === myColor) ? "You" : "Opponent";
-          add(`Action rejected: Piece belongs to ${pieceLabel}, turn is ${turnLabel}.`, "error-msg"); 
+          add(`Action rejected: Piece belongs to ${pieceLabel} (${pieceAtCursor.color}), turn is ${turnLabel} (${currentTurn}).`, "error-msg"); 
           return; 
         }
         selectedPiece = { x: cursorX, y: cursorY }; add(`Piece selected at (${cursorX}, ${cursorY})`, "success-msg");
@@ -552,7 +552,7 @@
 
             const currentTurn = getStateTurn(state);
             const turnLabel = (currentTurn === myColor) ? "You" : "Opponent";
-            add(`[SYNC] Turn: ${turnLabel}`, 'system-msg'); 
+            add(`[SYNC] Turn: ${turnLabel} (${currentTurn})`, 'system-msg'); 
 
             if (activeMatrixContainer) {
                 const cursors = activeMatrixContainer.querySelectorAll('.cursor, .selected, .target-preview');
