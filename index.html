@@ -430,16 +430,25 @@
       }
     }
 
-    fetch(GAME_ACTOR_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-            intent: intentPayload, 
-            matchId: lockedMatchId,
-            username: localStorage.getItem(KEY_USER),
-            password: localStorage.getItem(KEY_PASS)
-        })
-    }).catch(err => console.error("Move Actor Sync Failed", err));
+    try {
+        const response = await fetch(GAME_ACTOR_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({
+                intent: intentPayload, 
+                matchId: lockedMatchId,
+                username: localStorage.getItem(KEY_USER),
+                password: localStorage.getItem(KEY_PASS)
+            })
+        });
+        
+        const data = await response.json();
+        if (data && data.logs && Array.isArray(data.logs)) {
+            data.logs.forEach(msg => add(msg, 'system-msg'));
+        }
+    } catch (err) {
+        console.error("Move Actor Sync Failed", err);
+    }
 
     hasMoved = false; hasRotated = false; selectedPiece = null;
     latestState = result.state;
