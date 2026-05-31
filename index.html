@@ -373,25 +373,20 @@
       }
     }
 
-    // PATCH: Worker Reporting with Full Intent Object + Console Log
-    const payload = {
-        intent: intentPayload, 
-        matchId: lockedMatchId,
-        username: localStorage.getItem(KEY_USER),
-        password: localStorage.getItem(KEY_PASS)
-    };
-    
-    console.log('Sending Intent Payload:', payload);
-
+    // PATCH: Worker Reporting with Full Intent Object
     fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+            intent: intentPayload, 
+            matchId: lockedMatchId,
+            username: localStorage.getItem(KEY_USER),
+            password: localStorage.getItem(KEY_PASS)
+        })
     }).catch(err => console.error("Worker Sync Failed", err));
 
     hasMoved = false; hasRotated = false; selectedPiece = null;
     latestState = result.state;
-    dbGame.ref(`G/${lockedMatchId}`).set(latestState);
     return true;
   }
 
