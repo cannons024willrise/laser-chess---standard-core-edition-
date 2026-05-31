@@ -332,6 +332,22 @@
       container.appendChild(rowEl);
     }
     
+    // Add Legend
+    const legend = document.createElement('div');
+    legend.style.marginTop = '10px';
+    legend.style.fontSize = '18px';
+    legend.style.color = 'var(--muted)';
+    legend.innerHTML = `
+        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+            <span>◈ King</span>
+            <span>⫝ Laser</span>
+            <span>⟋ Switch</span>
+            <span>⬓ Defender</span>
+            <span>◤ Deflector</span>
+        </div>
+    `;
+    container.appendChild(legend);
+
     if (activeMatrixContainer && activeMatrixContainer.parentNode) { 
         activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); 
     } else { 
@@ -513,7 +529,7 @@
   async function showMode() {
     if (localStorage.getItem(KEY_RID)) return; while (processing) await sleep(10); if (modeShown) return; modeShown = true;
     const privateSuffix = ' | [P] Private Host | [J] Private Join';
-    if (!currentHead) { add('Queue Empty. [R] Host Red | [B] Host Blue' + privateSuffix, 'system-msg'); } 
+    if (!currentHead) { add('Queue Empty. [R] Host Red | [B] Blue' + privateSuffix, 'system-msg'); } 
     else if (currentHead.data.color === 0) { add('RED at head. [A] Join as Blue | [R] Host Red' + privateSuffix, 'system-msg'); } 
     else { add('BLUE at head. [A] Join as Red | [B] Host Blue' + privateSuffix, 'system-msg'); }
     add('MODE:', '', true, handleMode);
