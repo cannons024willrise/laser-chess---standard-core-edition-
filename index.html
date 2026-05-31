@@ -56,6 +56,7 @@
   const matchConfig = { apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4", authDomain: "lasercheowefficiencymanager.firebaseapp.com", databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com", projectId: "lasercheowefficiencymanager" };
   const gameConfig = { apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE", authDomain: "laser-chess-low-efficiency.firebaseapp.com", databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com", projectId: "laser-chess-low-efficiency" };
   const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
+  const MOVE_CHECKER_URL = 'https://movecheckerlaserchesslowefficiencystandardversionthinkfun.later5143.workers.dev/';
   
   const matchApp = firebase.initializeApp(matchConfig, "matchApp");
   const gameApp = firebase.initializeApp(gameConfig, "gameApp");
@@ -344,7 +345,7 @@
 
   function updateMatrixView() { if (latestState) printTerminalMatrix(latestState); }
 
-  async function fireLaserAndAdvanceTurn(explicitColor = null, contextLabel = 'Turn End') {
+  async function fireLaserAndAdvanceTurn(explicitColor = null, contextLabel = 'Turn End', intent = null) {
     if (!latestState || !lockedMatchId) return false;
     const firedColor = explicitColor || getStateTurn(latestState);
     if (!firedColor || (firedColor !== 'RED' && firedColor !== 'BLUE')) return false;
@@ -376,6 +377,15 @@
     hasMoved = false; hasRotated = false; selectedPiece = null;
     latestState = result.state;
     dbGame.ref(`G/${lockedMatchId}`).set(latestState);
+    
+    if (intent) {
+        fetch(MOVE_CHECKER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...intent, matchId: lockedMatchId, username: localStorage.getItem(KEY_USER) })
+        }).catch(err => console.error("Move Checker Sync Failed", err));
+    }
+    
     return true;
   }
 
@@ -404,7 +414,7 @@
             } else { add("Action rejected: Square occupied.", "error-msg"); selectedPiece = null; return; }
           } else { targetPiece.x = cursorX; targetPiece.y = cursorY; add(`Piece moved to (${cursorX}, ${cursorY}).`, "success-msg"); hasMoved = true; }
           
-          fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Move');
+          fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Move', { action: 'MOVE', from: { x: selectedPiece.x, y: selectedPiece.y }, to: { x: cursorX, y: cursorY } });
           return;
         }
         selectedPiece = null;
@@ -436,7 +446,7 @@
       else if (targetPiece.pieceType === 'SWITCH') { targetPiece.rotation = (currentRot + 1) % 2; add(`Scarab toggled.`, "success-msg"); } 
       else { targetPiece.rotation = newRot; add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg"); }
       hasRotated = true; 
-      fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Rotate');
+      fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Rotate', { action: 'ROTATE', at: { x: selectedPiece.x, y: selectedPiece.y }, dir: dir });
       return; 
     }
     updateMatrixView();
@@ -449,7 +459,7 @@
       case 'ArrowUp': if (cursorY < 7) cursorY++; updateMatrixView(); e.preventDefault(); break;
       case 'ArrowDown': if (cursorY > 0) cursorY--; updateMatrixView(); e.preventDefault(); break;
       case 'ArrowLeft': if (cursorX > 0) cursorX--; updateMatrixView(); e.preventDefault(); break;
-      case 'ArrowRight': if (cursorX < 9) cursorX++; updateMatrixView(); e.preventDefault(); break;
+      case 'ArrowRight': if (cursorX > 9) cursorX++; updateMatrixView(); e.preventDefault(); break;
       case ' ': 
       case 'Enter': handleGridAction(); e.preventDefault(); break;
       case 'l': 
