@@ -447,6 +447,14 @@
 
   function handleGridAction() {
     if (!latestState) return;
+
+    // RESTRICT: Turn check
+    const currentTurn = getStateTurn(latestState);
+    if (currentTurn !== myColor) {
+      add(`Action rejected: It is ${currentTurn}'s turn.`, "error-msg");
+      return;
+    }
+
     const pieces = getBoardPieces(latestState);
     let pieceAtCursor = pieces.find(p => p && p.x === cursorX && p.y === cursorY);
 
@@ -484,11 +492,9 @@
       }
     } else {
       if (pieceAtCursor) {
-        const currentTurn = getStateTurn(latestState);
-        if (currentTurn && pieceAtCursor.color !== currentTurn) { 
-          const turnLabel = (currentTurn === myColor) ? "You" : "Opponent";
-          const pieceLabel = (pieceAtCursor.color === myColor) ? "You" : "Opponent";
-          add(`Action rejected: Piece belongs to ${pieceLabel} (${pieceAtCursor.color}), turn is ${turnLabel} (${currentTurn}).`, "error-msg"); 
+        // RESTRICT: Ownership check
+        if (pieceAtCursor.color !== myColor) { 
+          add(`Action rejected: Cannot control ${pieceAtCursor.color} pieces.`, "error-msg"); 
           return; 
         }
         selectedPiece = { x: cursorX, y: cursorY }; add(`Piece selected at (${cursorX}, ${cursorY})`, "success-msg");
@@ -498,10 +504,23 @@
   }
 
   function handleRotation(dir) {
+    // RESTRICT: Turn check
+    if (getStateTurn(latestState) !== myColor) {
+        add("Action rejected: Not your turn.", "error-msg");
+        return;
+    }
+
     if (!latestState || !selectedPiece) { add("Action dropped: Select a piece before rotating.", "error-msg"); return; }
     if (hasMoved) { add("Action rejected: Cannot rotate after moving this turn.", "error-msg"); return; }
     const pieces = getBoardPieces(latestState);
     let targetPiece = pieces.find(p => p && p.x === selectedPiece.x && p.y === selectedPiece.y);
+    
+    // RESTRICT: Ownership check
+    if (targetPiece && targetPiece.color !== myColor) {
+        add("Action rejected: Cannot rotate opponent's piece.", "error-msg");
+        return;
+    }
+
     if (targetPiece) {
       if (targetPiece.pieceType === 'KING') { add("Action rejected: Pharaohs (Kings) cannot rotate.", "error-msg"); return; }
       let currentRot = Number(targetPiece.rotation || 0);
@@ -542,7 +561,13 @@
       case 'r': 
       case 'R': handleRotation('R'); e.preventDefault(); break;
       case 'f': 
-      case 'F': selectedPiece = null; fireLaserAndAdvanceTurn(getStateTurn(latestState), { action: 'Manual Fire', piece: null, changes: null }); e.preventDefault(); break;
+      case 'F': 
+        // RESTRICT: Turn check
+        if (getStateTurn(latestState) !== myColor) {
+            add("Action rejected: Not your turn.", "error-msg");
+            break;
+        }
+        selectedPiece = null; fireLaserAndAdvanceTurn(getStateTurn(latestState), { action: 'Manual Fire', piece: null, changes: null }); e.preventDefault(); break;
     }
   });
 
