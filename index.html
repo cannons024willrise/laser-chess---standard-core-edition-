@@ -648,7 +648,7 @@
 
   async function joinPrivate(inviteCode) {
     try {
-      const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), isPrivate: true, privateMode: 'JOIN', inviteCode }) }); const data = await res.json();
+      const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), isPrivate: true, privateMode: 'JOIN', inviteCode }) }); const data = await res.json();
       if (data.ok) { const idToStore = data.matchName || data.matchId || data.requestId || data.timestamp; if (idToStore) localStorage.setItem(KEY_RID, idToStore); stopPolling(); add('Private Link Success!', 'success-msg'); if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' }); else if (data.requestId) startHostMatchWorkerPolling(data.requestId, "Awaiting Private Handshake"); return; }
       add(`Private Join Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
     } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
@@ -656,7 +656,7 @@
 
   async function createPrivateRequest(color, privateTarget = null) {
     try {
-      const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'PRIVATE_MATCH_REQUEST', body: { requester: localStorage.getItem(KEY_USER), secret: localStorage.getItem(KEY_PASS), color, target: privateTarget } }) }); const data = await res.json();
+      const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ mode: 'PRIVATE_MATCH_REQUEST', body: { requester: localStorage.getItem(KEY_USER), secret: localStorage.getItem(KEY_PASS), color, target: privateTarget } }) }); const data = await res.json();
       if (data.ok) {
         if (data.requestId) localStorage.setItem(KEY_RID, data.requestId); stopPolling();
         if (data.inviteCode) { try { await navigator.clipboard.writeText(data.inviteCode); } catch(cErr){} createLineWithCopy(`Private Request Generated! CODE: ${data.inviteCode} `, data.inviteCode, 'success-msg'); } else { add('Private Request Generated!', 'success-msg'); }
@@ -668,7 +668,7 @@
 
   async function registerHost(color, isIntercept = false, extra = {}) {
     try {
-      const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), color, isIntercept, ...extra }) }); const data = await res.json();
+      const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), color, isIntercept, ...extra }) }); const data = await res.json();
       if (data.ok) {
         const idToStore = data.matchName || data.requestId || data.timestamp; if (idToStore) localStorage.setItem(KEY_RID, idToStore); stopPolling(); add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
         if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' }); else if (data.requestId || data.timestamp) startHostMatchWorkerPolling(data.requestId || data.timestamp, isIntercept ? "Awaiting Intercept Handshake" : "Awaiting Public Match Intercept"); return;
