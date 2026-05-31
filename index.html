@@ -625,9 +625,9 @@
         const state = snap.val();
         if (state) { 
             const myName = localStorage.getItem(KEY_USER);
-            if (state.players && state.players[myName]) {
-                myColor = state.players[myName].color; 
-            }
+            // FIXED: Identify color based on redPlayer/bluePlayer instead of state.players
+            if (state.redPlayer === myName) myColor = 'RED';
+            else if (state.bluePlayer === myName) myColor = 'BLUE';
 
             const currentTurn = getStateTurn(state);
             const turnLabel = (currentTurn === myColor) ? "You" : "Opponent";
