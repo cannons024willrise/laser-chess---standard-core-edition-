@@ -56,6 +56,7 @@
   const matchConfig = { apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4", authDomain: "lasercheowefficiencymanager.firebaseapp.com", databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com", projectId: "lasercheowefficiencymanager" };
   const gameConfig = { apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE", authDomain: "laser-chess-low-efficiency.firebaseapp.com", databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com", projectId: "laser-chess-low-efficiency" };
   const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
+  const GAME_ACTOR_URL = 'https://movecheckerlaserchesslowefficiencystandardversionthinkfun.later5143.workers.dev/';
   
   const matchApp = firebase.initializeApp(matchConfig, "matchApp");
   const gameApp = firebase.initializeApp(gameConfig, "gameApp");
@@ -429,7 +430,7 @@
       }
     }
 
-    fetch(WORKER_URL, {
+    fetch(GAME_ACTOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -438,7 +439,7 @@
             username: localStorage.getItem(KEY_USER),
             password: localStorage.getItem(KEY_PASS)
         })
-    }).catch(err => console.error("Worker Sync Failed", err));
+    }).catch(err => console.error("Move Actor Sync Failed", err));
 
     hasMoved = false; hasRotated = false; selectedPiece = null;
     latestState = result.state;
