@@ -334,6 +334,41 @@
       container.appendChild(rowEl);
     }
     
+    // --- DYNAMIC ROTATION PREDICTOR ---
+    if (selectedPiece) {
+      const p = grid[selectedPiece.y][selectedPiece.x];
+      if (p && p.pieceType !== 'KING') {
+        const currentRot = Number(p.rotation || 0);
+        const rotL = (currentRot + 3) % 4;
+        const rotR = (currentRot + 1) % 4;
+
+        // Logic for Sphinx restrictions
+        const canRotate = (dir) => {
+            if (p.pieceType !== 'LASER') return true;
+            if (p.color === 'BLUE') return (dir === 0 || dir === 3);
+            if (p.color === 'RED') return (dir === 1 || dir === 2);
+            return false;
+        };
+
+        const charL = canRotate(rotL) ? ROTATION_TABLE[p.pieceType][rotL] : 'X';
+        const charR = canRotate(rotR) ? ROTATION_TABLE[p.pieceType][rotR] : 'X';
+
+        const predictor = document.createElement('div');
+        predictor.style.marginTop = '10px';
+        predictor.style.padding = '8px';
+        predictor.style.border = '1px solid var(--line)';
+        predictor.style.color = 'var(--bright)';
+        predictor.innerHTML = `
+           <div style="font-size: 14px; margin-bottom: 4px; color: var(--muted);">ROTATION PREDICTOR:</div>
+           <div style="display: flex; gap: 20px;">
+              <span>[L] (CCW): <b>${charL}</b></span>
+              <span>[R] (CW): <b>${charR}</b></span>
+           </div>
+        `;
+        container.appendChild(predictor);
+      }
+    }
+
     // Improved Readable Legend
     const legend = document.createElement('div');
     legend.style.marginTop = '15px';
