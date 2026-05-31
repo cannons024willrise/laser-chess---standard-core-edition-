@@ -432,7 +432,7 @@
 
     fetch(GAME_ACTOR_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({
             intent: intentPayload, 
             matchId: lockedMatchId,
