@@ -55,7 +55,7 @@
 
   const matchConfig = { apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4", authDomain: "lasercheowefficiencymanager.firebaseapp.com", databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com", projectId: "lasercheowefficiencymanager" };
   const gameConfig = { apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE", authDomain: "laser-chess-low-efficiency.firebaseapp.com", databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com", projectId: "laser-chess-low-efficiency" };
-  const WORKER_URL = 'https://movecheckerlaserchesslowefficiencystandardversionthinkfun.later5143.workers.dev/';
+  const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
   
   const matchApp = firebase.initializeApp(matchConfig, "matchApp");
   const gameApp = firebase.initializeApp(gameConfig, "gameApp");
@@ -344,22 +344,6 @@
 
   function updateMatrixView() { if (latestState) printTerminalMatrix(latestState); }
 
-  // Fire-and-forget intent dispatcher bypassing CORS OPTIONS preflight
-  function sendIntent(intentData) {
-    if (!lockedMatchId) return;
-    fetch(WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-            mode: 'GAME_INTENT',
-            username: localStorage.getItem(KEY_USER),
-            password: localStorage.getItem(KEY_PASS),
-            matchId: lockedMatchId,
-            intent: intentData
-        })
-    }).catch(() => {}); // Catch silently to avoid polluting terminal on fetch errors
-  }
-
   async function fireLaserAndAdvanceTurn(explicitColor = null, contextLabel = 'Turn End') {
     if (!latestState || !lockedMatchId) return false;
     const firedColor = explicitColor || getStateTurn(latestState);
@@ -414,20 +398,11 @@
             if (targetPiece.pieceType === 'SWITCH') {
               if (pieceAtCursor.pieceType === 'DEFLECTOR' || pieceAtCursor.pieceType === 'DEFENDER') {
                 const oldX = targetPiece.x; const oldY = targetPiece.y;
-                
-                // Blast INTENT to the worker
-                sendIntent({ action: 'MOVE', from: { x: oldX, y: oldY }, to: { x: pieceAtCursor.x, y: pieceAtCursor.y } });
-                
                 targetPiece.x = pieceAtCursor.x; targetPiece.y = pieceAtCursor.y; pieceAtCursor.x = oldX; pieceAtCursor.y = oldY;
                 add(`Scarab swapped with ${pieceAtCursor.pieceType}.`, "success-msg"); hasMoved = true;
               } else { add(`Action rejected: Scarab can only swap with Pyramid or Anubis, not ${pieceAtCursor.pieceType}.`, "error-msg"); selectedPiece = null; return; }
             } else { add("Action rejected: Square occupied.", "error-msg"); selectedPiece = null; return; }
-          } else { 
-            // Blast INTENT to the worker
-            sendIntent({ action: 'MOVE', from: { x: targetPiece.x, y: targetPiece.y }, to: { x: cursorX, y: cursorY } });
-              
-            targetPiece.x = cursorX; targetPiece.y = cursorY; add(`Piece moved to (${cursorX}, ${cursorY}).`, "success-msg"); hasMoved = true; 
-          }
+          } else { targetPiece.x = cursorX; targetPiece.y = cursorY; add(`Piece moved to (${cursorX}, ${cursorY}).`, "success-msg"); hasMoved = true; }
           
           fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Move');
           return;
@@ -456,24 +431,10 @@
       if (targetPiece.pieceType === 'LASER') {
         if (targetPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) { add("Action rejected: Blue Sphinx can only face Up (0) or Left (3).", "error-msg"); return; }
         if (targetPiece.color === 'RED' && (newRot === 3 || newRot === 0)) { add("Action rejected: Red Sphinx can only face Right (1) or Down (2).", "error-msg"); return; }
-        
-        // Blast INTENT to the worker
-        sendIntent({ action: 'ROTATE', at: { x: selectedPiece.x, y: selectedPiece.y }, dir: dir });
-        
         targetPiece.rotation = newRot; add(`Sphinx rotated ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
       } 
-      else if (targetPiece.pieceType === 'SWITCH') { 
-        // Blast INTENT to the worker
-        sendIntent({ action: 'ROTATE', at: { x: selectedPiece.x, y: selectedPiece.y }, dir: dir });
-          
-        targetPiece.rotation = (currentRot + 1) % 2; add(`Scarab toggled.`, "success-msg"); 
-      } 
-      else { 
-        // Blast INTENT to the worker
-        sendIntent({ action: 'ROTATE', at: { x: selectedPiece.x, y: selectedPiece.y }, dir: dir });
-          
-        targetPiece.rotation = newRot; add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg"); 
-      }
+      else if (targetPiece.pieceType === 'SWITCH') { targetPiece.rotation = (currentRot + 1) % 2; add(`Scarab toggled.`, "success-msg"); } 
+      else { targetPiece.rotation = newRot; add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg"); }
       hasRotated = true; 
       fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Rotate');
       return; 
@@ -496,12 +457,7 @@
       case 'r': 
       case 'R': handleRotation('R'); e.preventDefault(); break;
       case 'f': 
-      case 'F': 
-        sendIntent({ action: 'FIRE' }); // Blast INTENT to the worker
-        selectedPiece = null; 
-        fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Manual Fire'); 
-        e.preventDefault(); 
-        break;
+      case 'F': selectedPiece = null; fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Manual Fire'); e.preventDefault(); break;
     }
   });
 
