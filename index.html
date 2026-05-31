@@ -344,7 +344,7 @@
 
   function updateMatrixView() { if (latestState) printTerminalMatrix(latestState); }
 
-  async function fireLaserAndAdvanceTurn(explicitColor = null, contextLabel = 'Turn End') {
+  async function fireLaserAndAdvanceTurn(explicitColor = null, intentPayload = { action: 'Turn End', piece: null, changes: null }) {
     if (!latestState || !lockedMatchId) return false;
     const firedColor = explicitColor || getStateTurn(latestState);
     if (!firedColor || (firedColor !== 'RED' && firedColor !== 'BLUE')) return false;
@@ -363,7 +363,7 @@
 
     if (result.trace) {
       const trace = result.trace;
-      await type(`[${contextLabel}] ${firedColor} laser fired. Tracing path...`, 'system-msg');
+      await type(`[${intentPayload.action}] ${firedColor} laser fired. Tracing path...`, 'system-msg');
       if (trace.looped) { await type('Laser path loop detected; shot aborted safely.', 'error-msg'); } 
       else if (!trace.hit) { await type(`${firedColor} laser cleared the board.`, 'system-msg'); } 
       else if (trace.hit.blocked) { await type(`Laser blocked by ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg'); } 
@@ -372,6 +372,18 @@
         if (String(trace.hit.piece.pieceType || '').toUpperCase() === 'KING') { await type('KING DOWN. Match over.', 'error-msg'); }
       }
     }
+
+    // PATCH: Worker Reporting with Full Intent Object
+    fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            intent: intentPayload, 
+            matchId: lockedMatchId,
+            username: localStorage.getItem(KEY_USER),
+            password: localStorage.getItem(KEY_PASS)
+        })
+    }).catch(err => console.error("Worker Sync Failed", err));
 
     hasMoved = false; hasRotated = false; selectedPiece = null;
     latestState = result.state;
@@ -394,6 +406,13 @@
           const dx = Math.abs(cursorX - targetPiece.x); const dy = Math.abs(cursorY - targetPiece.y);
           if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) { add("Action rejected: Move range 1 square.", "error-msg"); selectedPiece = null; return; }
           if (isReservedSquare(cursorX, cursorY, targetPiece.color)) { add(`Action rejected: ${targetPiece.color} pieces cannot enter this reserved square.`, "error-msg"); selectedPiece = null; return; }
+          
+          const intentPayload = {
+              action: 'Move',
+              piece: { type: targetPiece.pieceType, color: targetPiece.color, x: targetPiece.x, y: targetPiece.y },
+              changes: { old: { x: targetPiece.x, y: targetPiece.y }, new: { x: cursorX, y: cursorY } }
+          };
+
           if (pieceAtCursor) {
             if (targetPiece.pieceType === 'SWITCH') {
               if (pieceAtCursor.pieceType === 'DEFLECTOR' || pieceAtCursor.pieceType === 'DEFENDER') {
@@ -404,7 +423,7 @@
             } else { add("Action rejected: Square occupied.", "error-msg"); selectedPiece = null; return; }
           } else { targetPiece.x = cursorX; targetPiece.y = cursorY; add(`Piece moved to (${cursorX}, ${cursorY}).`, "success-msg"); hasMoved = true; }
           
-          fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Move');
+          fireLaserAndAdvanceTurn(getStateTurn(latestState), intentPayload);
           return;
         }
         selectedPiece = null;
@@ -428,6 +447,13 @@
       if (targetPiece.pieceType === 'KING') { add("Action rejected: Pharaohs (Kings) cannot rotate.", "error-msg"); return; }
       let currentRot = Number(targetPiece.rotation || 0);
       let newRot = dir === 'R' ? (currentRot + 1) % 4 : (currentRot + 3) % 4;
+      
+      const intentPayload = {
+          action: 'Rotate',
+          piece: { type: targetPiece.pieceType, color: targetPiece.color, x: targetPiece.x, y: targetPiece.y },
+          changes: { old: { rotation: currentRot }, new: { rotation: newRot } }
+      };
+
       if (targetPiece.pieceType === 'LASER') {
         if (targetPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) { add("Action rejected: Blue Sphinx can only face Up (0) or Left (3).", "error-msg"); return; }
         if (targetPiece.color === 'RED' && (newRot === 3 || newRot === 0)) { add("Action rejected: Red Sphinx can only face Right (1) or Down (2).", "error-msg"); return; }
@@ -436,7 +462,7 @@
       else if (targetPiece.pieceType === 'SWITCH') { targetPiece.rotation = (currentRot + 1) % 2; add(`Scarab toggled.`, "success-msg"); } 
       else { targetPiece.rotation = newRot; add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg"); }
       hasRotated = true; 
-      fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Rotate');
+      fireLaserAndAdvanceTurn(getStateTurn(latestState), intentPayload);
       return; 
     }
     updateMatrixView();
@@ -457,7 +483,7 @@
       case 'r': 
       case 'R': handleRotation('R'); e.preventDefault(); break;
       case 'f': 
-      case 'F': selectedPiece = null; fireLaserAndAdvanceTurn(getStateTurn(latestState), 'Manual Fire'); e.preventDefault(); break;
+      case 'F': selectedPiece = null; fireLaserAndAdvanceTurn(getStateTurn(latestState), { action: 'Manual Fire', piece: null, changes: null }); e.preventDefault(); break;
     }
   });
 
