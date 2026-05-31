@@ -69,6 +69,7 @@
   let rqPollInterval = null, recoveryPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
   let currentHead = null, initialQueueScanDone = false, modeShown = false, privateState = null, isPollingStarting = false, hostGamePollInterval = null; 
   let cursorX = 0, cursorY = 0, selectedPiece = null, latestState = null, activeMatrixContainer = null, hasMoved = false, hasRotated = false;
+  let myColor = null;
 
   const BLUE_RESERVED = [{x: 9, y: 0}, {x: 9, y: 1}, {x: 9, y: 2}, {x: 9, y: 3}, {x: 9, y: 4}, {x: 9, y: 5}, {x: 9, y: 6}, {x: 9, y: 7}, {x: 1, y: 0}, {x: 1, y: 7}];
   const RED_RESERVED = [{x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7}, {x: 8, y: 0}, {x: 8, y: 7}];
@@ -404,7 +405,7 @@
           if (targetPiece.pieceType === 'LASER') { add("Action rejected: Sphinx pieces cannot be moved.", "error-msg"); selectedPiece = null; return; }
           const dx = Math.abs(cursorX - targetPiece.x); const dy = Math.abs(cursorY - targetPiece.y);
           if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) { add("Action rejected: Move range 1 square.", "error-msg"); selectedPiece = null; return; }
-          if (isReservedSquare(cursorX, cursorY, targetPiece.color)) { add(`Action rejected: ${targetPiece.color} pieces cannot enter this reserved square.`, "error-msg"); selectedPiece = null; return; }
+          if (isReservedSquare(cursorX, cursorY, targetPiece.color)) { add(`Action rejected: ${targetPiece.color === myColor ? 'Your' : 'Opponent'} pieces cannot enter this reserved square.`, "error-msg"); selectedPiece = null; return; }
           
           const intentPayload = {
               action: 'Move',
@@ -430,7 +431,12 @@
     } else {
       if (pieceAtCursor) {
         const currentTurn = getStateTurn(latestState);
-        if (currentTurn && pieceAtCursor.color !== currentTurn) { add(`Action rejected: Piece belongs to ${pieceAtCursor.color}, turn is ${currentTurn}.`, "error-msg"); return; }
+        if (currentTurn && pieceAtCursor.color !== currentTurn) { 
+          const turnLabel = (currentTurn === myColor) ? "You" : "Opponent";
+          const pieceLabel = (pieceAtCursor.color === myColor) ? "You" : "Opponent";
+          add(`Action rejected: Piece belongs to ${pieceLabel}, turn is ${turnLabel}.`, "error-msg"); 
+          return; 
+        }
         selectedPiece = { x: cursorX, y: cursorY }; add(`Piece selected at (${cursorX}, ${cursorY})`, "success-msg");
       } else { add(`Invalid action: No piece at (${cursorX}, ${cursorY})`, "error-msg"); }
     }
@@ -539,7 +545,15 @@
     gameRef.on('value', snap => {
         const state = snap.val();
         if (state) { 
-            add(`[SYNC] Turn: ${getStateTurn(state) ?? 'N/A'}`, 'system-msg'); 
+            const myName = localStorage.getItem(KEY_USER);
+            if (state.players && state.players[myName]) {
+                myColor = state.players[myName].color; 
+            }
+
+            const currentTurn = getStateTurn(state);
+            const turnLabel = (currentTurn === myColor) ? "You" : "Opponent";
+            add(`[SYNC] Turn: ${turnLabel}`, 'system-msg'); 
+
             if (activeMatrixContainer) {
                 const cursors = activeMatrixContainer.querySelectorAll('.cursor, .selected, .target-preview');
                 cursors.forEach(c => c.classList.remove('cursor', 'selected', 'target-preview'));
