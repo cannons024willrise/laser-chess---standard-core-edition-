@@ -288,12 +288,14 @@
     const container = document.createElement('div');
     container.className = 'matrix-container';
 
+    // Header
     let headerRow = document.createElement('div');
     headerRow.className = 'matrix-row';
     let cornerCell = document.createElement('span'); cornerCell.className = 'matrix-cell matrix-lbl'; cornerCell.innerHTML = '&nbsp;'; headerRow.appendChild(cornerCell);
     for (let x = 0; x < 10; x++) { let lblCell = document.createElement('span'); lblCell.className = 'matrix-cell matrix-lbl'; lblCell.textContent = x; headerRow.appendChild(lblCell); }
     container.appendChild(headerRow);
 
+    // Board
     for (let y = 7; y >= 0; y--) {
       let rowEl = document.createElement('div');
       rowEl.className = 'matrix-row';
@@ -332,18 +334,20 @@
       container.appendChild(rowEl);
     }
     
-    // Add Legend
+    // Improved Readable Legend
     const legend = document.createElement('div');
-    legend.style.marginTop = '10px';
-    legend.style.fontSize = '18px';
+    legend.style.marginTop = '15px';
+    legend.style.fontSize = '16px';
     legend.style.color = 'var(--muted)';
+    legend.style.maxWidth = '400px';
     legend.innerHTML = `
-        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-            <span>◈ King</span>
-            <span>⫝ Laser</span>
-            <span>⟋ Switch</span>
-            <span>⬓ Defender</span>
-            <span>◤ Deflector</span>
+        <div style="margin-bottom: 5px; font-weight: bold; color: var(--bright);">LEGEND:</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <span>◈ Pharaoh (No rot)</span>
+            <span>⫝ Sphinx (Laser)</span>
+            <span>◤ Pyramid (Hypotenuse = Mirror)</span>
+            <span>⬓ Anubis (Colored = Armor)</span>
+            <span>⟋ Scarab (Reflector)</span>
         </div>
     `;
     container.appendChild(legend);
@@ -390,7 +394,6 @@
       }
     }
 
-    // PATCH: Worker Reporting with Full Intent Object
     fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
