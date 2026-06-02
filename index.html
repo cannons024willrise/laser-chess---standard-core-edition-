@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LASER CHESS - KHET 2.0 RULES EDITION</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>LASER CHESS - HYBRID TERMINAL</title>
     <style>
         @font-face { font-family: 'Unifont'; src: url('unifont-15.0.01.ttf') format('truetype'); }
         :root { 
@@ -13,21 +13,85 @@
             --blue-tint: rgba(0, 212, 255, 0.15); --red-tint: rgba(255, 51, 51, 0.15);
             --laser: #ffff00;
         }
-        body { margin: 0; padding: 30px; font-size: 22px; color: var(--text); font-family: 'Unifont', monospace; background: radial-gradient(circle at center, var(--bg1), var(--bg0)); }
-        #terminal-log { display: flex; flex-direction: column; gap: 4px; max-width: 1100px; padding-bottom: 50px; }
-        .history-line { white-space: pre-wrap; word-break: break-all; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-        .input-wrapper { display:flex; gap:8px; align-items:flex-start; width: 100%; }
-        .prompt { white-space: pre; }
-        .user-input-line { flex: 1; background: transparent; border: none; color: var(--bright); font: inherit; outline: none; resize: none; overflow: hidden; min-height: 1.2em; line-height: 1.2; padding: 0; margin: 0; white-space: pre-wrap; }
+        
+        body { 
+            margin: 0; 
+            padding: 12px; 
+            font-size: 15px; 
+            color: var(--text); 
+            font-family: 'Unifont', monospace; 
+            background: radial-gradient(circle at center, var(--bg1), var(--bg0));
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        #terminal-log { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 6px; 
+            width: 100%;
+            max-width: 100%; 
+            padding-bottom: 40px; 
+            box-sizing: border-box;
+        }
+        
+        .history-line { white-space: pre-wrap; word-break: break-all; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+        .input-wrapper { display:flex; gap:6px; align-items:flex-start; width: 100%; }
+        .prompt { white-space: pre; color: var(--waiting); }
+        
+        .user-input-line { 
+            flex: 1; 
+            background: transparent; 
+            border: none; 
+            color: var(--bright); 
+            font: inherit; 
+            outline: none; 
+            resize: none; 
+            overflow: hidden; 
+            min-height: 1.2em; 
+            line-height: 1.2; 
+            padding: 0; 
+            margin: 0; 
+            white-space: pre-wrap; 
+        }
+        
         .system-msg { color: var(--muted); }
         .success-msg { color: var(--bright); font-weight: 700; }
         .error-msg { color: var(--error); }
         .highlight { color: var(--bright); font-weight: 700; }
         .wait-msg { color: var(--waiting); }
         
-        .matrix-container { display: flex; flex-direction: column; margin: 6px 0 24px 0; font-family: 'Unifont', monospace; user-select: none; border-left: 2px solid var(--line); padding-left: 12px; }
-        .matrix-row { display: flex; height: 36px; align-items: center; }
-        .matrix-cell { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; font-weight: bold; touch-action: manipulation; }
+        /* Grid Scaling: Uses fluid vw on mobile, clean caps on desktop */
+        .matrix-container { 
+            display: flex; 
+            flex-direction: column; 
+            margin: 12px auto; 
+            font-family: 'Unifont', monospace; 
+            user-select: none; 
+            width: 100%;
+            max-width: 100%;
+            align-items: center;
+        }
+        
+        .matrix-row { 
+            display: flex; 
+            width: 100%;
+            justify-content: center;
+        }
+        
+        .matrix-cell { 
+            width: clamp(26px, 8.6vw, 38px); 
+            height: clamp(26px, 8.6vw, 38px); 
+            font-size: clamp(16px, 5.2vw, 22px);
+            display: inline-flex; 
+            align-items: center; 
+            justify-content: center; 
+            text-align: center; 
+            box-sizing: border-box; 
+            font-weight: bold; 
+            touch-action: manipulation; 
+        }
+        
         .matrix-lbl { color: var(--muted); font-weight: normal; }
         .p-blue { color: var(--blue); }
         .p-red { color: var(--red); }
@@ -42,10 +106,43 @@
         .matrix-cell.selected { outline: 1px dashed var(--waiting) !important; background-color: rgba(0, 255, 0, 0.05); }
         .matrix-cell.target-preview { outline: 1px dashed var(--blue) !important; background-color: rgba(0, 212, 255, 0.1); }
 
-        /* Mobile Specific UI Controls */
-        .mobile-controls { display: flex; gap: 10px; margin-top: 20px; max-width: 440px; touch-action: manipulation; }
-        .mobile-btn { flex: 1; background: var(--bg1); border: 1px solid var(--line); color: var(--bright); padding: 12px 8px; font-family: 'Unifont', monospace; font-size: 16px; cursor: pointer; user-select: none; text-align: center; font-weight: bold; }
+        /* Mobile Controller Dock */
+        .mobile-controls { 
+            display: none; /* Injected/shown dynamically only if touch device detected */
+            gap: 8px; 
+            margin-top: 14px; 
+            width: 100%; 
+            max-width: 100%;
+            justify-content: center;
+            touch-action: manipulation; 
+        }
+        
+        .mobile-btn { 
+            flex: 1; 
+            background: var(--bg1); 
+            border: 1px solid var(--line); 
+            color: var(--bright); 
+            padding: 14px 4px; 
+            font-family: 'Unifont', monospace; 
+            font-size: 13px; 
+            cursor: pointer; 
+            user-select: none; 
+            text-align: center; 
+            font-weight: bold; 
+            border-radius: 4px;
+        }
         .mobile-btn:active { background: var(--line); color: var(--waiting); }
+        
+        .copy-btn {
+            background: var(--bg1);
+            border: 1px solid var(--line);
+            color: var(--waiting);
+            padding: 4px 8px;
+            font-size: 12px;
+            font-family: inherit;
+            margin-left: 6px;
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body>
@@ -77,6 +174,9 @@
   let cursorX = 0, cursorY = 0, selectedPiece = null, latestState = null, activeMatrixContainer = null, hasMoved = false, hasRotated = false;
   let myColor = null;
 
+  // Detect true touch capability
+  const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
   const BLUE_RESERVED = [{x: 9, y: 0}, {x: 9, y: 1}, {x: 9, y: 2}, {x: 9, y: 3}, {x: 9, y: 4}, {x: 9, y: 5}, {x: 9, y: 6}, {x: 9, y: 7}, {x: 1, y: 0}, {x: 1, y: 7}];
   const RED_RESERVED = [{x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7}, {x: 8, y: 0}, {x: 8, y: 7}];
 
@@ -99,11 +199,11 @@
   function createLineWithCopy(text, codeToCopy, cls='') {
     const container = createLine(cls);
     const textSpan = document.createElement('span'); textSpan.textContent = text; container.appendChild(textSpan);
-    const btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = '[COPY CODE]';
+    const btn = document.createElement('button'); btn.className = 'copy-btn'; btn.textContent = '[COPY]';
     btn.onclick = async () => {
-        try { await navigator.clipboard.writeText(codeToCopy); btn.textContent = '[COPIED!]'; } 
-        catch (err) { const dummy = document.createElement('textarea'); dummy.value = codeToCopy; document.body.appendChild(dummy); dummy.select(); document.execCommand('copy'); document.body.removeChild(dummy); btn.textContent = '[COPIED!]'; }
-        setTimeout(() => { btn.textContent = '[COPY CODE]'; }, 2000);
+        try { await navigator.clipboard.writeText(codeToCopy); btn.textContent = '[DONE]'; } 
+        catch (err) { const dummy = document.createElement('textarea'); dummy.value = codeToCopy; document.body.appendChild(dummy); dummy.select(); document.execCommand('copy'); document.body.removeChild(dummy); btn.textContent = '[DONE]'; }
+        setTimeout(() => { btn.textContent = '[COPY]'; }, 2000);
     };
     container.appendChild(btn); return container;
   }
@@ -156,7 +256,7 @@
       0: { 2: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 3: { action: 'destroy' } },
       1: { 3: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } },
       2: { 0: { action: 'block' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
-      3: { 1: { action: 'block' }, 0: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }
+      3: { 1: { action: 'block' }, 0: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
     },
     KING: {
       0: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
@@ -166,7 +266,7 @@
     },
     LASER: {
       0: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
-      1: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
+      1: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { block: 'block' } },
       2: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
       3: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } }
     }
@@ -294,14 +394,14 @@
     const container = document.createElement('div');
     container.className = 'matrix-container';
 
-    // Header
+    // Header Coordinates Row
     let headerRow = document.createElement('div');
     headerRow.className = 'matrix-row';
     let cornerCell = document.createElement('span'); cornerCell.className = 'matrix-cell matrix-lbl'; cornerCell.innerHTML = '&nbsp;'; headerRow.appendChild(cornerCell);
     for (let x = 0; x < 10; x++) { let lblCell = document.createElement('span'); lblCell.className = 'matrix-cell matrix-lbl'; lblCell.textContent = x; headerRow.appendChild(lblCell); }
     container.appendChild(headerRow);
 
-    // Board
+    // Grid Construction
     for (let y = 7; y >= 0; y--) {
       let rowEl = document.createElement('div');
       rowEl.className = 'matrix-row';
@@ -310,19 +410,17 @@
       for (let x = 0; x < 10; x++) {
         let cellEl = document.createElement('span');
         cellEl.className = 'matrix-cell';
-        cellEl.style.cursor = 'pointer';
         
         const tint = getReservedSquareTint(x, y); 
         if (tint) cellEl.classList.add(tint);
         
-        if (activeMatrixContainer !== null) {
-            if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
-            if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) { cellEl.classList.add('selected'); } 
-            else if (selectedPiece && x === cursorX && y === cursorY) { cellEl.classList.add('target-preview'); }
-        }
+        if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
+        if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) { cellEl.classList.add('selected'); } 
+        else if (selectedPiece && x === cursorX && y === cursorY) { cellEl.classList.add('target-preview'); }
 
-        // Mobile Grid Event Listener Mapping
+        // Mobile Tap Listener
         cellEl.addEventListener('click', (e) => {
+            if (!isMobile) return; // Ignore on desktops to preserve pure keyboard focus
             e.preventDefault();
             cursorX = x;
             cursorY = y;
@@ -349,7 +447,7 @@
       container.appendChild(rowEl);
     }
     
-    // --- DYNAMIC ROTATION PREDICTOR ---
+    // Rotation Indicator Panel
     if (selectedPiece) {
       const p = grid[selectedPiece.y][selectedPiece.x];
       if (p && p.pieceType !== 'KING') {
@@ -357,7 +455,6 @@
         const rotL = (currentRot + 3) % 4;
         const rotR = (currentRot + 1) % 4;
 
-        // Logic for Sphinx restrictions
         const canRotate = (dir) => {
             if (p.pieceType !== 'LASER') return true;
             if (p.color === 'BLUE') return (dir === 0 || dir === 3);
@@ -370,59 +467,45 @@
 
         const predictor = document.createElement('div');
         predictor.style.marginTop = '10px';
-        predictor.style.padding = '8px';
+        predictor.style.padding = '6px';
+        predictor.style.width = '100%';
+        predictor.style.textAlign = 'center';
+        predictor.style.boxSizing = 'border-box';
         predictor.style.border = '1px solid var(--line)';
         predictor.style.color = 'var(--bright)';
+        predictor.style.fontSize = '14px';
         predictor.innerHTML = `
-           <div style="font-size: 14px; margin-bottom: 4px; color: var(--muted);">ROTATION PREDICTOR:</div>
-           <div style="display: flex; gap: 20px;">
-              <span>[L] (CCW): <b>${charL}</b></span>
-              <span>[R] (CW): <b>${charR}</b></span>
+           <div style="font-size: 12px; margin-bottom: 2px; color: var(--muted);">PREVIEW ROTATION:</div>
+           <div style="display: flex; justify-content: space-around;">
+              <span>CCW: <b>${charL}</b></span>
+              <span>CW: <b>${charR}</b></span>
            </div>
         `;
         container.appendChild(predictor);
       }
     }
 
-    // Improved Readable Legend
-    const legend = document.createElement('div');
-    legend.style.marginTop = '15px';
-    legend.style.fontSize = '16px';
-    legend.style.color = 'var(--muted)';
-    legend.style.maxWidth = '400px';
-    legend.innerHTML = `
-        <div style="margin-bottom: 5px; font-weight: bold; color: var(--bright);">LEGEND:</div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-            <span>◈ Pharaoh (No rot)</span>
-            <span>⫝ Sphinx (Laser)</span>
-            <span>◤ Pyramid (Hypotenuse = Mirror)</span>
-            <span>⬓ Anubis (Colored = Armor)</span>
-            <span>⟋ Scarab (Reflector)</span>
-        </div>
-    `;
-    container.appendChild(legend);
+    // Append controller panel button interface ONLY if mobile device layout detected
+    if (isMobile) {
+        const mobileControls = document.createElement('div');
+        mobileControls.className = 'mobile-controls';
+        mobileControls.style.display = 'flex'; // Expose block flex layout
+        mobileControls.innerHTML = `
+            <button class="mobile-btn" id="m-btn-l">ROTATE CCW</button>
+            <button class="mobile-btn" id="m-btn-r">ROTATE CW</button>
+            <button class="mobile-btn" id="m-btn-f" style="border-color: var(--waiting); color: var(--waiting);">FIRE LASER</button>
+        `;
+        container.appendChild(mobileControls);
 
-    // Dynamic Mobile Controller Panel Bar Injection
-    const mobileControls = document.createElement('div');
-    mobileControls.className = 'mobile-controls';
-    mobileControls.innerHTML = `
-        <button class="mobile-btn" id="m-btn-l">ROTATE CCW [L]</button>
-        <button class="mobile-btn" id="m-btn-r">ROTATE CW [R]</button>
-        <button class="mobile-btn" id="m-btn-f" style="border-color: var(--waiting);">FIRE [F]</button>
-    `;
-    container.appendChild(mobileControls);
-
-    mobileControls.querySelector('#m-btn-l').addEventListener('click', (e) => { e.preventDefault(); handleRotation('L'); });
-    mobileControls.querySelector('#m-btn-r').addEventListener('click', (e) => { e.preventDefault(); handleRotation('R'); });
-    mobileControls.querySelector('#m-btn-f').addEventListener('click', (e) => {
-        e.preventDefault();
-        if (getStateTurn(latestState) !== myColor) {
-            add("Action rejected: Not your turn.", "error-msg");
-            return;
-        }
-        selectedPiece = null; 
-        fireLaserAndAdvanceTurn(getStateTurn(latestState), { action: 'Manual Fire', piece: null, changes: null });
-    });
+        mobileControls.querySelector('#m-btn-l').addEventListener('click', (e) => { e.preventDefault(); handleRotation('L'); });
+        mobileControls.querySelector('#m-btn-r').addEventListener('click', (e) => { e.preventDefault(); handleRotation('R'); });
+        mobileControls.querySelector('#m-btn-f').addEventListener('click', (e) => {
+            e.preventDefault();
+            if (getStateTurn(latestState) !== myColor) { add("Action rejected: Not your turn.", "error-msg"); return; }
+            selectedPiece = null; 
+            fireLaserAndAdvanceTurn(getStateTurn(latestState), { action: 'Manual Fire', piece: null, changes: null });
+        });
+    }
 
     if (activeMatrixContainer && activeMatrixContainer.parentNode) { 
         activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); 
@@ -436,6 +519,27 @@
   }
 
   function updateMatrixView() { if (latestState) printTerminalMatrix(latestState); }
+
+  // PC Keyboard Control Event Mapping
+  window.addEventListener('keydown', e => {
+    if (!latestState || isMobile) return; // Keep pure terminal inputs on mobile devices
+    if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') return;
+
+    const k = e.key.toUpperCase();
+    if (k === 'W' || e.key === 'ArrowUp') { e.preventDefault(); if (cursorY < 7) { cursorY++; updateMatrixView(); } }
+    else if (k === 'S' || e.key === 'ArrowDown') { e.preventDefault(); if (cursorY > 0) { cursorY--; updateMatrixView(); } }
+    else if (k === 'A' || e.key === 'ArrowLeft') { e.preventDefault(); if (cursorX > 0) { cursorX--; updateMatrixView(); } }
+    else if (k === 'D' || e.key === 'ArrowRight') { e.preventDefault(); if (cursorX < 9) { cursorX++; updateMatrixView(); } }
+    else if (e.key === ' ') { e.preventDefault(); handleGridAction(); }
+    else if (k === 'Q') { e.preventDefault(); handleRotation('L'); }
+    else if (k === 'E') { e.preventDefault(); handleRotation('R'); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (getStateTurn(latestState) !== myColor) { add("Action rejected: Not your turn.", "error-msg"); return; }
+      selectedPiece = null;
+      fireLaserAndAdvanceTurn(getStateTurn(latestState), { action: 'Manual Fire', piece: null, changes: null });
+    }
+  });
 
   async function fireLaserAndAdvanceTurn(explicitColor = null, intentPayload = { action: 'Turn End', piece: null, changes: null }) {
     if (!latestState || !lockedMatchId) return false;
@@ -456,18 +560,18 @@
 
     if (result.trace) {
       const trace = result.trace;
-      await type(`[${intentPayload.action}] ${firedColor} laser fired. Tracing path...`, 'system-msg');
-      if (trace.looped) { await type('Laser path loop detected; shot aborted safely.', 'error-msg'); } 
-      else if (!trace.hit) { await type(`${firedColor} laser cleared the board.`, 'system-msg'); } 
-      else if (trace.hit.blocked) { await type(`Laser blocked by ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg'); } 
+      await type(`[${intentPayload.action}] ${firedColor} laser fired.`, 'system-msg');
+      if (trace.looped) { await type('Safe abort: Laser looped.', 'error-msg'); } 
+      else if (!trace.hit) { await type(`${firedColor} laser clear.`, 'system-msg'); } 
+      else if (trace.hit.blocked) { await type(`Blocked by ${trace.hit.piece.pieceType} (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg'); } 
       else if (trace.hit.destroyed) {
-        await type(`Laser destroyed ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
-        if (String(trace.hit.piece.pieceType || '').toUpperCase() === 'KING') { await type('KING DOWN. Match over.', 'error-msg'); }
+        await type(`Destroyed ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
+        if (String(trace.hit.piece.pieceType || '').toUpperCase() === 'KING') { await type('KING ELIMINATED. Game over.', 'error-msg'); }
       }
     }
 
     try {
-        const response = await fetch(GAME_ACTOR_URL, {
+        await fetch(GAME_ACTOR_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({
@@ -477,13 +581,8 @@
                 password: localStorage.getItem(KEY_PASS)
             })
         });
-        
-        const data = await response.json();
-        if (data && data.logs && Array.isArray(data.logs)) {
-            data.logs.forEach(msg => add(msg, 'system-msg'));
-        }
     } catch (err) {
-        console.error("Move Actor Sync Failed", err);
+        console.error("Move sync failed", err);
     }
 
     hasMoved = false; hasRotated = false; selectedPiece = null;
@@ -493,11 +592,9 @@
 
   function handleGridAction() {
     if (!latestState) return;
-
-    // RESTRICT: Turn check
     const currentTurn = getStateTurn(latestState);
     if (currentTurn !== myColor) {
-      add(`Action rejected: It is ${currentTurn}'s turn.`, "error-msg");
+      add(`Rejected: Turn is ${currentTurn}.`, "error-msg");
       return;
     }
 
@@ -505,15 +602,15 @@
     let pieceAtCursor = pieces.find(p => p && p.x === cursorX && p.y === cursorY);
 
     if (selectedPiece) {
-      if (selectedPiece.x === cursorX && selectedPiece.y === cursorY) { selectedPiece = null; add("Selection dropped.", "system-msg"); } 
+      if (selectedPiece.x === cursorX && selectedPiece.y === cursorY) { selectedPiece = null; add("Dropped selection.", "system-msg"); } 
       else {
         let targetPiece = pieces.find(p => p && p.x === selectedPiece.x && p.y === selectedPiece.y);
         if (targetPiece) {
-          if (hasRotated) { add("Action rejected: Cannot move after rotating this turn.", "error-msg"); selectedPiece = null; return; }
-          if (targetPiece.pieceType === 'LASER') { add("Action rejected: Sphinx pieces cannot be moved.", "error-msg"); selectedPiece = null; return; }
+          if (hasRotated) { add("Rejected: Cannot move after rotation.", "error-msg"); selectedPiece = null; return; }
+          if (targetPiece.pieceType === 'LASER') { add("Rejected: Sphinx cannot move.", "error-msg"); selectedPiece = null; return; }
           const dx = Math.abs(cursorX - targetPiece.x); const dy = Math.abs(cursorY - targetPiece.y);
-          if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) { add("Action rejected: Move range 1 square.", "error-msg"); selectedPiece = null; return; }
-          if (isReservedSquare(cursorX, cursorY, targetPiece.color)) { add(`Action rejected: ${targetPiece.color === myColor ? 'Your' : 'Opponent'} pieces cannot enter this reserved square.`, "error-msg"); selectedPiece = null; return; }
+          if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) { add("Rejected: Max range 1.", "error-msg"); selectedPiece = null; return; }
+          if (isReservedSquare(cursorX, cursorY, targetPiece.color)) { add(`Rejected: Cannot cross onto reserved square.`, "error-msg"); selectedPiece = null; return; }
           
           const intentPayload = {
               action: 'Move',
@@ -527,9 +624,9 @@
                 const oldX = targetPiece.x; const oldY = targetPiece.y;
                 targetPiece.x = pieceAtCursor.x; targetPiece.y = pieceAtCursor.y; pieceAtCursor.x = oldX; pieceAtCursor.y = oldY;
                 add(`Scarab swapped with ${pieceAtCursor.pieceType}.`, "success-msg"); hasMoved = true;
-              } else { add(`Action rejected: Scarab can only swap with Pyramid or Anubis, not ${pieceAtCursor.pieceType}.`, "error-msg"); selectedPiece = null; return; }
-            } else { add("Action rejected: Square occupied.", "error-msg"); selectedPiece = null; return; }
-          } else { targetPiece.x = cursorX; targetPiece.y = cursorY; add(`Piece moved to (${cursorX}, ${cursorY}).`, "success-msg"); hasMoved = true; }
+              } else { add(`Rejected: Forbidden swap.`, "error-msg"); selectedPiece = null; return; }
+            } else { add("Rejected: Square occupied.", "error-msg"); selectedPiece = null; return; }
+          } else { targetPiece.x = cursorX; targetPiece.y = cursorY; add(`Moved to (${cursorX}, ${cursorY}).`, "success-msg"); hasMoved = true; }
           
           fireLaserAndAdvanceTurn(getStateTurn(latestState), intentPayload);
           return;
@@ -538,37 +635,24 @@
       }
     } else {
       if (pieceAtCursor) {
-        // RESTRICT: Ownership check
-        if (pieceAtCursor.color !== myColor) { 
-          add(`Action rejected: Cannot control ${pieceAtCursor.color} pieces.`, "error-msg"); 
-          return; 
-        }
-        selectedPiece = { x: cursorX, y: cursorY }; add(`Piece selected at (${cursorX}, ${cursorY})`, "success-msg");
-      } else { add(`Invalid action: No piece at (${cursorX}, ${cursorY})`, "error-msg"); }
+        if (pieceAtCursor.color !== myColor) { add(`Rejected: Target belongs to opponent.`, "error-msg"); return; }
+        selectedPiece = { x: cursorX, y: cursorY }; add(`Selected (${cursorX}, ${cursorY})`, "success-msg");
+      } else { add(`Blank square: (${cursorX}, ${cursorY})`, "error-msg"); }
     }
     updateMatrixView();
   }
 
   function handleRotation(dir) {
-    // RESTRICT: Turn check
-    if (getStateTurn(latestState) !== myColor) {
-        add("Action rejected: Not your turn.", "error-msg");
-        return;
-    }
-
-    if (!latestState || !selectedPiece) { add("Action dropped: Select a piece before rotating.", "error-msg"); return; }
-    if (hasMoved) { add("Action rejected: Cannot rotate after moving this turn.", "error-msg"); return; }
+    if (getStateTurn(latestState) !== myColor) { add("Rejected: Not your turn.", "error-msg"); return; }
+    if (!latestState || !selectedPiece) { add("Select a piece to rotate.", "error-msg"); return; }
+    if (hasMoved) { add("Rejected: Cannot rotate after moving.", "error-msg"); return; }
     const pieces = getBoardPieces(latestState);
     let targetPiece = pieces.find(p => p && p.x === selectedPiece.x && p.y === selectedPiece.y);
     
-    // RESTRICT: Ownership check
-    if (targetPiece && targetPiece.color !== myColor) {
-        add("Action rejected: Cannot rotate opponent's piece.", "error-msg");
-        return;
-    }
+    if (targetPiece && targetPiece.color !== myColor) { add("Rejected: Target belongs to opponent.", "error-msg"); return; }
 
     if (targetPiece) {
-      if (targetPiece.pieceType === 'KING') { add("Action rejected: Pharaohs (Kings) cannot rotate.", "error-msg"); return; }
+      if (targetPiece.pieceType === 'KING') { add("Pharaoh cannot rotate.", "error-msg"); return; }
       let currentRot = Number(targetPiece.rotation || 0);
       let newRot = dir === 'R' ? (currentRot + 1) % 4 : (currentRot + 3) % 4;
       
@@ -579,12 +663,12 @@
       };
 
       if (targetPiece.pieceType === 'LASER') {
-        if (targetPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) { add("Action rejected: Blue Sphinx can only face Up (0) or Left (3).", "error-msg"); return; }
-        if (targetPiece.color === 'RED' && (newRot === 3 || newRot === 0)) { add("Action rejected: Red Sphinx can only face Right (1) or Down (2).", "error-msg"); return; }
-        targetPiece.rotation = newRot; add(`Sphinx rotated ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
+        if (targetPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) { add("Sphinx orientation blocked.", "error-msg"); return; }
+        if (targetPiece.color === 'RED' && (newRot === 3 || newRot === 0)) { add("Sphinx orientation blocked.", "error-msg"); return; }
+        targetPiece.rotation = newRot; add(`Sphinx rotated ${dir === 'R' ? 'CW' : 'CCW'}.`, "success-msg");
       } 
       else if (targetPiece.pieceType === 'SWITCH') { targetPiece.rotation = (currentRot + 1) % 2; add(`Scarab toggled.`, "success-msg"); } 
-      else { targetPiece.rotation = newRot; add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg"); }
+      else { targetPiece.rotation = newRot; add(`Rotated ${dir === 'R' ? 'CW' : 'CCW'}.`, "success-msg"); }
       hasRotated = true; 
       fireLaserAndAdvanceTurn(getStateTurn(latestState), intentPayload);
       return; 
@@ -592,55 +676,30 @@
     updateMatrixView();
   }
 
-  window.addEventListener('keydown', e => {
-    if (!lockedMatchId || !latestState) return;
-    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) { if (document.activeElement.value.trim().length > 0) return; }
-    switch (e.key) {
-      case 'ArrowUp': if (cursorY < 7) cursorY++; updateMatrixView(); e.preventDefault(); break;
-      case 'ArrowDown': if (cursorY > 0) cursorY--; updateMatrixView(); e.preventDefault(); break;
-      case 'ArrowLeft': if (cursorX > 0) cursorX--; updateMatrixView(); e.preventDefault(); break;
-      case 'ArrowRight': if (cursorX < 9) cursorX++; updateMatrixView(); e.preventDefault(); break;
-      case ' ': 
-      case 'Enter': handleGridAction(); e.preventDefault(); break;
-      case 'l': 
-      case 'L': handleRotation('L'); e.preventDefault(); break;
-      case 'r': 
-      case 'R': handleRotation('R'); e.preventDefault(); break;
-      case 'f': 
-      case 'F': 
-        // RESTRICT: Turn check
-        if (getStateTurn(latestState) !== myColor) {
-            add("Action rejected: Not your turn.", "error-msg");
-            break;
-        }
-        selectedPiece = null; fireLaserAndAdvanceTurn(getStateTurn(latestState), { action: 'Manual Fire', piece: null, changes: null }); e.preventDefault(); break;
-    }
-  });
-
   async function pollFirstMatch({ silentEmpty = false } = {}) {
     if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
     try {
       const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value'); 
       if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
       const data = snapshot.val();
-      if (!data) { currentHead = null; if (!silentEmpty && initialQueueScanDone && lastQueueState !== 'EMPTY') { add('RQ_Q: Empty (Idle)', 'system-msg'); lastQueueState = 'EMPTY'; } return false; }
+      if (!data) { currentHead = null; if (!silentEmpty && initialQueueScanDone && lastQueueState !== 'EMPTY') { add('Queue Empty (Idle)', 'system-msg'); lastQueueState = 'EMPTY'; } return false; }
       initialQueueScanDone = true; 
       const firstKey = Object.keys(data)[0]; 
       const matchData = data[firstKey];
       const myName = localStorage.getItem(KEY_USER) || '';
       if (matchData.username && matchData.username.toUpperCase() === myName.toUpperCase()) { return false; }
       currentHead = { id: firstKey, data: matchData };
-      if (lastQueueState !== firstKey) { add(`[AUTO-SCAN] Head detected: ${matchData.username} (${matchData.color === 0 ? 'RED' : 'BLUE'})`, 'success-msg'); lastQueueState = firstKey; }
+      if (lastQueueState !== firstKey) { add(`Opponent Ready: ${matchData.username}`, 'success-msg'); lastQueueState = firstKey; }
       return true;
     } catch (e) { currentHead = null; return false; }
   }
 
   async function showMode() {
     if (localStorage.getItem(KEY_RID)) return; while (processing) await sleep(10); if (modeShown) return; modeShown = true;
-    const privateSuffix = ' | [P] Private Host | [J] Private Join';
-    if (!currentHead) { add('Queue Empty. [R] Host Red | [B] Blue' + privateSuffix, 'system-msg'); } 
-    else if (currentHead.data.color === 0) { add('RED at head. [A] Join as Blue | [R] Host Red' + privateSuffix, 'system-msg'); } 
-    else { add('BLUE at head. [A] Join as Red | [B] Host Blue' + privateSuffix, 'system-msg'); }
+    const alt = ' | [P] Host Priv | [J] Join Priv';
+    if (!currentHead) { add('[R] Host Red | [B] Host Blue' + alt, 'system-msg'); } 
+    else if (currentHead.data.color === 0) { add('[A] Intercept Blue | [R] Host Red' + alt, 'system-msg'); } 
+    else { add('[A] Intercept Red | [B] Host Blue' + alt, 'system-msg'); }
     add('MODE:', '', true, handleMode);
   }
 
@@ -658,18 +717,17 @@
     try {
       const snap = await dbGame.ref('G').once('value'); const games = snap.val(); if (!games) return false;
       const matchID = Object.keys(games).find(key => String(key).toUpperCase().includes(myName.toUpperCase()));
-      if (matchID) { add(`[AUTO-JOIN] Match detected in /G: ${matchID}`, 'success-msg'); lockOntoMatch(matchID, games[matchID]); return true; }
+      if (matchID) { add(`Connected to live stream: ${matchID}`, 'success-msg'); lockOntoMatch(matchID, games[matchID]); return true; }
     } catch (e) { console.error(e); } return false;
   }
 
   function lockOntoMatch(id, entry) {
     lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); toggleWaiting(false); stopHostGamePolling(); modeShown = false;
-    add(`LINK ESTABLISHED: ${id}`, 'success-msg'); add('Controls: Arrow Keys=Move Cursor | Space/Enter=Select/Move | L/R=Rotate Piece | F=Fire & Skip Turn', 'system-msg');
+    add(`Link Active.`, 'success-msg');
     
-    // Track the last processed move number to identify new opponent actions
     let lastSeenMoveNumber = -1;
-
     const gameRef = dbGame.ref(`G/${id}`);
+    
     gameRef.on('value', snap => {
         const state = snap.val();
         if (state) { 
@@ -678,19 +736,14 @@
             else if (state.bluePlayer === myName) myColor = 'BLUE';
 
             const currentTurn = getStateTurn(state);
-            const turnLabel = (currentTurn === myColor) ? "You" : "Opponent";
-            
+            const turnLabel = (currentTurn === myColor) ? "Your Turn" : "Opponent Turn";
             const boardRoot = resolveMatchRecord(state).board || {};
             const currentMoveNumber = boardRoot.moveNumber ?? 0;
 
-            // Trigger reconstruction if a new move completed and it is now your turn
             if (currentMoveNumber !== lastSeenMoveNumber && currentTurn === myColor && lastSeenMoveNumber !== -1) {
                 lastSeenMoveNumber = currentMoveNumber;
+                add(`[SYNC] ${turnLabel}`, 'system-msg');
                 
-                add(`[SYNC] Turn: ${turnLabel} (${currentTurn})`, 'system-msg');
-                add(`[OPPONENT ACTION] Reconstructing board state and tracing laser path...`, 'system-msg');
-
-                // 1. Deep clone the incoming state to safely modify pieces
                 const mockState = JSON.parse(JSON.stringify(state));
                 const mockBoard = resolveMatchRecord(mockState).board || {};
                 if (mockBoard.pieces && !Array.isArray(mockBoard.pieces)) {
@@ -699,7 +752,6 @@
                     mockBoard.pieces = [];
                 }
 
-                // 2. Put the destroyed piece back onto the mock board if it exists
                 const destMetadata = state.metadata?.lastdestroyed;
                 if (destMetadata && destMetadata.piece) {
                     const dp = destMetadata.piece;
@@ -708,45 +760,28 @@
                     }
                 }
 
-                // 3. Trace and print the opponent's laser path
                 const opponentColor = myColor === 'RED' ? 'BLUE' : 'RED';
                 const laserTrace = traceLaserPath(mockState, opponentColor);
 
-                if (activeMatrixContainer) {
-                    const cursors = activeMatrixContainer.querySelectorAll('.cursor, .selected, .target-preview');
-                    cursors.forEach(c => c.classList.remove('cursor', 'selected', 'target-preview'));
-                    activeMatrixContainer = null;
-                }
+                if (activeMatrixContainer) { activeMatrixContainer = null; }
                 printTerminalMatrix(mockState, laserTrace);
 
-                // 4. Wait 1200ms so path is visible, then clear and present the playable frame
                 setTimeout(() => {
-                    if (activeMatrixContainer) {
-                        const cursors = activeMatrixContainer.querySelectorAll('.cursor, .selected, .target-preview');
-                        cursors.forEach(c => c.classList.remove('cursor', 'selected', 'target-preview'));
-                        activeMatrixContainer = null;
-                    }
+                    if (activeMatrixContainer) { activeMatrixContainer = null; }
                     printTerminalMatrix(state);
                 }, 1200);
-
             } else {
-                // Fallback standard processing loop
                 lastSeenMoveNumber = currentMoveNumber;
-                add(`[SYNC] Turn: ${turnLabel} (${currentTurn})`, 'system-msg'); 
-
-                if (activeMatrixContainer) {
-                    const cursors = activeMatrixContainer.querySelectorAll('.cursor, .selected, .target-preview');
-                    cursors.forEach(c => c.classList.remove('cursor', 'selected', 'target-preview'));
-                    activeMatrixContainer = null;
-                }
+                add(`[SYNC] ${turnLabel}`, 'system-msg'); 
+                if (activeMatrixContainer) { activeMatrixContainer = null; }
                 printTerminalMatrix(state); 
             }
         } 
-        else { add('MATCH TERMINATED.', 'error-msg'); localStorage.removeItem(KEY_RID); lockedMatchId = null; activeMatrixContainer = null; gameRef.off(); modeShown = false; startPolling(); }
+        else { add('Terminated.', 'error-msg'); localStorage.removeItem(KEY_RID); lockedMatchId = null; activeMatrixContainer = null; gameRef.off(); modeShown = false; startPolling(); }
     });
   }
 
-  function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
+  function toggleWaiting(active, contextMsg = "Awaiting Uplink") {
     if (active) {
       if (waitAnimationInterval) return; const l = createLine('wait-msg'); let dots = 0;
       waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = contextMsg + ".".repeat(dots); }, 500);
@@ -756,38 +791,37 @@
   async function handleAuth(v) {
     if (!localStorage.getItem(KEY_USER)) {
       if (!v) return add('User ID:', '', true, handleAuth);
-      const candidate = v.trim().toUpperCase(); if (!candidate || await isUsernameOccupied(candidate)) { add(candidate ? 'USER ID ALREADY OCCUPIED.' : 'INVALID USER ID.', 'error-msg'); return add('User ID:', '', true, handleAuth); }
+      const candidate = v.trim().toUpperCase(); if (!candidate || await isUsernameOccupied(candidate)) { add('ID unavailable.', 'error-msg'); return add('User ID:', '', true, handleAuth); }
       localStorage.setItem(KEY_USER, candidate); return boot();
     }
-    if (!localStorage.getItem(KEY_PASS)) { if (!v) return add('Access Key:', '', true, handleAuth); localStorage.setItem(KEY_PASS, v); return boot(); }
+    if (!localStorage.getItem(KEY_PASS)) { if (!v) return add('Key:', '', true, handleAuth); localStorage.setItem(KEY_PASS, v); return boot(); }
   }
 
   async function boot() {
     const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
     if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
-    add('System Online.', 'success-msg'); add('KHET 2.0 Rules Edition - Full rule enforcement active', 'system-msg');
+    add('System Online.', 'success-msg');
     
     if (rid && rid.toString().includes('_')) { const snap = await dbGame.ref(`G/${rid}`).once('value'); if (snap.exists()) return lockOntoMatch(rid, snap.val()); localStorage.removeItem(KEY_RID); }
     if (rid && !rid.toString().includes('_')) {
         const rqdEntry = await verifyRequestIdByRQD(rid);
         if (rqdEntry) {
-            add('Recovering uplink...', 'system-msg');
-            if (rqdEntry.isPrivate && rqdEntry.inviteCode) { createLineWithCopy(`Re-asserted Private Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg'); startHostMatchWorkerPolling(rid, `Awaiting Private Join [CODE: ${rqdEntry.inviteCode}]`); } 
-            else { startHostMatchWorkerPolling(rid, "Awaiting Public Match Intercept"); } return;
+            if (rqdEntry.isPrivate && rqdEntry.inviteCode) { createLineWithCopy(`Code: ${rqdEntry.inviteCode} `, rqdEntry.inviteCode, 'success-msg'); startHostMatchWorkerPolling(rid, `Awaiting Private Join`); } 
+            else { startHostMatchWorkerPolling(rid, "Awaiting Match Intercept"); } return;
         }
         localStorage.removeItem(KEY_RID);
     }
     if (!await searchForGameDBMatch()) await startPolling();
   }
 
-  function startHostMatchWorkerPolling(requestId, contextMsg = "Awaiting Handshake") {
+  function startHostMatchWorkerPolling(requestId, contextMsg = "Awaiting Uplink") {
     stopHostGamePolling(); const passiveGamePoll = async () => { if (lockedMatchId) return; if (await searchForGameDBMatch()) { stopHostGamePolling(); toggleWaiting(false); } }; passiveGamePoll(); toggleWaiting(true, contextMsg);
     hostGamePollInterval = setInterval(async () => {
       if (lockedMatchId || localStorage.getItem(KEY_RID) !== requestId.toString()) { stopHostGamePolling(); toggleWaiting(false); return; }
       try {
         const snap = await dbMatch.ref(`RQ_D/${requestId}`).once('value'); const data = snap.val();
         if (data && data.matchName) { stopHostGamePolling(); toggleWaiting(false); lockOntoMatch(data.matchName, { status: 'SYNCING' }); } 
-        else if (!data) { stopHostGamePolling(); toggleWaiting(false); if (!await searchForGameDBMatch()) { add('Match request expired or consumed.', 'error-msg'); localStorage.removeItem(KEY_RID); modeShown = false; await startPolling(); } }
+        else if (!data) { stopHostGamePolling(); toggleWaiting(false); if (!await searchForGameDBMatch()) { add('Request expired.', 'error-msg'); localStorage.removeItem(KEY_RID); modeShown = false; await startPolling(); } }
       } catch (e) { console.error(e); }
     }, 3000);
   }
@@ -798,36 +832,36 @@
 
   async function handleMode(val) {
     if (privateState) return handlePrivateFlow(val);
-    if (val === 'A') { if (!currentHead) { add('JOIN FAILED: No active signals.', 'error-msg'); modeShown = false; return showMode(); } toggleWaiting(true, `Intercepting ${currentHead.id}`); return registerHost(currentHead.data.color === 0 ? 1 : 0, true); }
+    if (val === 'A') { if (!currentHead) { add('No signals found.', 'error-msg'); modeShown = false; return showMode(); } toggleWaiting(true, `Connecting...`); return registerHost(currentHead.data.color === 0 ? 1 : 0, true); }
     if (val === 'R') return registerHost(0, false); if (val === 'B') return registerHost(1, false);
-    if (val === 'P') { privateState = { step: 'TARGET', target: null }; return add('TARGET USER (OPTIONAL - ENTER TO SKIP):', '', true, handlePrivateFlow); }
+    if (val === 'P') { privateState = { step: 'TARGET', target: null }; return add('TARGET OPPONENT (OPTIONAL):', '', true, handlePrivateFlow); }
     if (val === 'J') { privateState = { step: 'CODE' }; return add('INVITE CODE:', '', true, handlePrivateFlow); }
-    add('Unknown Command.', 'error-msg'); modeShown = false; return showMode();
+    add('Command unrecognized.', 'error-msg'); modeShown = false; return showMode();
   }
 
   async function handlePrivateFlow(v) {
     if (!privateState) { modeShown = false; return showMode(); }
     if (privateState.step === 'TARGET') {
-      const raw = (v || '').trim(); if (!raw) { privateState.step = 'COLOR'; return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow); }
-      const target = raw.toUpperCase(); if (target === localStorage.getItem(KEY_USER)) { add('CANNOT TARGET SELF.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
-      if (!await isUsernameOccupied(target)) { add('TARGET USER NOT FOUND.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
-      privateState.target = target; privateState.step = 'COLOR'; return add('HOST COLOR : [R] RED | [B] BLUE', '', true, handlePrivateFlow);
+      const raw = (v || '').trim(); if (!raw) { privateState.step = 'COLOR'; return add('COLOR: [R] RED | [B] BLUE', '', true, handlePrivateFlow); }
+      const target = raw.toUpperCase(); if (target === localStorage.getItem(KEY_USER)) { add('Cannot target self.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
+      if (!await isUsernameOccupied(target)) { add('User not found.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
+      privateState.target = target; privateState.step = 'COLOR'; return add('COLOR: [R] RED | [B] BLUE', '', true, handlePrivateFlow);
     }
     if (privateState.step === 'COLOR') {
       const input = (v || '').trim().toUpperCase(); const colorChar = input.includes('R') ? 'R' : input.includes('B') ? 'B' : null; const color = colorChar === 'R' ? 0 : colorChar === 'B' ? 1 : null;
-      if (color === null) { add('Unknown Command.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
+      if (color === null) { add('Invalid choice.', 'error-msg'); privateState = null; modeShown = false; return showMode(); }
       const target = privateState.target; privateState = null; return createPrivateRequest(color, target);
     }
-    if (privateState.step === 'CODE') { const code = (v || '').trim().toUpperCase(); if (!code) { add('INVALID CODE.', 'error-msg'); privateState = null; modeShown = false; return showMode(); } privateState = null; return joinPrivate(code); }
+    if (privateState.step === 'CODE') { const code = (v || '').trim().toUpperCase(); if (!code) { add('Invalid entry.', 'error-msg'); privateState = null; modeShown = false; return showMode(); } privateState = null; return joinPrivate(code); }
     privateState = null; modeShown = false; return showMode();
   }
 
   async function joinPrivate(inviteCode) {
     try {
       const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), isPrivate: true, privateMode: 'JOIN', inviteCode }) }); const data = await res.json();
-      if (data.ok) { const idToStore = data.matchName || data.matchId || data.requestId || data.timestamp; if (idToStore) localStorage.setItem(KEY_RID, idToStore); stopPolling(); add('Private Link Success!', 'success-msg'); if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' }); else if (data.requestId) startHostMatchWorkerPolling(data.requestId, "Awaiting Private Handshake"); return; }
-      add(`Private Join Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
-    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
+      if (data.ok) { const idToStore = data.matchName || data.matchId || data.requestId || data.timestamp; if (idToStore) localStorage.setItem(KEY_RID, idToStore); stopPolling(); add('Uplink Complete!', 'success-msg'); if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' }); else if (data.requestId) startHostMatchWorkerPolling(data.requestId, "Awaiting Handshake"); return; }
+      add(`Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
+    } catch (e) { add(`Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
   }
 
   async function createPrivateRequest(color, privateTarget = null) {
@@ -835,21 +869,21 @@
       const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'PRIVATE_MATCH_REQUEST', body: { requester: localStorage.getItem(KEY_USER), secret: localStorage.getItem(KEY_PASS), color, target: privateTarget } }) }); const data = await res.json();
       if (data.ok) {
         if (data.requestId) localStorage.setItem(KEY_RID, data.requestId); stopPolling();
-        if (data.inviteCode) { try { await navigator.clipboard.writeText(data.inviteCode); } catch(cErr){} createLineWithCopy(`Private Request Generated! CODE: ${data.inviteCode} `, data.inviteCode, 'success-msg'); } else { add('Private Request Generated!', 'success-msg'); }
-        startHostMatchWorkerPolling(data.requestId, `Awaiting Private Join [CODE: ${data.inviteCode}]`); return;
+        if (data.inviteCode) { createLineWithCopy(`Generated Code: ${data.inviteCode} `, data.inviteCode, 'success-msg'); } else { add('Request set.', 'success-msg'); }
+        startHostMatchWorkerPolling(data.requestId, `Awaiting Private Handshake`); return;
       }
-      add(`Private Request Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
-    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
+      add(`Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
+    } catch (e) { add(`Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
   }
 
   async function registerHost(color, isIntercept = false, extra = {}) {
     try {
       const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), color, isIntercept, ...extra }) }); const data = await res.json();
       if (data.ok) {
-        const idToStore = data.matchName || data.requestId || data.timestamp; if (idToStore) localStorage.setItem(KEY_RID, idToStore); stopPolling(); add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
-        if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' }); else if (data.requestId || data.timestamp) startHostMatchWorkerPolling(data.requestId || data.timestamp, isIntercept ? "Awaiting Intercept Handshake" : "Awaiting Public Match Intercept"); return; }
+        const idToStore = data.matchName || data.requestId || data.timestamp; if (idToStore) localStorage.setItem(KEY_RID, idToStore); stopPolling(); add('Success!', 'success-msg');
+        if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' }); else if (data.requestId || data.timestamp) startHostMatchWorkerPolling(data.requestId || data.timestamp, "Awaiting Handshake"); return; }
       add(`Uplink Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
-    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
+    } catch (e) { add(`Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
   }
 
   window.addEventListener('DOMContentLoaded', boot);
