@@ -463,9 +463,9 @@
       await type(`[${intentPayload.action}] ${firedColor} laser fired. Tracing path...`, 'system-msg');
       if (trace.looped) { await type('Laser path loop detected; shot aborted safely.', 'error-msg'); } 
       else if (!trace.hit) { await type(`${firedColor} laser cleared the board.`, 'system-msg'); } 
-      else if (trace.hit.blocked) { await type(`Laser blocked by ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg'); } 
+      else if (trace.hit.blocked) { await type('Laser blocked by ' + trace.hit.piece.pieceType + ' at (' + trace.hit.piece.x + ', ' + trace.hit.piece.y + ').', 'success-msg'); } 
       else if (trace.hit.destroyed) {
-        await type(`Laser destroyed ${trace.hit.piece.pieceType} at (${trace.hit.piece.x}, ${trace.hit.piece.y}).`, 'success-msg');
+        await type('Laser destroyed ' + trace.hit.piece.pieceType + ' at (' + trace.hit.piece.x + ', ' + trace.hit.piece.y + ').', 'success-msg');
         if (String(trace.hit.piece.pieceType || '').toUpperCase() === 'KING') { await type('KING DOWN. Match over.', 'error-msg'); }
       }
     }
@@ -473,7 +473,7 @@
     try {
         const response = await fetch(GAME_ACTOR_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 intent: intentPayload, 
                 matchId: lockedMatchId,
@@ -576,6 +576,10 @@
       let currentRot = Number(targetPiece.rotation || 0);
       let newRot = dir === 'R' ? (currentRot + 1) % 4 : (currentRot + 3) % 4;
       
+      if (targetPiece.pieceType === 'SWITCH') {
+        newRot = (currentRot + 1) % 2;
+      }
+
       const intentPayload = {
           action: 'Rotate',
           piece: { type: targetPiece.pieceType, color: targetPiece.color, x: targetPiece.x, y: targetPiece.y },
@@ -587,7 +591,7 @@
         if (targetPiece.color === 'RED' && (newRot === 3 || newRot === 0)) { add("Action rejected: Red Sphinx can only face Right (1) or Down (2).", "error-msg"); return; }
         targetPiece.rotation = newRot; add(`Sphinx rotated ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg");
       } 
-      else if (targetPiece.pieceType === 'SWITCH') { targetPiece.rotation = (currentRot + 1) % 2; add(`Scarab toggled.`, "success-msg"); } 
+      else if (targetPiece.pieceType === 'SWITCH') { targetPiece.rotation = newRot; add(`Scarab toggled.`, "success-msg"); } 
       else { targetPiece.rotation = newRot; add(`Rotation applied at (${selectedPiece.x}, ${selectedPiece.y}) -> ${dir === 'R' ? 'CW' : 'CCW'}`, "success-msg"); }
       hasRotated = true; 
       fireLaserAndAdvanceTurn(getStateTurn(latestState), intentPayload);
