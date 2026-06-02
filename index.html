@@ -630,25 +630,81 @@
     lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); toggleWaiting(false); stopHostGamePolling(); modeShown = false;
     add(`LINK ESTABLISHED: ${id}`, 'success-msg'); add('Controls: Arrow Keys=Move Cursor | Space/Enter=Select/Move | L/R=Rotate Piece | F=Fire & Skip Turn', 'system-msg');
     
+    // Track the last processed move number to identify new opponent actions
+    let lastSeenMoveNumber = -1;
+
     const gameRef = dbGame.ref(`G/${id}`);
     gameRef.on('value', snap => {
         const state = snap.val();
         if (state) { 
             const myName = localStorage.getItem(KEY_USER);
-            // FIXED: Identify color based on redPlayer/bluePlayer instead of state.players
             if (state.redPlayer === myName) myColor = 'RED';
             else if (state.bluePlayer === myName) myColor = 'BLUE';
 
             const currentTurn = getStateTurn(state);
             const turnLabel = (currentTurn === myColor) ? "You" : "Opponent";
-            add(`[SYNC] Turn: ${turnLabel} (${currentTurn})`, 'system-msg'); 
+            
+            const boardRoot = resolveMatchRecord(state).board || {};
+            const currentMoveNumber = boardRoot.moveNumber ?? 0;
 
-            if (activeMatrixContainer) {
-                const cursors = activeMatrixContainer.querySelectorAll('.cursor, .selected, .target-preview');
-                cursors.forEach(c => c.classList.remove('cursor', 'selected', 'target-preview'));
-                activeMatrixContainer = null;
+            // Trigger reconstruction if a new move completed and it is now your turn
+            if (currentMoveNumber !== lastSeenMoveNumber && currentTurn === myColor && lastSeenMoveNumber !== -1) {
+                lastSeenMoveNumber = currentMoveNumber;
+                
+                add(`[SYNC] Turn: ${turnLabel} (${currentTurn})`, 'system-msg');
+                add(`[OPPONENT ACTION] Reconstructing board state and tracing laser path...`, 'system-msg');
+
+                // 1. Deep clone the incoming state to safely modify pieces
+                const mockState = JSON.parse(JSON.stringify(state));
+                const mockBoard = resolveMatchRecord(mockState).board || {};
+                if (mockBoard.pieces && !Array.isArray(mockBoard.pieces)) {
+                    mockBoard.pieces = Object.values(mockBoard.pieces);
+                } else if (!mockBoard.pieces) {
+                    mockBoard.pieces = [];
+                }
+
+                // 2. Put the destroyed piece back onto the mock board if it exists
+                const destMetadata = state.metadata?.lastdestroyed;
+                if (destMetadata && destMetadata.piece) {
+                    const dp = destMetadata.piece;
+                    if (!mockBoard.pieces.some(p => p.x === dp.x && p.y === dp.y)) {
+                        mockBoard.pieces.push(dp);
+                    }
+                }
+
+                // 3. Trace and print the opponent's laser path
+                const opponentColor = myColor === 'RED' ? 'BLUE' : 'RED';
+                const laserTrace = traceLaserPath(mockState, opponentColor);
+
+                if (activeMatrixContainer) {
+                    const cursors = activeMatrixContainer.querySelectorAll('.cursor, .selected, .target-preview');
+                    cursors.forEach(c => c.classList.remove('cursor', 'selected', 'target-preview'));
+                    activeMatrixContainer = null;
+                }
+                printTerminalMatrix(mockState, laserTrace);
+
+                // 4. Wait 1200ms so path is visible, then clear and present the playable frame
+                setTimeout(() => {
+                    if (activeMatrixContainer) {
+                        const cursors = activeMatrixContainer.querySelectorAll('.cursor, .selected, .target-preview');
+                        cursors.forEach(c => c.classList.remove('cursor', 'selected', 'target-preview'));
+                        activeMatrixContainer = null;
+                    }
+                    printTerminalMatrix(state);
+                }, 1200);
+
+            } else {
+                // Fallback standard processing loop
+                lastSeenMoveNumber = currentMoveNumber;
+                add(`[SYNC] Turn: ${turnLabel} (${currentTurn})`, 'system-msg'); 
+
+                if (activeMatrixContainer) {
+                    const cursors = activeMatrixContainer.querySelectorAll('.cursor, .selected, .target-preview');
+                    cursors.forEach(c => c.classList.remove('cursor', 'selected', 'target-preview'));
+                    activeMatrixContainer = null;
+                }
+                printTerminalMatrix(state); 
             }
-            printTerminalMatrix(state); 
         } 
         else { add('MATCH TERMINATED.', 'error-msg'); localStorage.removeItem(KEY_RID); lockedMatchId = null; activeMatrixContainer = null; gameRef.off(); modeShown = false; startPolling(); }
     });
