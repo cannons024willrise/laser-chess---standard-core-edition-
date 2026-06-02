@@ -27,7 +27,7 @@
         
         .matrix-container { display: flex; flex-direction: column; margin: 6px 0 24px 0; font-family: 'Unifont', monospace; user-select: none; border-left: 2px solid var(--line); padding-left: 12px; }
         .matrix-row { display: flex; height: 36px; align-items: center; }
-        .matrix-cell { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; font-weight: bold; }
+        .matrix-cell { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; font-weight: bold; touch-action: manipulation; }
         .matrix-lbl { color: var(--muted); font-weight: normal; }
         .p-blue { color: var(--blue); }
         .p-red { color: var(--red); }
@@ -41,6 +41,11 @@
         .matrix-cell.cursor { background-color: rgba(255, 255, 255, 0.15); outline: 1px solid var(--bright); }
         .matrix-cell.selected { outline: 1px dashed var(--waiting) !important; background-color: rgba(0, 255, 0, 0.05); }
         .matrix-cell.target-preview { outline: 1px dashed var(--blue) !important; background-color: rgba(0, 212, 255, 0.1); }
+
+        /* Mobile Specific UI Controls */
+        .mobile-controls { display: flex; gap: 10px; margin-top: 20px; max-width: 440px; touch-action: manipulation; }
+        .mobile-btn { flex: 1; background: var(--bg1); border: 1px solid var(--line); color: var(--bright); padding: 12px 8px; font-family: 'Unifont', monospace; font-size: 16px; cursor: pointer; user-select: none; text-align: center; font-weight: bold; }
+        .mobile-btn:active { background: var(--line); color: var(--waiting); }
     </style>
 </head>
 <body>
@@ -305,6 +310,7 @@
       for (let x = 0; x < 10; x++) {
         let cellEl = document.createElement('span');
         cellEl.className = 'matrix-cell';
+        cellEl.style.cursor = 'pointer';
         
         const tint = getReservedSquareTint(x, y); 
         if (tint) cellEl.classList.add(tint);
@@ -314,6 +320,14 @@
             if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) { cellEl.classList.add('selected'); } 
             else if (selectedPiece && x === cursorX && y === cursorY) { cellEl.classList.add('target-preview'); }
         }
+
+        // Mobile Grid Event Listener Mapping
+        cellEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            cursorX = x;
+            cursorY = y;
+            handleGridAction();
+        });
 
         const pathStep = laserPathMap.get(`${x},${y}`);
         const p = grid[y][x];
@@ -387,6 +401,28 @@
         </div>
     `;
     container.appendChild(legend);
+
+    // Dynamic Mobile Controller Panel Bar Injection
+    const mobileControls = document.createElement('div');
+    mobileControls.className = 'mobile-controls';
+    mobileControls.innerHTML = `
+        <button class="mobile-btn" id="m-btn-l">ROTATE CCW [L]</button>
+        <button class="mobile-btn" id="m-btn-r">ROTATE CW [R]</button>
+        <button class="mobile-btn" id="m-btn-f" style="border-color: var(--waiting);">FIRE [F]</button>
+    `;
+    container.appendChild(mobileControls);
+
+    mobileControls.querySelector('#m-btn-l').addEventListener('click', (e) => { e.preventDefault(); handleRotation('L'); });
+    mobileControls.querySelector('#m-btn-r').addEventListener('click', (e) => { e.preventDefault(); handleRotation('R'); });
+    mobileControls.querySelector('#m-btn-f').addEventListener('click', (e) => {
+        e.preventDefault();
+        if (getStateTurn(latestState) !== myColor) {
+            add("Action rejected: Not your turn.", "error-msg");
+            return;
+        }
+        selectedPiece = null; 
+        fireLaserAndAdvanceTurn(getStateTurn(latestState), { action: 'Manual Fire', piece: null, changes: null });
+    });
 
     if (activeMatrixContainer && activeMatrixContainer.parentNode) { 
         activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); 
@@ -811,8 +847,7 @@
       const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), color, isIntercept, ...extra }) }); const data = await res.json();
       if (data.ok) {
         const idToStore = data.matchName || data.requestId || data.timestamp; if (idToStore) localStorage.setItem(KEY_RID, idToStore); stopPolling(); add(`${extra.isPrivate ? 'Private' : (isIntercept ? 'Intercept' : 'Uplink')} Success!`, 'success-msg');
-        if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' }); else if (data.requestId || data.timestamp) startHostMatchWorkerPolling(data.requestId || data.timestamp, isIntercept ? "Awaiting Intercept Handshake" : "Awaiting Public Match Intercept"); return;
-      }
+        if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' }); else if (data.requestId || data.timestamp) startHostMatchWorkerPolling(data.requestId || data.timestamp, isIntercept ? "Awaiting Intercept Handshake" : "Awaiting Public Match Intercept"); return; }
       add(`Uplink Denied: ${data.error}`, 'error-msg'); modeShown = false; return showMode();
     } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); modeShown = false; return showMode(); }
   }
