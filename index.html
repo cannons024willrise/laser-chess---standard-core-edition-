@@ -176,7 +176,6 @@
 
         if (p.pieceType === 'LASER') {
             const { x, y } = p;
-            // 0: Up (y=7), 1: Right (x=9), 2: Down (y=0), 3: Left (x=0)
             if ((nextRotation === 0 && y >= 7) ||
                 (nextRotation === 1 && x >= 9) ||
                 (nextRotation === 2 && y <= 0) ||
@@ -227,6 +226,11 @@
             selectedOrigin = null;
         }
         else if (isKingMove(selectedOrigin.x, selectedOrigin.y, cursorX, cursorY)) {
+            if (movingPiece.pieceType === 'LASER') {
+                add(`Invalid Move: Laser cannons cannot be moved.`, 'error-msg');
+                selectedOrigin = null;
+                return;
+            }
             add(`MOVE: ${selectedOrigin.x},${selectedOrigin.y} -> ${cursorX},${cursorY}`, 'success-msg');
             selectedOrigin = null;
         } else {
