@@ -210,70 +210,79 @@
           isAnimatingLocalTurn = false;
       }
 
-      function printTerminalMatrix(state, laserPath = [], replace = true) {
+      function printTerminalMatrix(state, laserPath = [], forceRebuild = false) {
         latestState = state;
         const pieces = getBoardPieces(state);
         const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
         for (const piece of pieces) { if (piece && Number.isFinite(piece.x)) grid[piece.y][piece.x] = piece; }
         
-        const container = document.createElement('div'); container.className = 'matrix-container';
-
-        const myName = (localStorage.getItem(KEY_USER) || '').toUpperCase();
-        let myColor = localStorage.getItem('ls_my_color');
-        if (!myColor && state) {
-          if (state.red && String(state.red).toUpperCase() === myName) myColor = 'RED';
-          else if (state.blue && String(state.blue).toUpperCase() === myName) myColor = 'BLUE';
-          else if (state.redPlayer && String(state.redPlayer).toUpperCase() === myName) myColor = 'RED';
-          else if (state.bluePlayer && String(state.bluePlayer).toUpperCase() === myName) myColor = 'BLUE';
-          else if (lockedMatchId && lockedMatchId.toUpperCase().startsWith(myName)) myColor = 'RED';
-          else myColor = 'BLUE';
-          localStorage.setItem('ls_my_color', myColor);
-        }
-        const currentTurn = state.board?.turn || state.turn || 'RED';
-        const opponentColor = myColor === 'RED' ? 'BLUE' : 'RED';
-
-        const statusBar = document.createElement('div');
-        statusBar.className = 'history-line';
-        statusBar.style.marginBottom = '12px';
-        statusBar.style.fontSize = '20px';
-        statusBar.style.borderBottom = '1px dashed var(--line)';
-        statusBar.style.paddingBottom = '6px';
-        statusBar.innerHTML = `[<span class="highlight">YOU</span>: <span class="p-${myColor?.toLowerCase()}">${myColor || 'UNKNOWN'}</span>] &nbsp;&nbsp; [<span class="highlight">OPPONENT</span>: <span class="p-${opponentColor.toLowerCase()}">${opponentColor}</span>] &nbsp;&nbsp; [<span class="highlight">CURRENT TURN</span>: <span class="p-${currentTurn.toLowerCase()}">${currentTurn}</span>]`;
-        container.appendChild(statusBar);
-
-        for (let y = 7; y >= 0; y--) {
-          let rowEl = document.createElement('div'); rowEl.className = 'matrix-row';
-          for (let x = 0; x < 10; x++) {
-            let cellEl = document.createElement('span'); cellEl.className = 'matrix-cell';
-            
-            const resClass = getReservedClass(x, y);
-            if (resClass) cellEl.classList.add(resClass);
-            if (selectedOrigin && x === selectedOrigin.x && y === selectedOrigin.y) cellEl.classList.add('selected-piece');
-
-            cellEl.addEventListener('click', (e) => { e.preventDefault(); if (isAnimatingLocalTurn) return; cursorX = x; cursorY = y; updateCursorUI(); handleGridAction(); });
-            const p = grid[y][x]; 
-            if (p) { 
-              cellEl.textContent = getPieceChar(p); 
-              cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue'); 
-            } else {
-              const pathSegment = laserPath.find(seg => seg.x === x && seg.y === y);
-              if (pathSegment) {
-                const syms = ['^', '>', 'v', '<'];
-                cellEl.textContent = syms[pathSegment.dir];
-                cellEl.style.color = 'var(--laser)';
-              } else {
-                cellEl.textContent = '·'; 
-              }
+        let container = activeMatrixContainer;
+        if (!container || forceRebuild) {
+            container = document.createElement('div'); container.className = 'matrix-container';
+            const myName = (localStorage.getItem(KEY_USER) || '').toUpperCase();
+            let myColor = localStorage.getItem('ls_my_color');
+            if (!myColor && state) {
+              if (state.red && String(state.red).toUpperCase() === myName) myColor = 'RED';
+              else if (state.blue && String(state.blue).toUpperCase() === myName) myColor = 'BLUE';
+              else if (state.redPlayer && String(state.redPlayer).toUpperCase() === myName) myColor = 'RED';
+              else if (state.bluePlayer && String(state.bluePlayer).toUpperCase() === myName) myColor = 'BLUE';
+              else if (lockedMatchId && lockedMatchId.toUpperCase().startsWith(myName)) myColor = 'RED';
+              else myColor = 'BLUE';
+              localStorage.setItem('ls_my_color', myColor);
             }
-            rowEl.appendChild(cellEl);
-          }
-          container.appendChild(rowEl);
+            const currentTurn = state.board?.turn || state.turn || 'RED';
+            const opponentColor = myColor === 'RED' ? 'BLUE' : 'RED';
+            const statusBar = document.createElement('div');
+            statusBar.className = 'history-line';
+            statusBar.style.marginBottom = '12px';
+            statusBar.style.fontSize = '20px';
+            statusBar.style.borderBottom = '1px dashed var(--line)';
+            statusBar.style.paddingBottom = '6px';
+            statusBar.innerHTML = `[<span class="highlight">YOU</span>: <span class="p-${myColor?.toLowerCase()}">${myColor || 'UNKNOWN'}</span>] &nbsp;&nbsp; [<span class="highlight">OPPONENT</span>: <span class="p-${opponentColor.toLowerCase()}">${opponentColor}</span>] &nbsp;&nbsp; [<span class="highlight">CURRENT TURN</span>: <span class="p-${currentTurn.toLowerCase()}">${currentTurn}</span>]`;
+            container.appendChild(statusBar);
+            for (let y = 7; y >= 0; y--) {
+                const rowEl = document.createElement('div'); rowEl.className = 'matrix-row';
+                for (let x = 0; x < 10; x++) {
+                    const cellEl = document.createElement('span'); cellEl.className = 'matrix-cell';
+                    cellEl.dataset.x = x; cellEl.dataset.y = y;
+                    const resClass = getReservedClass(x, y);
+                    if (resClass) cellEl.classList.add(resClass);
+                    cellEl.addEventListener('click', (e) => { e.preventDefault(); if (isAnimatingLocalTurn) return; cursorX = x; cursorY = y; updateCursorUI(); handleGridAction(); });
+                    rowEl.appendChild(cellEl);
+                }
+                container.appendChild(rowEl);
+            }
+            if (activeMatrixContainer && activeMatrixContainer.parentNode) activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer);
+            else if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); else logContainer.appendChild(container);
+            activeMatrixContainer = container;
         }
-        
-        if (replace && activeMatrixContainer && activeMatrixContainer.parentNode) activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); 
-        else if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); else logContainer.appendChild(container); 
-        
-        activeMatrixContainer = container;
+
+        const rows = activeMatrixContainer.querySelectorAll('.matrix-row');
+        for (let y = 0; y < 8; y++) {
+            const rowEl = rows[7 - y];
+            const cells = rowEl.querySelectorAll('.matrix-cell');
+            for (let x = 0; x < 10; x++) {
+                const cellEl = cells[x];
+                cellEl.className = 'matrix-cell';
+                const resClass = getReservedClass(x, y);
+                if (resClass) cellEl.classList.add(resClass);
+                if (selectedOrigin && x === selectedOrigin.x && y === selectedOrigin.y) cellEl.classList.add('selected-piece');
+                const p = grid[y][x]; 
+                if (p) { 
+                  cellEl.textContent = getPieceChar(p); 
+                  cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue'); 
+                } else {
+                  const pathSegment = laserPath.find(seg => seg.x === x && seg.y === y);
+                  if (pathSegment) {
+                    const syms = ['^', '>', 'v', '<'];
+                    cellEl.textContent = syms[pathSegment.dir];
+                    cellEl.style.color = 'var(--laser)';
+                  } else {
+                    cellEl.textContent = '·'; 
+                  }
+                }
+            }
+        }
         updateCursorUI();
       }
 
@@ -349,7 +358,7 @@
                     dbPiece.rotation = intent.changes.new.rotation; add(`ROTATION METADATA: ${dbPiece.pieceType} modified to position ${dbPiece.rotation}`, 'success-msg');
                 }
                 if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
-                activeMatrixContainer = null; printTerminalMatrix(stateCopy); await sleep(500);
+                printTerminalMatrix(stateCopy); await sleep(500);
             }
             const shooter = pieces.find(p => p && p.pieceType === 'LASER' && p.color === myColor);
             if (shooter) {
@@ -362,7 +371,7 @@
                     if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
                     add(`Laser beam eliminated ${victim.pieceType} at coordinate (${victim.x}, ${victim.y}).`, "error-msg");
                     if (victim.pieceType === 'KING') { stateCopy.status = `${myColor}_WIN`; add(`CRITICAL ALERT: KING DESTROYED. ${myColor} achieves victory.`, "success-msg"); }
-                    activeMatrixContainer = null; printTerminalMatrix(stateCopy); await sleep(500);
+                    printTerminalMatrix(stateCopy); await sleep(500);
                 }
             }
             if (stateCopy.board) { stateCopy.board.turn = myColor === 'RED' ? 'BLUE' : 'RED'; stateCopy.board.moveNumber = (stateCopy.board.moveNumber || 0) + 1; }
@@ -372,7 +381,7 @@
             const response = await fetch(MOVE_CHECKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ matchId: matchId, username: myName, password: myPass, intent: intent }) });
             const result = await response.json();
             if (!response.ok || !result.ok) throw new Error(result.error || "Unknown validation failure.");
-        } catch (err) { add(`Engine Mutation Failure: ${err.message}`, 'error-msg'); latestState = initialStateBackup; } finally { activeMatrixContainer = null; isAnimatingLocalTurn = false; printTerminalMatrix(latestState); }
+        } catch (err) { add(`Engine Mutation Failure: ${err.message}`, 'error-msg'); latestState = initialStateBackup; } finally { isAnimatingLocalTurn = false; printTerminalMatrix(latestState); }
         selectedOrigin = null;
       }
 
