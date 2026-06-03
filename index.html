@@ -169,6 +169,7 @@
     } else {
         const pieces = getBoardPieces(latestState);
         const movingPiece = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
+        if (movingPiece && movingPiece.pieceType === 'LASER') { add(`Invalid Move: Lasers cannot move.`, 'error-msg'); selectedOrigin = null; printTerminalMatrix(latestState); return; }
         const targetPiece = pieces.find(p => p.x === cursorX && p.y === cursorY);
 
         if (selectedOrigin.x === cursorX && selectedOrigin.y === cursorY) {
