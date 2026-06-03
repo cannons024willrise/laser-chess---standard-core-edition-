@@ -59,7 +59,7 @@
       let processing = false, currentPromptWrap = null, lockedMatchId = null;
       let rqPollInterval = null, waitAnimationInterval = null, hostGamePollInterval = null;
       let currentHead = null, modeShown = false, isPollingStarting = false; 
-      let cursorX = 0, cursorY = 0, latestState = null;
+      let cursorX = 0, cursorY = 0, latestState = null, activeMatrixContainer = null;
       let isHostRequestPending = false, requestStatus = "IDLE";
       let isAnimatingLocalTurn = false;
       let lastAnimatedTurn = null;
@@ -189,15 +189,15 @@
           if (shooter) {
               const startDir = normalizeRotation(shooter.rotation);
               const trace = resolveLaserVector(shooter.x + DIRS[startDir].dx, shooter.y + DIRS[startDir].dy, startDir, animPieces);
-              printTerminalMatrix(animState, []);
+              printTerminalMatrix(animState, [], false);
               await sleep(500);
-              printTerminalMatrix(animState, trace.path);
+              printTerminalMatrix(animState, trace.path, false);
               await sleep(1500);
           }
           isAnimatingLocalTurn = false;
       }
 
-      function printTerminalMatrix(state, laserPath = []) {
+      function printTerminalMatrix(state, laserPath = [], replace = true) {
         latestState = state;
         const pieces = getBoardPieces(state);
         const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
@@ -258,7 +258,10 @@
           container.appendChild(rowEl);
         }
         
-        if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); else logContainer.appendChild(container); 
+        if (replace && activeMatrixContainer && activeMatrixContainer.parentNode) activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); 
+        else if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); else logContainer.appendChild(container); 
+        
+        if (replace) activeMatrixContainer = container; 
       }
 
       window.addEventListener('keydown', (e) => {
@@ -333,7 +336,7 @@
                     dbPiece.rotation = intent.changes.new.rotation; add(`ROTATION METADATA: ${dbPiece.pieceType} modified to position ${dbPiece.rotation}`, 'success-msg');
                 }
                 if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
-                printTerminalMatrix(stateCopy); await sleep(500);
+                activeMatrixContainer = null; printTerminalMatrix(stateCopy); await sleep(500);
             }
             const shooter = pieces.find(p => p && p.pieceType === 'LASER' && p.color === myColor);
             if (shooter) {
@@ -346,7 +349,7 @@
                     if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
                     add(`Laser beam eliminated ${victim.pieceType} at coordinate (${victim.x}, ${victim.y}).`, "error-msg");
                     if (victim.pieceType === 'KING') { stateCopy.status = `${myColor}_WIN`; add(`CRITICAL ALERT: KING DESTROYED. ${myColor} achieves victory.`, "success-msg"); }
-                    printTerminalMatrix(stateCopy); await sleep(500);
+                    activeMatrixContainer = null; printTerminalMatrix(stateCopy); await sleep(500);
                 }
             }
             if (stateCopy.board) { stateCopy.board.turn = myColor === 'RED' ? 'BLUE' : 'RED'; stateCopy.board.moveNumber = (stateCopy.board.moveNumber || 0) + 1; }
@@ -356,7 +359,7 @@
             const response = await fetch(MOVE_CHECKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ matchId: matchId, username: myName, password: myPass, intent: intent }) });
             const result = await response.json();
             if (!response.ok || !result.ok) throw new Error(result.error || "Unknown validation failure.");
-        } catch (err) { add(`Engine Mutation Failure: ${err.message}`, 'error-msg'); latestState = initialStateBackup; } finally { isAnimatingLocalTurn = false; printTerminalMatrix(latestState); }
+        } catch (err) { add(`Engine Mutation Failure: ${err.message}`, 'error-msg'); latestState = initialStateBackup; } finally { activeMatrixContainer = null; isAnimatingLocalTurn = false; printTerminalMatrix(latestState); }
         selectedOrigin = null;
       }
 
@@ -380,7 +383,7 @@
         }
       }
 
-      function terminateMatch(msg) { add(msg, 'error-msg'); localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); lockedMatchId = null; modeShown = false; setStatus("IDLE"); startPolling(); }
+      function terminateMatch(msg) { add(msg, 'error-msg'); localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); lockedMatchId = null; activeMatrixContainer = null; modeShown = false; setStatus("IDLE"); startPolling(); }
 
       function lockOntoMatch(id, entry) {
         lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); stopHostGamePolling(); toggleWaiting(false); modeShown = false;
@@ -400,7 +403,7 @@
               lastAnimatedTurn = ld.turn;
               await playLaserAnimation(state, getBoardPieces(state), ld.shooterColor, ld.piece);
               add(`Visual Summary: Laser blast vaporized your ${ld.piece.pieceType} at (${ld.piece.x}, ${ld.piece.y}).`, "error-msg");
-              printTerminalMatrix(state);
+              printTerminalMatrix(state, [], false);
           } else {
               printTerminalMatrix(state); 
           }
