@@ -37,14 +37,6 @@
         
         .reserved-blue { background-color: var(--blue-tint) !important; }
         .reserved-red { background-color: var(--red-tint) !important; }
-        
-        .matrix-cell.cursor { background-color: rgba(255, 255, 255, 0.15); outline: 1px solid var(--bright); }
-        .matrix-cell.selected { outline: 1px dashed var(--waiting) !important; background-color: rgba(0, 255, 0, 0.05); }
-        .matrix-cell.target-preview { outline: 1px dashed var(--blue) !important; background-color: rgba(0, 212, 255, 0.1); }
-
-        .mobile-controls { display: flex; gap: 10px; margin-top: 20px; max-width: 440px; touch-action: manipulation; }
-        .mobile-btn { flex: 1; background: var(--bg1); border: 1px solid var(--line); color: var(--bright); padding: 12px 8px; font-family: 'Unifont', monospace; font-size: 16px; cursor: pointer; user-select: none; text-align: center; font-weight: bold; }
-        .mobile-btn:active { background: var(--line); color: var(--waiting); }
     </style>
 </head>
 <body>
@@ -60,7 +52,6 @@
   const matchConfig = { apiKey: "AIzaSyBpOnnJInXkDPZ8hrKj-rpjw3qeTylxtw4", authDomain: "lasercheowefficiencymanager.firebaseapp.com", databaseURL: "https://lasercheowefficiencymanager-default-rtdb.firebaseio.com", projectId: "lasercheowefficiencymanager" };
   const gameConfig = { apiKey: "AIzaSyDv7keBI4B-TMp5hcVAYHeMfgWJdLHLJbE", authDomain: "laser-chess-low-efficiency.firebaseapp.com", databaseURL: "https://laser-chess-low-efficiency-default-rtdb.firebaseio.com", projectId: "laser-chess-low-efficiency" };
   const WORKER_URL = 'https://laserchessmatchmanager.later5143.workers.dev/';
-  const GAME_ACTOR_URL = 'https://movecheckerlaserchesslowefficiencystandardversionthinkfun.later5143.workers.dev/';
   
   const matchApp = firebase.initializeApp(matchConfig, "matchApp");
   const gameApp = firebase.initializeApp(gameConfig, "gameApp");
@@ -71,37 +62,27 @@
   const logContainer = document.getElementById('terminal-log');
   const queue = [];
   let processing = false, currentPromptWrap = null, lockedMatchId = null;
-  let rqPollInterval = null, recoveryPollInterval = null, waitAnimationInterval = null, lastQueueState = 'INIT';
-  let currentHead = null, initialQueueScanDone = false, modeShown = false, privateState = null, isPollingStarting = false, hostGamePollInterval = null; 
-  let cursorX = 0, cursorY = 0, selectedPiece = null, latestState = null, activeMatrixContainer = null, hasMoved = false, hasRotated = false;
-  let myColor = null;
+  let rqPollInterval = null, waitAnimationInterval = null, hostGamePollInterval = null;
+  let currentHead = null, modeShown = false, isPollingStarting = false; 
+  let cursorX = 0, cursorY = 0, latestState = null, activeMatrixContainer = null;
+  let isHostRequestPending = false; // Guard for duplicate requests
 
   const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-  const BLUE_RESERVED = [{x: 9, y: 0}, {x: 9, y: 1}, {x: 9, y: 2}, {x: 9, y: 3}, {x: 9, y: 4}, {x: 9, y: 5}, {x: 9, y: 6}, {x: 9, y: 7}, {x: 1, y: 0}, {x: 1, y: 7}];
-  const RED_RESERVED = [{x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7}, {x: 8, y: 0}, {x: 8, y: 7}];
-
-  const ROTATION_TABLE = { 
-    KING: { 0: '◈', 1: '◈', 2: '◈', 3: '◈' }, 
-    LASER: { 0: '⫝', 1: '⟜', 2: 'Ͳ', 3: 'Ð' }, 
-    SWITCH: { 0: '⟋', 1: '⟍', 2: '⟋', 3: '⟍' }, 
-    DEFENDER: { 0: '⬓', 1: '◧', 2: '⬒', 3: '◨' }, 
-    DEFLECTOR: { 0: '◤', 1: '◥', 2: '◢', 3: '◣' } 
-  };
+  const ROTATION_TABLE = { KING: { 0: '◈' }, LASER: { 0: '⫝' }, SWITCH: { 0: '⟋' }, DEFENDER: { 0: '⬓' }, DEFLECTOR: { 0: '◤' } };
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-
   function createLine(cls='') { const d = document.createElement('div'); d.className = `history-line ${cls}`; if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap); else logContainer.appendChild(d); return d; }
   function add(text, cls='', req=false, handler=null) { if (!req && processing) { type(text, cls, true); return; } queue.push({text,cls,req,handler}); if (!processing) run(); }
   async function run() { processing = true; while(queue.length) { const i = queue.shift(); if (i.req) await prompt(i.text, i.cls, i.handler || handleAuth); else await type(i.text, i.cls); } processing = false; }
   async function type(text, cls, immediate=false) { const l = createLine(cls); if (immediate) { l.textContent = text; return l; } for (const c of text) { l.textContent += c; await sleep(10); } return l; }
+  
   async function prompt(text, cls, handler) {
     const wrap = document.createElement('div'); wrap.className = 'input-wrapper history-line';
     const p = document.createElement('span'); p.className = 'prompt'; wrap.appendChild(p);
-    const input = document.createElement('textarea'); input.className = 'user-input-line'; input.rows = 1; input.spellcheck = false; input.autocapitalize = 'off'; input.autocomplete = 'off'; input.autocorrect = 'off'; wrap.appendChild(input);
+    const input = document.createElement('textarea'); input.className = 'user-input-line'; input.rows = 1; input.spellcheck = false; wrap.appendChild(input);
     logContainer.appendChild(wrap); currentPromptWrap = wrap;
     for (const c of text) { p.textContent += c; await sleep(8); }
-    const resize = () => { input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px'; };
-    input.addEventListener('input', resize); setTimeout(() => { input.focus(); resize(); }, 0);
+    input.focus();
     return new Promise(resolve => {
       input.addEventListener('keydown', e => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const v = input.value.trim().toUpperCase(); input.disabled = true; const finalLine = createLine('highlight'); finalLine.textContent = p.textContent + v; wrap.remove(); currentPromptWrap = null; handler(v); resolve(); }
@@ -109,384 +90,53 @@
     });
   }
 
-  function getPieceChar(piece) { const type = String(piece.pieceType || '').toUpperCase(); const safeRot = ((Number(piece.rotation || 0) % 4) + 4) % 4; return ROTATION_TABLE[type] ? ROTATION_TABLE[type][safeRot] : '?'; }
-  function isReservedSquare(x, y, color) { return color === 'BLUE' ? RED_RESERVED.some(s => s.x === x && s.y === y) : BLUE_RESERVED.some(s => s.x === x && s.y === y); }
-  function getReservedSquareTint(x, y) { if (BLUE_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-blue'; if (RED_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-red'; return null; }
+  function getPieceChar(piece) { return ROTATION_TABLE[piece.pieceType] ? ROTATION_TABLE[piece.pieceType][0] : '?'; }
+  function getBoardPieces(state) { const src = state.board || state; return Array.isArray(src.pieces) ? src.pieces : (src.pieces ? Object.values(src.pieces) : []); }
   
-  const DIRS = [ { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 } ]; 
-  function normalizeRotation(rot) { return ((Number(rot) || 0) % 4 + 4) % 4; }
-
-  const INTERACTION_MAP = {
-    DEFLECTOR: {
-      0: { 0: { action: 'reflect', nextDir: 1 }, 3: { action: 'reflect', nextDir: 2 }, 1: { action: 'destroy' }, 2: { action: 'destroy' } },
-      1: { 0: { action: 'reflect', nextDir: 3 }, 1: { action: 'reflect', nextDir: 2 }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
-      2: { 2: { action: 'reflect', nextDir: 3 }, 1: { action: 'reflect', nextDir: 0 }, 0: { action: 'destroy' }, 3: { action: 'destroy' } },
-      3: { 2: { action: 'reflect', nextDir: 1 }, 3: { action: 'reflect', nextDir: 0 }, 0: { action: 'destroy' }, 1: { action: 'destroy' } }
-    },
-    SWITCH: {
-      0: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } },
-      1: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } },
-      2: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } },
-      3: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } }
-    },
-    DEFENDER: {
-      0: { 2: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 3: { action: 'destroy' } },
-      1: { 3: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } },
-      2: { 0: { action: 'block' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
-      3: { 1: { action: 'block' }, 0: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }
-    },
-    KING: {
-      0: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
-      1: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
-      2: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
-      3: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }
-    },
-    LASER: {
-      0: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
-      1: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
-      2: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
-      3: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } }
-    }
-  };
-
-  function resolveMatchRecord(state) {
-    if (!state || typeof state !== 'object') return { root: null, match: null, board: null };
-    if (state.G && typeof state.G === 'object' && !Array.isArray(state.G)) {
-      const matchId = lockedMatchId && state.G[lockedMatchId] ? lockedMatchId : Object.keys(state.G)[0];
-      const match = matchId ? state.G[matchId] : null;
-      return { root: state, match, board: match?.board || null };
-    }
-    return { root: state, match: state, board: state.board || state };
-  }
-
-  function getBoardRoot(state) { return resolveMatchRecord(state).board || {}; }
-  function getStateTurn(state) { const { match, board } = resolveMatchRecord(state); return board?.turn ?? match?.turn ?? state?.turn ?? null; }
-  function setStateTurn(state, nextTurn) { const { match, board } = resolveMatchRecord(state); if (!match) return; if (board) board.turn = nextTurn; match.turn = nextTurn; }
-
-  function getBoardPieces(state) {
-    const src = getBoardRoot(state);
-    if (Array.isArray(src.pieces)) return src.pieces;
-    if (src.pieces && typeof src.pieces === 'object') return Object.values(src.pieces);
-    if (Array.isArray(src.board)) return src.board;
-    if (typeof src.board === 'string') { try { return JSON.parse(src.board); } catch (e) { return []; } }
-    return [];
-  }
-
-  function getPieceAt(pieces, x, y) { return pieces.find(p => p && p.x === x && p.y === y) || null; }
-  function inBounds(x, y) { return x >= 0 && x <= 9 && y >= 0 && y <= 7; }
-
-  function interactWithLaser(piece, incomingDir) {
-    const type = String(piece?.pieceType || '').toUpperCase();
-    const rot = normalizeRotation(piece?.rotation);
-    const typeMap = INTERACTION_MAP[type];
-    if (!typeMap) return { kind: 'stop', destroyed: false };
-    const rotMap = typeMap[rot] || typeMap[0];
-    if (!rotMap) return { kind: 'stop', destroyed: false };
-    const outcome = rotMap[incomingDir];
-    if (!outcome) return { kind: 'stop', destroyed: false };
-    if (outcome.action === 'reflect') return { kind: 'reflect', destroyed: false, reflected: outcome.nextDir };
-    if (outcome.action === 'block') return { kind: 'stop', blocked: true, destroyed: false };
-    if (outcome.action === 'destroy') return { kind: 'stop', destroyed: true };
-    return { kind: 'stop', destroyed: false };
-  }
-
-  function resolveLaserVector(x, y, dir, pieces, path = [], seen = new Set()) {
-    if (!inBounds(x, y)) { return { path, hit: null, exit: { x, y, dir }, looped: false }; }
-    const stateKey = `${x},${y},${dir}`;
-    if (seen.has(stateKey)) { return { path, hit: null, exit: { x, y, dir }, looped: true }; }
-    
-    seen.add(stateKey);
-    path.push({ x, y, dir });
-
-    const piece = getPieceAt(pieces, x, y);
-    if (!piece) { return resolveLaserVector(x + DIRS[dir].dx, y + DIRS[dir].dy, dir, pieces, path, seen); }
-
-    const outcome = interactWithLaser(piece, dir);
-    if (outcome.kind === 'reflect') {
-      const nextDir = outcome.reflected;
-      return resolveLaserVector(x + DIRS[nextDir].dx, y + DIRS[nextDir].dy, nextDir, pieces, path, seen);
-    }
-    return { path, hit: { piece, blocked: !!outcome.blocked, destroyed: !!outcome.destroyed, kind: outcome.kind }, exit: null, looped: false };
-  }
-
-  function traceLaserPath(state, explicitColor = null) {
-    const pieces = getBoardPieces(state);
-    const colors = explicitColor ? [explicitColor] : ['RED', 'BLUE'];
-    const shooter = colors.map(color => pieces.find(p => p && String(p.pieceType || '').toUpperCase() === 'LASER' && String(p.color || '').toUpperCase() === color)).find(Boolean);
-    if (!shooter) return { path: [], hit: null, shooter: null, exit: null, looped: false };
-
-    const startDir = normalizeRotation(shooter.rotation);
-    const startX = shooter.x + DIRS[startDir].dx;
-    const startY = shooter.y + DIRS[startDir].dy;
-
-    const resolution = resolveLaserVector(startX, startY, startDir, pieces);
-    return { path: resolution.path, hit: resolution.hit, shooter: shooter, exit: resolution.exit, looped: resolution.looped };
-  }
-
-  function advanceTurnWithLaser(state, explicitColor = null) {
-    const fireColor = explicitColor || getStateTurn(state);
-    if (!fireColor) return { state, trace: null, firedColor: null, nextTurn: null };
-    // This function now just returns the result of the turn modification, no double-apply
-    const board = getBoardRoot(state);
-    if (board) { board.phase = 'MOVE'; board.moveNumber = Number(board.moveNumber || 0) + 1; }
-    const nextTurn = fireColor === 'RED' ? 'BLUE' : 'RED';
-    setStateTurn(state, nextTurn);
-    return { state, trace: null, firedColor: fireColor, nextTurn };
-  }
-
-  function printTerminalMatrix(state, laserTrace = null) {
+  function printTerminalMatrix(state) {
     latestState = state;
     const pieces = getBoardPieces(state);
-
     const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
-    for (const piece of pieces) {
-      if (!piece || !Number.isFinite(piece.x) || !Number.isFinite(piece.y)) continue;
-      if (piece.x < 0 || piece.x > 9 || piece.y < 0 || piece.y > 7) continue;
-      grid[piece.y][piece.x] = piece;
-    }
-
-    const laserPathMap = new Map();
-    if (laserTrace && laserTrace.path) {
-      laserTrace.path.forEach((step) => {
-        const key = `${step.x},${step.y}`;
-        if (!laserPathMap.has(key)) laserPathMap.set(key, { dir: step.dir });
-      });
-    }
-
-    const container = document.createElement('div');
-    container.className = 'matrix-container';
-
-    // Header
-    let headerRow = document.createElement('div');
-    headerRow.className = 'matrix-row';
-    let cornerCell = document.createElement('span'); cornerCell.className = 'matrix-cell matrix-lbl'; cornerCell.innerHTML = '&nbsp;'; headerRow.appendChild(cornerCell);
-    for (let x = 0; x < 10; x++) { let lblCell = document.createElement('span'); lblCell.className = 'matrix-cell matrix-lbl'; lblCell.textContent = x; headerRow.appendChild(lblCell); }
-    container.appendChild(headerRow);
-
-    // Board
+    for (const piece of pieces) { if (piece && Number.isFinite(piece.x)) grid[piece.y][piece.x] = piece; }
+    
+    const container = document.createElement('div'); container.className = 'matrix-container';
     for (let y = 7; y >= 0; y--) {
-      let rowEl = document.createElement('div');
-      rowEl.className = 'matrix-row';
-      let yLbl = document.createElement('span'); yLbl.className = 'matrix-cell matrix-lbl'; yLbl.textContent = y; rowEl.appendChild(yLbl);
-
+      let rowEl = document.createElement('div'); rowEl.className = 'matrix-row';
       for (let x = 0; x < 10; x++) {
-        let cellEl = document.createElement('span');
-        cellEl.className = 'matrix-cell';
-        
-        const tint = getReservedSquareTint(x, y); 
-        if (tint) cellEl.classList.add(tint);
-        
-        if (activeMatrixContainer !== null) {
-            if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
-            if (selectedPiece && selectedPiece.x === x && selectedPiece.y === y) { cellEl.classList.add('selected'); } 
-            else if (selectedPiece && x === cursorX && y === cursorY) { cellEl.classList.add('target-preview'); }
-        }
-
-        cellEl.addEventListener('click', (e) => {
-            if (!isMobile) return; 
-            e.preventDefault();
-            cursorX = x;
-            cursorY = y;
-            handleGridAction();
-        });
-
-        const pathStep = laserPathMap.get(`${x},${y}`);
-        const p = grid[y][x];
-
-        if (p) {
-          cellEl.textContent = getPieceChar(p);
-          cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue');
-          if (pathStep) cellEl.classList.add('laser-bounce');
-        } else if (pathStep) {
-          const dirCharMap = { 0: '^', 1: '>', 2: 'v', 3: '<' };
-          cellEl.textContent = dirCharMap[pathStep.dir] || '*';
-          cellEl.classList.add('laser-path');
-        } else {
-          cellEl.textContent = '·';
-          cellEl.style.color = 'var(--muted)';
-        }
+        let cellEl = document.createElement('span'); cellEl.className = 'matrix-cell';
+        cellEl.addEventListener('click', (e) => { e.preventDefault(); cursorX = x; cursorY = y; handleGridAction(); });
+        const p = grid[y][x]; 
+        if (p) { cellEl.textContent = getPieceChar(p); cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue'); } else { cellEl.textContent = '·'; }
         rowEl.appendChild(cellEl);
       }
       container.appendChild(rowEl);
     }
-    
-    if (activeMatrixContainer && activeMatrixContainer.parentNode) { 
-        activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); 
-    } else { 
-        if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); 
-        else logContainer.appendChild(container); 
-    }
-    
+    if (activeMatrixContainer && activeMatrixContainer.parentNode) activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); 
+    else if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); else logContainer.appendChild(container); 
     activeMatrixContainer = container; 
-    setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 50);
   }
 
-  function updateMatrixView() { if (latestState) printTerminalMatrix(latestState); }
-
-  async function fireLaserAndAdvanceTurn(explicitColor = null, intentPayload = { action: 'Turn End', piece: null, changes: null }) {
-    if (!latestState || !lockedMatchId) return false;
-    const firedColor = explicitColor || getStateTurn(latestState);
-    if (!firedColor || (firedColor !== 'RED' && firedColor !== 'BLUE')) return false;
-
-    // Trigger local trace visualization before firing
-    const laserTrace = traceLaserPath(latestState, firedColor);
-    printTerminalMatrix(latestState, laserTrace);
-
-    try {
-        const response = await fetch(GAME_ACTOR_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                intent: intentPayload, 
-                matchId: lockedMatchId,
-                username: localStorage.getItem(KEY_USER),
-                password: localStorage.getItem(KEY_PASS)
-            })
-        });
-        
-        const data = await response.json();
-        if (data && data.logs && Array.isArray(data.logs)) {
-            data.logs.forEach(msg => add(msg, 'system-msg'));
-        }
-    } catch (err) {
-        console.error("Move Actor Sync Failed", err);
-    }
-
-    hasMoved = false; hasRotated = false; selectedPiece = null;
-    return true;
-  }
-
-  function handleGridAction() {
+  async function handleGridAction() {
     if (!latestState) return;
-    const currentTurn = getStateTurn(latestState);
-    if (currentTurn !== myColor) { add(`Action rejected: It is ${currentTurn}'s turn.`, "error-msg"); return; }
-
-    const pieces = getBoardPieces(latestState);
-    let pieceAtCursor = pieces.find(p => p && p.x === cursorX && p.y === cursorY);
-
-    if (selectedPiece) {
-      if (selectedPiece.x === cursorX && selectedPiece.y === cursorY) { selectedPiece = null; add("Selection dropped.", "system-msg"); } 
-      else {
-        let targetPiece = pieces.find(p => p && p.x === selectedPiece.x && p.y === selectedPiece.y);
-        if (targetPiece) {
-          if (hasRotated) { add("Action rejected: Cannot move after rotating this turn.", "error-msg"); selectedPiece = null; return; }
-          if (targetPiece.pieceType === 'LASER') { add("Action rejected: Sphinx pieces cannot be moved.", "error-msg"); selectedPiece = null; return; }
-          const dx = Math.abs(cursorX - targetPiece.x); const dy = Math.abs(cursorY - targetPiece.y);
-          if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) { add("Action rejected: Move range 1 square.", "error-msg"); selectedPiece = null; return; }
-          if (isReservedSquare(cursorX, cursorY, targetPiece.color)) { add(`Action rejected: Cannot enter reserved square.`, "error-msg"); selectedPiece = null; return; }
-          
-          const intentPayload = {
-              action: 'Move',
-              piece: { type: targetPiece.pieceType, color: targetPiece.color, x: targetPiece.x, y: targetPiece.y },
-              changes: { old: { x: targetPiece.x, y: targetPiece.y }, new: { x: cursorX, y: cursorY } }
-          };
-
-          if (pieceAtCursor) {
-            if (targetPiece.pieceType === 'SWITCH') {
-              if (pieceAtCursor.pieceType === 'DEFLECTOR' || pieceAtCursor.pieceType === 'DEFENDER') {
-                const oldX = targetPiece.x; const oldY = targetPiece.y;
-                targetPiece.x = pieceAtCursor.x; targetPiece.y = pieceAtCursor.y; pieceAtCursor.x = oldX; pieceAtCursor.y = oldY;
-                add(`Scarab swapped with ${pieceAtCursor.pieceType}.`, "success-msg"); hasMoved = true;
-              } else { add(`Action rejected: Scarab can only swap with Pyramid or Anubis, not ${pieceAtCursor.pieceType}.`, "error-msg"); selectedPiece = null; return; }
-            } else { add("Action rejected: Square occupied.", "error-msg"); selectedPiece = null; return; }
-          } else { targetPiece.x = cursorX; targetPiece.y = cursorY; add(`Piece moved to (${cursorX}, ${cursorY}).`, "success-msg"); hasMoved = true; }
-          
-          fireLaserAndAdvanceTurn(myColor, intentPayload);
-          return;
-        }
-        selectedPiece = null;
-      }
-    } else {
-      if (pieceAtCursor) {
-        if (pieceAtCursor.color !== myColor) { add(`Action rejected: Cannot control ${pieceAtCursor.color} pieces.`, "error-msg"); return; }
-        selectedPiece = { x: cursorX, y: cursorY }; add(`Piece selected at (${cursorX}, ${cursorY})`, "success-msg");
-      } else { add(`Invalid action: No piece at (${cursorX}, ${cursorY})`, "error-msg"); }
-    }
-    updateMatrixView();
+    add(`Selected: ${cursorX},${cursorY}`, 'system-msg');
   }
 
-  function handleRotation(dir) {
-    if (getStateTurn(latestState) !== myColor) { add("Action rejected: Not your turn.", "error-msg"); return; }
-    if (!latestState || !selectedPiece) { add("Action dropped: Select a piece before rotating.", "error-msg"); return; }
-    if (hasMoved) { add("Action rejected: Cannot rotate after moving this turn.", "error-msg"); return; }
-    const pieces = getBoardPieces(latestState);
-    let targetPiece = pieces.find(p => p && p.x === selectedPiece.x && p.y === selectedPiece.y);
-    if (targetPiece && targetPiece.color !== myColor) { add("Action rejected: Cannot rotate opponent's piece.", "error-msg"); return; }
-
-    if (targetPiece) {
-      if (targetPiece.pieceType === 'KING') { add("Action rejected: Pharaohs (Kings) cannot rotate.", "error-msg"); return; }
-      let currentRot = Number(targetPiece.rotation || 0);
-      let newRot = dir === 'R' ? (currentRot + 1) % 4 : (currentRot + 3) % 4;
-      if (targetPiece.pieceType === 'SWITCH') newRot = (currentRot + 1) % 2;
-
-      const intentPayload = {
-          action: 'Rotate',
-          piece: { type: targetPiece.pieceType, color: targetPiece.color, x: targetPiece.x, y: targetPiece.y },
-          changes: { old: { rotation: currentRot }, new: { rotation: newRot } }
-      };
-
-      if (targetPiece.pieceType === 'LASER') {
-        if (targetPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) { add("Action rejected: Blue Sphinx invalid rotation.", "error-msg"); return; }
-        if (targetPiece.color === 'RED' && (newRot === 3 || newRot === 0)) { add("Action rejected: Red Sphinx invalid rotation.", "error-msg"); return; }
-      }
-      
-      hasRotated = true; 
-      fireLaserAndAdvanceTurn(myColor, intentPayload);
-      return; 
-    }
-    updateMatrixView();
-  }
-
-  function terminateMatch(msg) {
-    add(msg, 'error-msg');
-    localStorage.removeItem(KEY_RID);
-    lockedMatchId = null;
-    activeMatrixContainer = null;
-    modeShown = false;
-    startPolling();
-  }
+  function terminateMatch(msg) { add(msg, 'error-msg'); localStorage.removeItem(KEY_RID); lockedMatchId = null; activeMatrixContainer = null; modeShown = false; startPolling(); }
 
   function lockOntoMatch(id, entry) {
-    lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); toggleWaiting(false); stopHostGamePolling(); modeShown = false;
+    lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); stopHostGamePolling(); toggleWaiting(false); modeShown = false;
     add(`LINK ESTABLISHED: ${id}`, 'success-msg'); 
-    
     const gameRef = dbGame.ref(`G/${id}`);
-    gameRef.on('value', snap => {
-        const state = snap.val();
-        if (state) { 
-            latestState = state;
-            const pieces = getBoardPieces(state);
-            const myName = localStorage.getItem(KEY_USER);
-            if (state.redPlayer === myName) myColor = 'RED';
-            else if (state.bluePlayer === myName) myColor = 'BLUE';
-
-            // -- LOGICAL PATCH: KING MONITORING --
-            const myKing = pieces.find(p => p.color === myColor && p.pieceType === 'KING');
-            const enemyKing = pieces.find(p => p.color !== myColor && p.pieceType === 'KING');
-            
-            if (!myKing) { gameRef.off(); return terminateMatch("DEFEAT: Your Pharaoh has fallen."); }
-            if (!enemyKing) { gameRef.off(); return terminateMatch("VICTORY: Enemy Pharaoh destroyed."); }
-            // -------------------------------------
-
-            printTerminalMatrix(state); 
-        } 
-        else { terminateMatch('MATCH TERMINATED.'); gameRef.off(); }
-    });
+    gameRef.on('value', snap => { const state = snap.val(); if (state) printTerminalMatrix(state); else { terminateMatch('MATCH TERMINATED.'); gameRef.off(); } });
   }
 
   function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
-    if (active) {
-      if (waitAnimationInterval) return; const l = createLine('wait-msg'); let dots = 0;
-      waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = contextMsg + ".".repeat(dots); }, 500);
-    } else { if (waitAnimationInterval) { clearInterval(waitAnimationInterval); waitAnimationInterval = null; } }
+    if (active) { if (waitAnimationInterval) return; const l = createLine('wait-msg'); let dots = 0; waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = contextMsg + ".".repeat(dots); }, 500); } 
+    else { if (waitAnimationInterval) { clearInterval(waitAnimationInterval); waitAnimationInterval = null; } }
   }
 
   async function handleAuth(v) {
-    if (!localStorage.getItem(KEY_USER)) {
-      if (!v) return add('User ID:', '', true, handleAuth);
-      const candidate = v.trim().toUpperCase(); if (!candidate || await isUsernameOccupied(candidate)) { add(candidate ? 'USER ID ALREADY OCCUPIED.' : 'INVALID USER ID.', 'error-msg'); return add('User ID:', '', true, handleAuth); }
-      localStorage.setItem(KEY_USER, candidate); return boot();
-    }
+    if (!localStorage.getItem(KEY_USER)) { if (!v) return add('User ID:', '', true, handleAuth); localStorage.setItem(KEY_USER, v.trim().toUpperCase()); return boot(); }
     if (!localStorage.getItem(KEY_PASS)) { if (!v) return add('Access Key:', '', true, handleAuth); localStorage.setItem(KEY_PASS, v); return boot(); }
   }
 
@@ -494,8 +144,11 @@
     const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
     if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
     add('System Online.', 'success-msg');
-    
-    if (rid && rid.toString().includes('_')) { const snap = await dbGame.ref(`G/${rid}`).once('value'); if (snap.exists()) return lockOntoMatch(rid, snap.val()); localStorage.removeItem(KEY_RID); }
+    if (rid) { 
+        const snap = await dbGame.ref(`G/${rid}`).once('value'); 
+        if (snap.exists()) return lockOntoMatch(rid, snap.val()); 
+        else { localStorage.removeItem(KEY_RID); add("Stale match ID cleared.", "system-msg"); }
+    }
     if (!await searchForGameDBMatch()) await startPolling();
   }
 
@@ -506,7 +159,9 @@
     isPollingStarting = false;
   }
 
-  function stopPolling() { if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } lastQueueState = 'STOPPED'; }
+  function stopPolling() { if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } }
+  function startHostGamePolling() { if (hostGamePollInterval) return; hostGamePollInterval = setInterval(async () => { if (await searchForGameDBMatch()) { isHostRequestPending = false; stopHostGamePolling(); } }, 3000); }
+  function stopHostGamePolling() { if (hostGamePollInterval) { clearInterval(hostGamePollInterval); hostGamePollInterval = null; } toggleWaiting(false); }
 
   async function searchForGameDBMatch() {
     const myName = localStorage.getItem(KEY_USER); if (!myName) return false;
@@ -526,17 +181,16 @@
       const firstKey = Object.keys(data)[0]; 
       const matchData = data[firstKey];
       const myName = localStorage.getItem(KEY_USER) || '';
-      if (matchData.username && matchData.username.toUpperCase() === myName.toUpperCase()) { return false; }
-      currentHead = { id: firstKey, data: matchData };
-      return true;
+      if (matchData.username && matchData.username.toUpperCase() === myName.toUpperCase()) return false;
+      currentHead = { id: firstKey, data: matchData }; return true;
     } catch (e) { currentHead = null; return false; }
   }
 
   async function showMode() {
     if (localStorage.getItem(KEY_RID)) return; while (processing) await sleep(10); if (modeShown) return; modeShown = true;
-    if (!currentHead) { add('Queue Empty. [R] Host Red | [B] Blue', 'system-msg'); } 
-    else if (currentHead.data.color === 0) { add('RED at head. [A] Join as Blue | [R] Host Red', 'system-msg'); } 
-    else { add('BLUE at head. [A] Join as Red | [B] Host Blue', 'system-msg'); }
+    if (!currentHead) add('Queue Empty. [R] Host Red | [B] Blue', 'system-msg'); 
+    else if (currentHead.data.color === 0) add('RED at head. [A] Join as Blue | [R] Host Red', 'system-msg'); 
+    else add('BLUE at head. [A] Join as Red | [B] Host Blue', 'system-msg');
     add('MODE:', '', true, handleMode);
   }
 
@@ -547,17 +201,20 @@
   }
 
   async function registerHost(color, isIntercept = false) {
+    if (isHostRequestPending) { add("Request already in progress.", "error-msg"); return; }
+    isHostRequestPending = true;
+    toggleWaiting(true, "Negotiating Match");
     try {
       const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), color, isIntercept }) }); const data = await res.json();
       if (data.ok) {
-        const idToStore = data.matchName || data.requestId || data.timestamp; if (idToStore) localStorage.setItem(KEY_RID, idToStore); stopPolling(); 
-        if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' }); 
-      }
-    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); }
+        const idToStore = data.matchName || data.requestId || data.timestamp; 
+        if (idToStore) localStorage.setItem(KEY_RID, idToStore); 
+        stopPolling(); 
+        if (data.matchName) { isHostRequestPending = false; lockOntoMatch(data.matchName, { status: 'SYNCING' }); } 
+        else startHostGamePolling();
+      } else { add(`Request rejected: ${data.error || 'Unknown'}`, 'error-msg'); isHostRequestPending = false; toggleWaiting(false); }
+    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); isHostRequestPending = false; toggleWaiting(false); }
   }
-
-  function stopHostGamePolling() { if (hostGamePollInterval) { clearInterval(hostGamePollInterval); hostGamePollInterval = null; } }
-  async function isUsernameOccupied(username) { if (!username) return true; try { const snap = await dbMatch.ref(`P/${username}`).once('value'); return snap.exists(); } catch (e) { return true; } }
 
   window.addEventListener('DOMContentLoaded', boot);
 })();
