@@ -190,12 +190,15 @@
 
         p.rotation = nextRotation;
         add(`Rotated ${p.pieceType} to ${p.rotation}`, 'system-msg');
+        activeMatrixContainer = null; // Break visual link to append copy under original
         printTerminalMatrix(latestState);
     }
   }
 
   async function handleGridAction() {
     if (!latestState) return;
+    
+    let commandExecuted = false;
     
     if (!selectedOrigin) {
         const pieces = getBoardPieces(latestState);
@@ -233,6 +236,7 @@
                 
                 add(`SWAP: ${selectedOrigin.x},${selectedOrigin.y} <-> ${cursorX},${cursorY}`, 'success-msg');
                 selectedOrigin = null;
+                commandExecuted = true;
             }
         }
         else if (movingPiece && isReservedSquare(cursorX, cursorY, movingPiece.color)) {
@@ -254,10 +258,15 @@
             
             add(`MOVE: ${selectedOrigin.x},${selectedOrigin.y} -> ${cursorX},${cursorY}`, 'success-msg');
             selectedOrigin = null;
+            commandExecuted = true;
         } else {
             add(`Invalid Move. Out of Range.`, 'error-msg');
             selectedOrigin = null;
         }
+    }
+    
+    if (commandExecuted) {
+        activeMatrixContainer = null; // Break visual link to append copy under original
     }
     printTerminalMatrix(latestState);
   }
