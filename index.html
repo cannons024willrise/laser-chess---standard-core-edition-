@@ -183,7 +183,7 @@
       return { path, hit: { piece, blocked: !!outcome.blocked, destroyed: !!outcome.destroyed }, looped: false };
   }
 
-  function printTerminalMatrix(state, laserPath = []) {
+  function printTerminalMatrix(state, laserPath = [], replace = true) {
     latestState = state;
     const pieces = getBoardPieces(state);
     const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
@@ -244,9 +244,11 @@
       }
       container.appendChild(rowEl);
     }
-    if (activeMatrixContainer && activeMatrixContainer.parentNode) activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); 
+    
+    if (replace && activeMatrixContainer && activeMatrixContainer.parentNode) activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); 
     else if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); else logContainer.appendChild(container); 
-    activeMatrixContainer = container; 
+    
+    if (replace) activeMatrixContainer = container; 
   }
 
   window.addEventListener('keydown', (e) => {
@@ -570,21 +572,19 @@
           }
 
           // FRAME 1: The Reconstructed State (Victim Present)
-          activeMatrixContainer = null;
-          printTerminalMatrix(replayState);
+          // We set replace=false to append this frame to the log
+          printTerminalMatrix(replayState, [], false);
           await sleep(1000); 
 
           // FRAME 2: The Laser Path Render
-          activeMatrixContainer = null;
-          printTerminalMatrix(replayState, laserPath);
+          printTerminalMatrix(replayState, laserPath, false);
           await sleep(1500); 
 
           add(`Visual Summary: Laser blast vaporized your ${ld.piece.pieceType} at (${ld.piece.x}, ${ld.piece.y}).`, "error-msg");
 
           // FRAME 3: The Authoritative State (Piece Removed)
           isAnimatingLocalTurn = false;
-          activeMatrixContainer = null;
-          printTerminalMatrix(state);
+          printTerminalMatrix(state, [], false);
           
       } else {
           // Standard Update Routine
