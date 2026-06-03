@@ -170,8 +170,23 @@
     if (!selectedOrigin || !latestState) return;
     const pieces = getBoardPieces(latestState);
     const p = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
+    
     if (p) {
-        p.rotation = ((p.rotation || 0) + dir + 4) % 4;
+        const nextRotation = ((p.rotation || 0) + dir + 4) % 4;
+
+        if (p.pieceType === 'LASER') {
+            const { x, y } = p;
+            // 0: Up (y=7), 1: Right (x=9), 2: Down (y=0), 3: Left (x=0)
+            if ((nextRotation === 0 && y >= 7) ||
+                (nextRotation === 1 && x >= 9) ||
+                (nextRotation === 2 && y <= 0) ||
+                (nextRotation === 3 && x <= 0)) {
+                add(`Invalid Rotation: Laser points off-board.`, 'error-msg');
+                return;
+            }
+        }
+
+        p.rotation = nextRotation;
         add(`Rotated ${p.pieceType} to ${p.rotation}`, 'system-msg');
     }
   }
