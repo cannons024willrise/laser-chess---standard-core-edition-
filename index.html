@@ -67,6 +67,7 @@
   let cursorX = 0, cursorY = 0, latestState = null, activeMatrixContainer = null;
   let isHostRequestPending = false, requestStatus = "IDLE";
   let isAnimatingLocalTurn = false;
+  let lastAnimatedTurn = null;
   
   let selectedOrigin = null;
 
@@ -224,7 +225,7 @@
         if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
         if (selectedOrigin && x === selectedOrigin.x && y === selectedOrigin.y) cellEl.classList.add('selected-piece');
 
-        cellEl.addEventListener('click', (e) => { e.preventDefault(); cursorX = x; cursorY = y; printTerminalMatrix(latestState); handleGridAction(); });
+        cellEl.addEventListener('click', (e) => { e.preventDefault(); if (isAnimatingLocalTurn) return; cursorX = x; cursorY = y; printTerminalMatrix(latestState); handleGridAction(); });
         const p = grid[y][x]; 
         if (p) { 
           cellEl.textContent = getPieceChar(p); 
@@ -249,7 +250,7 @@
   }
 
   window.addEventListener('keydown', (e) => {
-    if (currentPromptWrap) return;
+    if (currentPromptWrap || isAnimatingLocalTurn) return;
     if (e.key === 'ArrowUp' && cursorY < 7) cursorY++;
     else if (e.key === 'ArrowDown' && cursorY > 0) cursorY--;
     else if (e.key === 'ArrowLeft' && cursorX > 0) cursorX--;
@@ -498,7 +499,7 @@
   }
 
   async function handleGridAction() {
-    if (!latestState) return;
+    if (!latestState || isAnimatingLocalTurn) return;
     
     if (!selectedOrigin) {
         const pieces = getBoardPieces(latestState);
@@ -535,11 +536,54 @@
     setStatus("LOCKED");
     add(`LINK ESTABLISHED: ${id}`, 'success-msg'); 
     const gameRef = dbGame.ref(`G/${id}`);
-    gameRef.on('value', snap => { 
+    
+    gameRef.on('value', async snap => { 
       if (isAnimatingLocalTurn) return;
       const state = snap.val(); 
-      if (state) printTerminalMatrix(state); 
-      else { terminateMatch('MATCH TERMINATED.'); gameRef.off(); } 
+      if (!state) { terminateMatch('MATCH TERMINATED.'); gameRef.off(); return; } 
+
+      const currentMoveNum = state.board?.moveNumber || state.moveNumber || 0;
+      const ld = state.metadata?.lastdestroyed;
+
+      // EXPLANATION LAYER: Catch opponent destruction events on transition
+      if (ld && ld.turn === currentMoveNum - 1 && lastAnimatedTurn !== ld.turn) {
+          lastAnimatedTurn = ld.turn;
+          isAnimatingLocalTurn = true; // Lock incoming thread and user interactions
+
+          add(`Opponent (${ld.shooterColor}) completed action sequence. Simulating tracing pipeline...`, 'system-msg');
+
+          // Step 1: Clone state and restore the eliminated component to tracking structure
+          const replayState = JSON.parse(JSON.stringify(state));
+          let replayPieces = getBoardPieces(replayState);
+          if (!replayPieces.some(p => p.x === ld.piece.x && p.y === ld.piece.y)) {
+              replayPieces.push(ld.piece);
+          }
+          if (replayState.board) replayState.board.pieces = replayPieces; else replayState.pieces = replayPieces;
+
+          // Step 2: Trace Vector calculations originating from hostile emitter
+          const oppShooter = replayPieces.find(p => p && p.pieceType === 'LASER' && p.color === ld.shooterColor);
+          let laserPath = [];
+          if (oppShooter) {
+              const startDir = normalizeRotation(oppShooter.rotation);
+              const trace = resolveLaserVector(oppShooter.x + DIRS[startDir].dx, oppShooter.y + DIRS[startDir].dy, startDir, replayPieces);
+              laserPath = trace.path;
+          }
+
+          // Step 3: Flash explanation composition with target item present
+          activeMatrixContainer = null;
+          printTerminalMatrix(replayState, laserPath);
+          await sleep(1500);
+
+          add(`Visual Summary: Laser blast vaporized your ${ld.piece.pieceType} at coordinate (${ld.piece.x}, ${ld.piece.y}).`, "error-msg");
+
+          // Step 4: Disengage local execution locks and display final authoritative layout
+          isAnimatingLocalTurn = false;
+          activeMatrixContainer = null;
+          printTerminalMatrix(state);
+      } else {
+          // Standard Update Routine
+          printTerminalMatrix(state); 
+      }
     });
   }
 
