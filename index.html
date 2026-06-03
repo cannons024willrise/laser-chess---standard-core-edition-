@@ -29,12 +29,14 @@
         .matrix-row { display: flex; height: 36px; align-items: center; }
         .matrix-cell { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; font-weight: bold; touch-action: manipulation; }
         .matrix-cell.cursor { outline: 1px solid var(--bright); background: rgba(255,255,255,0.1); }
-        .target-cursor { outline: 2px dashed var(--bright) !important; outline-offset: -2px; }
+        /* NEW: Green dashed selection outline */
+        .selected-piece { outline: 2px dashed #00ff00 !important; outline-offset: -2px; }
         
         .matrix-lbl { color: var(--muted); font-weight: normal; }
         .p-blue { color: var(--blue); }
         .p-red { color: var(--red); }
         
+        /* Reserved Squares */
         .reserved-blue { background-color: var(--blue-tint) !important; }
         .reserved-red { background-color: var(--red-tint) !important; }
     </style>
@@ -67,6 +69,7 @@
   let cursorX = 0, cursorY = 0, latestState = null, activeMatrixContainer = null;
   let isHostRequestPending = false, requestStatus = "IDLE";
   
+  // NEW: Track selected origin
   let selectedOrigin = null;
 
   const ROTATION_TABLE = { KING: { 0: '◈' }, LASER: { 0: '⫝' }, SWITCH: { 0: '⟋' }, DEFENDER: { 0: '⬓' }, DEFLECTOR: { 0: '◤' } };
@@ -97,6 +100,7 @@
   function getPieceChar(piece) { return ROTATION_TABLE[piece.pieceType] ? ROTATION_TABLE[piece.pieceType][0] : '?'; }
   function getBoardPieces(state) { const src = state.board || state; return Array.isArray(src.pieces) ? src.pieces : (src.pieces ? Object.values(src.pieces) : []); }
   
+  // NEW: King distance check
   function isKingMove(x1, y1, x2, y2) {
     return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1;
   }
@@ -119,13 +123,16 @@
       for (let x = 0; x < 10; x++) {
         let cellEl = document.createElement('span'); cellEl.className = 'matrix-cell';
         
+        // Reserved squares check
         const resClass = getReservedClass(x, y);
         if (resClass) cellEl.classList.add(resClass);
 
+        // Visual Cursor
         if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
         
-        if (selectedOrigin && isKingMove(selectedOrigin.x, selectedOrigin.y, x, y) && !(x === selectedOrigin.x && y === selectedOrigin.y)) {
-           cellEl.classList.add('target-cursor');
+        // NEW: Visual green dashed outline for selected piece
+        if (selectedOrigin && x === selectedOrigin.x && y === selectedOrigin.y) {
+           cellEl.classList.add('selected-piece');
         }
 
         cellEl.addEventListener('click', (e) => { e.preventDefault(); cursorX = x; cursorY = y; printTerminalMatrix(latestState); handleGridAction(); });
@@ -151,10 +158,12 @@
     if (latestState) printTerminalMatrix(latestState);
   });
 
+  // NEW: Handle selection and movement logic
   async function handleGridAction() {
     if (!latestState) return;
     
     if (!selectedOrigin) {
+        // Try to select
         const pieces = getBoardPieces(latestState);
         const p = pieces.find(p => p.x === cursorX && p.y === cursorY);
         if (p) {
@@ -164,8 +173,9 @@
             add(`No piece at ${cursorX},${cursorY}`, 'error-msg');
         }
     } else {
+        // Try to move
         if (selectedOrigin.x === cursorX && selectedOrigin.y === cursorY) {
-            selectedOrigin = null;
+            selectedOrigin = null; // Deselect
             add(`Deselected`, 'system-msg');
         } else if (isKingMove(selectedOrigin.x, selectedOrigin.y, cursorX, cursorY)) {
             add(`MOVE: ${selectedOrigin.x},${selectedOrigin.y} -> ${cursorX},${cursorY}`, 'success-msg');
