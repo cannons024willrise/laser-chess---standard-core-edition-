@@ -129,7 +129,7 @@
         input.focus();
         return new Promise(resolve => {
           input.addEventListener('keydown', e => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const v = input.value.trim().toUpperCase(); input.disabled = true; const finalLine = createLine('highlight'); finalLine.textContent = p.textContent + v; wrap.remove(); currentPromptWrap = null; handler(v); resolve(); }
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const v = input.value.trim(); input.disabled = true; const finalLine = createLine('highlight'); finalLine.textContent = p.textContent + " " + v; wrap.remove(); currentPromptWrap = null; handler(v); resolve(); }
           });
         });
       }
@@ -496,14 +496,39 @@
       }
 
       async function handleAuth(v) {
-        if (!localStorage.getItem(KEY_USER)) { if (!v) return add('User ID:', '', true, handleAuth); localStorage.setItem(KEY_USER, v.trim().toUpperCase()); return boot(); }
-        if (!localStorage.getItem(KEY_PASS)) { if (!v) return add('Access Key:', '', true, handleAuth); localStorage.setItem(KEY_PASS, v); return boot(); }
+        const val = v.trim();
+        if (val.length === 0 || val.length > 20) {
+            add("Error: Input must be 1-20 characters.", "error-msg");
+            if (!localStorage.getItem(KEY_USER)) return add('Session Username:', '', true, handleAuth);
+            return add('Session Password:', '', true, handleAuth);
+        }
+
+        if (!localStorage.getItem(KEY_USER)) { 
+            localStorage.setItem(KEY_USER, val.toUpperCase()); 
+            return boot(); 
+        }
+        if (!localStorage.getItem(KEY_PASS)) { 
+            localStorage.setItem(KEY_PASS, val); 
+            return boot(); 
+        }
       }
 
       async function boot() {
         const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
-        if (!u || !p) return add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg'), add('Session Username:', '', true, handleAuth);
-        add('Session Password:', 'success-msg');
+        
+        if (!u) {
+            add('====================================================', 'system-msg');
+            add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg');
+            add('====================================================', 'system-msg');
+            return add('Session Username:', '', true, handleAuth);
+        }
+        
+        if (!p) {
+            add('Username available (for now)', 'success-msg');
+            return add('Session Password:', '', true, handleAuth);
+        }
+
+        add('Ready to Play!', 'success-msg');
         
         if (rid) { 
             const snapGame = await dbGame.ref(`G/${rid}`).once('value'); 
