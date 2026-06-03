@@ -187,6 +187,7 @@
 
         p.rotation = nextRotation;
         add(`Rotated ${p.pieceType} to ${p.rotation}`, 'system-msg');
+        printTerminalMatrix(latestState); // RE-RENDER ON ROTATE
     }
   }
 
@@ -217,6 +218,11 @@
                 add(`Invalid Move: Target square occupied.`, 'error-msg');
                 selectedOrigin = null;
             } else {
+                // APPLY SWAP LOCALLY
+                const tx = targetPiece.x, ty = targetPiece.y;
+                targetPiece.x = movingPiece.x; targetPiece.y = movingPiece.y;
+                movingPiece.x = tx; movingPiece.y = ty;
+                
                 add(`SWAP: ${selectedOrigin.x},${selectedOrigin.y} <-> ${cursorX},${cursorY}`, 'success-msg');
                 selectedOrigin = null;
             }
@@ -231,6 +237,9 @@
                 selectedOrigin = null;
                 return;
             }
+            // APPLY MOVE LOCALLY
+            movingPiece.x = cursorX; movingPiece.y = cursorY;
+            
             add(`MOVE: ${selectedOrigin.x},${selectedOrigin.y} -> ${cursorX},${cursorY}`, 'success-msg');
             selectedOrigin = null;
         } else {
