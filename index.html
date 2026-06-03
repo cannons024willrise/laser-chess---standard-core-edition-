@@ -545,14 +545,14 @@
       const currentMoveNum = state.board?.moveNumber || state.moveNumber || 0;
       const ld = state.metadata?.lastdestroyed;
 
-      // EXPLANATION LAYER: Catch opponent destruction events on transition
+      // EXPLANATION LAYER: Sequence into three distinct frames
       if (ld && ld.turn === currentMoveNum - 1 && lastAnimatedTurn !== ld.turn) {
           lastAnimatedTurn = ld.turn;
-          isAnimatingLocalTurn = true; // Lock incoming thread and user interactions
+          isAnimatingLocalTurn = true; 
 
           add(`Opponent (${ld.shooterColor}) completed action sequence. Simulating tracing pipeline...`, 'system-msg');
 
-          // Step 1: Clone state and restore the eliminated component to tracking structure
+          // Prepare the Replay State (Victim is alive)
           const replayState = JSON.parse(JSON.stringify(state));
           let replayPieces = getBoardPieces(replayState);
           if (!replayPieces.some(p => p.x === ld.piece.x && p.y === ld.piece.y)) {
@@ -560,7 +560,7 @@
           }
           if (replayState.board) replayState.board.pieces = replayPieces; else replayState.pieces = replayPieces;
 
-          // Step 2: Trace Vector calculations originating from hostile emitter
+          // Pre-calculate path on the reconstructed pieces
           const oppShooter = replayPieces.find(p => p && p.pieceType === 'LASER' && p.color === ld.shooterColor);
           let laserPath = [];
           if (oppShooter) {
@@ -569,17 +569,23 @@
               laserPath = trace.path;
           }
 
-          // Step 3: Flash explanation composition with target item present
+          // FRAME 1: The Reconstructed State (Victim Present)
+          activeMatrixContainer = null;
+          printTerminalMatrix(replayState);
+          await sleep(1000); 
+
+          // FRAME 2: The Laser Path Render
           activeMatrixContainer = null;
           printTerminalMatrix(replayState, laserPath);
-          await sleep(1500);
+          await sleep(1500); 
 
-          add(`Visual Summary: Laser blast vaporized your ${ld.piece.pieceType} at coordinate (${ld.piece.x}, ${ld.piece.y}).`, "error-msg");
+          add(`Visual Summary: Laser blast vaporized your ${ld.piece.pieceType} at (${ld.piece.x}, ${ld.piece.y}).`, "error-msg");
 
-          // Step 4: Disengage local execution locks and display final authoritative layout
+          // FRAME 3: The Authoritative State (Piece Removed)
           isAnimatingLocalTurn = false;
           activeMatrixContainer = null;
           printTerminalMatrix(state);
+          
       } else {
           // Standard Update Routine
           printTerminalMatrix(state); 
