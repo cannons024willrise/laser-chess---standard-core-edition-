@@ -473,6 +473,8 @@
       function lockOntoMatch(id, entry) {
         lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); stopHostGamePolling(); toggleWaiting(false); modeShown = false;
         setStatus("LOCKED");
+        isAnimatingLocalTurn = false;
+        pendingStateUpdate = null;
         add(`LINK ESTABLISHED: ${id}`, 'success-msg'); 
         activeGameRef = dbGame.ref(`G/${id}`);
         
@@ -480,7 +482,7 @@
           const state = snap.val(); 
           if (!state) { terminateMatch('MATCH TERMINATED.'); return; } 
 
-          if (isAnimatingLocalTurn) {
+          if (isAnimatingLocalTurn && latestState) {
               pendingStateUpdate = state;
               return;
           }
