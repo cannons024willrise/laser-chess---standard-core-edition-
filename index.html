@@ -441,11 +441,16 @@
               printTerminalMatrix(state); 
           }
 
-          if (!gameOverDetected && state.status && state.status.endsWith('_WIN')) {
-              gameOverDetected = true;
-              const winnerColor = state.status.split('_')[0];
-              const loserColor = winnerColor === 'RED' ? 'BLUE' : 'RED';
-              victoryMsg = `CRITICAL ALERT: ${loserColor} KING ELIMINATED. ${winnerColor} ACHIEVES VICTORY!`;
+          if (!gameOverDetected && state.status) {
+              if (state.status.endsWith('_WIN')) {
+                  gameOverDetected = true;
+                  const winnerColor = state.status.split('_')[0];
+                  const loserColor = winnerColor === 'RED' ? 'BLUE' : 'RED';
+                  victoryMsg = `CRITICAL ALERT: ${loserColor} KING ELIMINATED. ${winnerColor} ACHIEVES VICTORY!`;
+              } else if (state.status === 'DRAW_REPETITION') {
+                  gameOverDetected = true;
+                  victoryMsg = `GAME DRAWN: Three-fold repetition detected.`;
+              }
           }
 
           if (gameOverDetected) {
@@ -499,16 +504,11 @@
         if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
         add('System Online.', 'success-msg');
         
-        // Dynamic Cross-Check on Boot
+        // Verify only against game database, no access to 'A'
         if (rid) { 
             const snapGame = await dbGame.ref(`G/${rid}`).once('value'); 
-            const snapPending = await dbMatch.ref(`A/${rid}`).once('value');
             if (snapGame.exists()) return lockOntoMatch(rid, snapGame.val()); 
-            else if (snapPending.exists()) {
-                add("Pending host request found.", "system-msg");
-                isHostRequestPending = true;
-                startHostGamePolling();
-            } else { 
+            else { 
                 localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); add("Stale match data cleared.", "system-msg"); 
             }
         }
