@@ -502,8 +502,8 @@
 
       async function boot() {
         const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
-        if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
-        add('System Online.', 'success-msg');
+        if (!u || !p) return add('USERNAME CAPTURED FOR 24H SUCCESSFULLY', 'system-msg'), add('Session Password:', '', true, handleAuth);
+        add('Ready to play!', 'success-msg');
         
         if (rid) { 
             const snapGame = await dbGame.ref(`G/${rid}`).once('value'); 
