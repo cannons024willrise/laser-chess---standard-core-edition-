@@ -42,7 +42,7 @@
         .matrix-cell.selected { outline: 1px dashed var(--waiting) !important; background-color: rgba(0, 255, 0, 0.05); }
         .matrix-cell.target-preview { outline: 1px dashed var(--blue) !important; background-color: rgba(0, 212, 255, 0.1); }
 
-        .mobile-controls { display: flex; gap: 10px; margin-top: 20px; max-width: 440px; touch-action: manipulation; }
+        .mobile-controls { display: none; gap: 10px; margin-top: 20px; max-width: 440px; touch-action: manipulation; }
         .mobile-btn { flex: 1; background: var(--bg1); border: 1px solid var(--line); color: var(--bright); padding: 12px 8px; font-family: 'Unifont', monospace; font-size: 16px; cursor: pointer; user-select: none; text-align: center; font-weight: bold; }
         .mobile-btn:active { background: var(--line); color: var(--waiting); }
     </style>
@@ -50,7 +50,7 @@
 <body>
 <div id="terminal-log"></div>
 
-<div class="mobile-controls">
+<div id="mobile-controls-bar" class="mobile-controls">
     <div class="mobile-btn" onclick="window.dispatchEvent(new CustomEvent('rotate-action', {detail: 'L'}))">ROTATE CCW (E)</div>
     <div class="mobile-btn" onclick="window.dispatchEvent(new CustomEvent('rotate-action', {detail: 'R'}))">ROTATE CW (R)</div>
 </div>
@@ -112,6 +112,16 @@
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const v = input.value.trim().toUpperCase(); input.disabled = true; const finalLine = createLine('highlight'); finalLine.textContent = p.textContent + v; wrap.remove(); currentPromptWrap = null; handler(v); resolve(); }
       });
     });
+  }
+
+  function updateMobileControlsVisibility(show) {
+    const bar = document.getElementById('mobile-controls-bar');
+    if (!bar) return;
+    if (show && isMobile) {
+        bar.style.display = 'flex';
+    } else {
+        bar.style.display = 'none';
+    }
   }
 
   function getPieceChar(piece) { const type = String(piece.pieceType || '').toUpperCase(); const safeRot = ((Number(piece.rotation || 0) % 4) + 4) % 4; return ROTATION_TABLE[type] ? ROTATION_TABLE[type][safeRot] : '?'; }
@@ -228,6 +238,16 @@
     return { path: resolution.path, hit: resolution.hit, shooter: shooter, exit: resolution.exit, looped: resolution.looped };
   }
 
+  function advanceTurnWithLaser(state, explicitColor = null) {
+    const fireColor = explicitColor || getStateTurn(state);
+    if (!fireColor) return { state, trace: null, firedColor: null, nextTurn: null };
+    const board = getBoardRoot(state);
+    if (board) { board.phase = 'MOVE'; board.moveNumber = Number(board.moveNumber || 0) + 1; }
+    const nextTurn = fireColor === 'RED' ? 'BLUE' : 'RED';
+    setStateTurn(state, nextTurn);
+    return { state, trace: null, firedColor: fireColor, nextTurn };
+  }
+
   function printTerminalMatrix(state, laserTrace = null) {
     latestState = state;
     const pieces = getBoardPieces(state);
@@ -275,6 +295,7 @@
         }
 
         cellEl.addEventListener('click', (e) => {
+            if (!isMobile) return; 
             e.preventDefault();
             cursorX = x;
             cursorY = y;
@@ -451,10 +472,11 @@
     lockedMatchId = null;
     activeMatrixContainer = null;
     modeShown = false;
+    updateMobileControlsVisibility(false);
     startPolling();
   }
 
-  function lockOntoMatch(id) {
+  function lockOntoMatch(id, entry) {
     lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); toggleWaiting(false); stopPrivateHostGamePolling(); modeShown = false;
     add(`LINK ESTABLISHED: ${id}`, 'success-msg'); 
     
@@ -468,13 +490,14 @@
             if (state.redPlayer === myName) myColor = 'RED';
             else if (state.bluePlayer === myName) myColor = 'BLUE';
 
-            const myKing = pieces.find(p => p && p.color === myColor && p.pieceType === 'KING');
-            const enemyKing = pieces.find(p => p && p.color !== myColor && p.pieceType === 'KING');
+            const myKing = pieces.find(p => p.color === myColor && p.pieceType === 'KING');
+            const enemyKing = pieces.find(p => p.color !== myColor && p.pieceType === 'KING');
             
             if (!myKing && myColor) { gameRef.off(); return terminateMatch("DEFEAT: Your Pharaoh has fallen."); }
             if (!enemyKing && myColor) { gameRef.off(); return terminateMatch("VICTORY: Enemy Pharaoh destroyed."); }
 
             printTerminalMatrix(state); 
+            updateMobileControlsVisibility(true);
         } 
         else { gameRef.off(); terminateMatch('MATCH TERMINATED.'); }
     });
@@ -501,7 +524,7 @@
     if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
     add('System Online.', 'success-msg');
     
-    if (rid && rid.toString().includes('_')) { const snap = await dbGame.ref(`G/${rid}`).once('value'); if (snap.exists()) return lockOntoMatch(rid); localStorage.removeItem(KEY_RID); }
+    if (rid && rid.toString().includes('_')) { const snap = await dbGame.ref(`G/${rid}`).once('value'); if (snap.exists()) return lockOntoMatch(rid, snap.val()); localStorage.removeItem(KEY_RID); }
     if (!await searchForGameDBMatch()) await startPolling();
   }
 
@@ -512,19 +535,18 @@
     isPollingStarting = false;
   }
 
-  function stopPolling() { if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } }
+  function stopPolling() { if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } lastQueueState = 'STOPPED'; }
 
   async function searchForGameDBMatch() {
     const myName = localStorage.getItem(KEY_USER); if (!myName) return false;
     try {
       const snap = await dbGame.ref('G').once('value'); const games = snap.val(); if (!games) return false;
       const matchID = Object.keys(games).find(key => {
-        // Excludes matches flagged as private from auto-discovery
         const game = games[key];
         if (game && (game.private || game.isPrivate || game.status === 'PRIVATE')) return false;
         return String(key).toUpperCase().includes(myName.toUpperCase());
       });
-      if (matchID) { add(`[AUTO-JOIN] Match detected: ${matchID}`, 'success-msg'); lockOntoMatch(matchID); return true; }
+      if (matchID) { add(`[AUTO-JOIN] Match detected: ${matchID}`, 'success-msg'); lockOntoMatch(matchID, games[matchID]); return true; }
     } catch (e) { console.error(e); } return false;
   }
 
@@ -536,7 +558,6 @@
       if (!data) return false;
       const firstKey = Object.keys(data)[0]; 
       const matchData = data[firstKey];
-      // Hard guard against pulling private records
       if (matchData && (matchData.private || matchData.isPrivate || matchData.status === 'PRIVATE')) { return false; }
       const myName = localStorage.getItem(KEY_USER) || '';
       if (matchData.username && matchData.username.toUpperCase() === myName.toUpperCase()) { return false; }
@@ -547,20 +568,15 @@
 
   async function showMode() {
     if (localStorage.getItem(KEY_RID)) return; while (processing) await sleep(10); if (modeShown) return; modeShown = true;
-    
-    add('--- TERMINAL SELECTION ---', 'system-msg');
-    add('[R] Host Red (Public) | [B] Host Blue (Public)', 'system-msg');
-    add('[P] Host Private      | [J] Join Private', 'system-msg');
-    if (currentHead) {
-      add(`[A] Fast-Intercept Queue (Join as ${currentHead.data.color === 0 ? 'BLUE' : 'RED'})`, 'wait-msg');
-    }
+    if (!currentHead) { add('Queue Empty. [R] Host Red | [B] Blue', 'system-msg'); } 
+    else if (currentHead.data.color === 0) { add('RED at head. [A] Join as Blue | [R] Host Red', 'system-msg'); } 
+    else { add('BLUE at head. [A] Join as Red | [B] Host Blue', 'system-msg'); }
     add('MODE:', '', true, handleMode);
   }
 
   async function handleMode(val) {
     if (val === 'A') { if (!currentHead) { add('JOIN FAILED.', 'error-msg'); modeShown = false; return showMode(); } registerHost(currentHead.data.color === 0 ? 1 : 0, true); }
-    else if (val === 'R') registerHost(0, false); 
-    else if (val === 'B') registerHost(1, false);
+    else if (val === 'R') registerHost(0, false); else if (val === 'B') registerHost(1, false);
     else if (val === 'P') { add('Private Host Color [R/B]:', '', true, handlePrivateColor); }
     else if (val === 'J') { add('Invite Code:', '', true, handlePrivateJoinCode); }
     else { add('Unknown Command.', 'error-msg'); modeShown = false; showMode(); }
@@ -589,7 +605,7 @@
       const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), color, isIntercept }) }); const data = await res.json();
       if (data.ok) {
         const idToStore = data.matchName || data.requestId || data.timestamp; if (idToStore) localStorage.setItem(KEY_RID, idToStore); stopPolling(); 
-        if (data.matchName) lockOntoMatch(data.matchName); 
+        if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' }); 
       }
     } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); }
   }
@@ -675,6 +691,7 @@
       toggleWaiting(false);
   }
 
+  function stopHostGamePolling() { if (hostGamePollInterval) { clearInterval(hostGamePollInterval); hostGamePollInterval = null; } }
   async function isUsernameOccupied(username) { if (!username) return true; try { const snap = await dbMatch.ref(`P/${username}`).once('value'); return snap.exists(); } catch (e) { return true; } }
 
   window.addEventListener('DOMContentLoaded', boot);
