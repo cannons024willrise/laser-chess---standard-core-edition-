@@ -28,6 +28,7 @@
         .matrix-container { display: flex; flex-direction: column; margin: 6px 0 24px 0; font-family: 'Unifont', monospace; user-select: none; border-left: 2px solid var(--line); padding-left: 12px; }
         .matrix-row { display: flex; height: 36px; align-items: center; }
         .matrix-cell { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; font-weight: bold; touch-action: manipulation; }
+        .matrix-cell.cursor { outline: 1px solid var(--bright); background: rgba(255,255,255,0.1); }
         .matrix-lbl { color: var(--muted); font-weight: normal; }
         .p-blue { color: var(--blue); }
         .p-red { color: var(--red); }
@@ -62,9 +63,8 @@
   let rqPollInterval = null, waitAnimationInterval = null, hostGamePollInterval = null;
   let currentHead = null, modeShown = false, isPollingStarting = false; 
   let cursorX = 0, cursorY = 0, latestState = null, activeMatrixContainer = null;
-  let isHostRequestPending = false, requestStatus = "IDLE"; // Status tracker
+  let isHostRequestPending = false, requestStatus = "IDLE";
 
-  const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
   const ROTATION_TABLE = { KING: { 0: '◈' }, LASER: { 0: '⫝' }, SWITCH: { 0: '⟋' }, DEFENDER: { 0: '⬓' }, DEFLECTOR: { 0: '◤' } };
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -102,7 +102,8 @@
       let rowEl = document.createElement('div'); rowEl.className = 'matrix-row';
       for (let x = 0; x < 10; x++) {
         let cellEl = document.createElement('span'); cellEl.className = 'matrix-cell';
-        cellEl.addEventListener('click', (e) => { e.preventDefault(); cursorX = x; cursorY = y; handleGridAction(); });
+        if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
+        cellEl.addEventListener('click', (e) => { e.preventDefault(); cursorX = x; cursorY = y; printTerminalMatrix(latestState); handleGridAction(); });
         const p = grid[y][x]; 
         if (p) { cellEl.textContent = getPieceChar(p); cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue'); } else { cellEl.textContent = '·'; }
         rowEl.appendChild(cellEl);
@@ -113,6 +114,18 @@
     else if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); else logContainer.appendChild(container); 
     activeMatrixContainer = container; 
   }
+
+  // --- CONTROLS ---
+  window.addEventListener('keydown', (e) => {
+    if (currentPromptWrap) return;
+    if (e.key === 'ArrowUp' && cursorY < 7) cursorY++;
+    else if (e.key === 'ArrowDown' && cursorY > 0) cursorY--;
+    else if (e.key === 'ArrowLeft' && cursorX > 0) cursorX--;
+    else if (e.key === 'ArrowRight' && cursorX < 9) cursorX++;
+    else if (e.key === 'Enter') handleGridAction();
+    else return;
+    if (latestState) printTerminalMatrix(latestState);
+  });
 
   async function handleGridAction() { if (!latestState) return; add(`Selected: ${cursorX},${cursorY}`, 'system-msg'); }
 
