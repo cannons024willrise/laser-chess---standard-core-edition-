@@ -31,8 +31,8 @@
         .matrix-cell.cursor { outline: 1px solid var(--bright); background: rgba(255,255,255,0.1); }
         .selected-piece { outline: 2px dashed #00ff00 !important; outline-offset: -2px; }
         
-        .p-blue { color: var(--blue); }
-        .p-red { color: var(--red); }
+        .p-blue { color: var(--blue); font-weight: bold; }
+        .p-red { color: var(--red); font-weight: bold; }
         
         .reserved-blue { background-color: var(--blue-tint) !important; }
         .reserved-red { background-color: var(--red-tint) !important; }
@@ -70,7 +70,7 @@
   
   let selectedOrigin = null;
 
-  // --- PORTED LASER TRACER ENGINE ENGINE CONSTANTS ---
+  // --- LASER TRACER ENGINE ENGINE CONSTANTS ---
   const DIRS = [ { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 } ]; 
   const ROTATION_TABLE = { 
     KING: { 0: '◈', 1: '◈', 2: '◈', 3: '◈' }, 
@@ -136,7 +136,6 @@
     });
   }
 
-  // --- COMPREHENSIVE PIPELINE GAME ENGINE EXECUTION ---
   function getPieceChar(piece) { 
       const rot = piece.rotation || 0;
       return ROTATION_TABLE[piece.pieceType] ? ROTATION_TABLE[piece.pieceType][rot] : '?'; 
@@ -149,7 +148,6 @@
     return null;
   }
 
-  // --- PORTED TRACER ENGINE UTILS ---
   function inBounds(x, y) { return x >= 0 && x <= 9 && y >= 0 && y <= 7; }
   function normalizeRotation(rot) { return ((Number(rot) || 0) % 4 + 4) % 4; }
   function isReservedSquare(x, y, color) { return color === 'BLUE' ? RED_RESERVED.some(s => s.x === x && s.y === y) : BLUE_RESERVED.some(s => s.x === x && s.y === y); }
@@ -191,6 +189,31 @@
     for (const piece of pieces) { if (piece && Number.isFinite(piece.x)) grid[piece.y][piece.x] = piece; }
     
     const container = document.createElement('div'); container.className = 'matrix-container';
+
+    // --- RENDER GAME ENGAGEMENT BAR (You / Opponent / Turn) ---
+    const myName = (localStorage.getItem(KEY_USER) || '').toUpperCase();
+    let myColor = localStorage.getItem('ls_my_color');
+    if (!myColor && state) {
+      if (state.red && String(state.red).toUpperCase() === myName) myColor = 'RED';
+      else if (state.blue && String(state.blue).toUpperCase() === myName) myColor = 'BLUE';
+      else if (state.redPlayer && String(state.redPlayer).toUpperCase() === myName) myColor = 'RED';
+      else if (state.bluePlayer && String(state.bluePlayer).toUpperCase() === myName) myColor = 'BLUE';
+      else if (lockedMatchId && lockedMatchId.toUpperCase().startsWith(myName)) myColor = 'RED';
+      else myColor = 'BLUE';
+      localStorage.setItem('ls_my_color', myColor);
+    }
+    const currentTurn = state.board?.turn || state.turn || 'RED';
+    const opponentColor = myColor === 'RED' ? 'BLUE' : 'RED';
+
+    const statusBar = document.createElement('div');
+    statusBar.className = 'history-line';
+    statusBar.style.marginBottom = '12px';
+    statusBar.style.fontSize = '20px';
+    statusBar.style.borderBottom = '1px dashed var(--line)';
+    statusBar.style.paddingBottom = '6px';
+    statusBar.innerHTML = `[<span class="highlight">YOU</span>: <span class="p-${myColor?.toLowerCase()}">${myColor || 'UNKNOWN'}</span>] &nbsp;&nbsp; [<span class="highlight">OPPONENT</span>: <span class="p-${opponentColor.toLowerCase()}">${opponentColor}</span>] &nbsp;&nbsp; [<span class="highlight">CURRENT TURN</span>: <span class="p-${currentTurn.toLowerCase()}">${currentTurn}</span>]`;
+    container.appendChild(statusBar);
+
     for (let y = 7; y >= 0; y--) {
       let rowEl = document.createElement('div'); rowEl.className = 'matrix-row';
       for (let x = 0; x < 10; x++) {
@@ -239,7 +262,7 @@
     if (latestState) printTerminalMatrix(latestState);
   });
 
-  // --- COMPREHENSIVE PIPELINE GAME ENGINE EXECUTION ---
+  // --- REFACTORED SECURE PIPELINE GAME ENGINE EXECUTION ---
   async function processGameAction(intent) {
     if (!latestState) return;
 
@@ -252,55 +275,99 @@
       return;
     }
 
-    // --- PHASE 0: PRE-FLIGHT LOCAL DRY-RUN CHECKS ---
-    const piecesDryRun = getBoardPieces(latestState);
-    const userColor = latestState.board?.turn || 
-                      (intent.piece ? (getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y)?.color || 'RED') : 'RED');
+    // -------------------------------------------------------------------------
+    // --- PHASE 1: COMPREHENSIVE LOCAL VALIDATION DRY-RUN CHECKS -------------
+    // -------------------------------------------------------------------------
+    const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
+    let myColor = localStorage.getItem('ls_my_color');
+    
+    if (!myColor) {
+      if (latestState.red && String(latestState.red).toUpperCase() === myName.toUpperCase()) myColor = 'RED';
+      else if (latestState.blue && String(latestState.blue).toUpperCase() === myName.toUpperCase()) myColor = 'BLUE';
+      else if (latestState.redPlayer && String(latestState.redPlayer).toUpperCase() === myName.toUpperCase()) myColor = 'RED';
+      else if (latestState.bluePlayer && String(latestState.bluePlayer).toUpperCase() === myName.toUpperCase()) myColor = 'BLUE';
+      else if (lockedMatchId && lockedMatchId.toUpperCase().startsWith(myName.toUpperCase())) myColor = 'RED';
+      else myColor = 'BLUE';
+      localStorage.setItem('ls_my_color', myColor);
+    }
 
     try {
-        if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
-            const dbPiece = getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y);
-            if (!dbPiece || dbPiece.color !== userColor) throw new Error("Action rejected: Invalid piece ownership or turn error");
-            if (dbPiece.pieceType !== intent.piece.type) throw new Error("State mismatch: Piece type altered");
+        // 1. Validate Turn Handshake
+        if (currentTurn !== myColor) {
+            throw new Error(`Turn violation: It is ${currentTurn}'s turn, but you are ${myColor}.`);
+        }
 
+        // 2. Piece Mutation Constraints Verification
+        if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
+            const piecesDryRun = getBoardPieces(latestState);
+            const dbPiece = getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y);
+            
+            if (!dbPiece) {
+                throw new Error("Selection configuration anomaly: No piece occupies chosen origin.");
+            }
+            if (dbPiece.color !== myColor) {
+                throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but your assignment is ${myColor}.`);
+            }
+            if (dbPiece.pieceType !== intent.piece.type) {
+                throw new Error("State discrepancy: Local component entity mismatch.");
+            }
+
+            // Movement Vector Boundary Audits
             if (intent.action === 'Move') {
                 const nx = intent.changes.new.x;
                 const ny = intent.changes.new.y;
                 const dx = Math.abs(nx - dbPiece.x);
                 const dy = Math.abs(ny - dbPiece.y);
                 
-                if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) throw new Error("Invalid move: Out of range");
-                if (dbPiece.pieceType === 'LASER') throw new Error("Invalid move: Sphinx cannot move");
-                if (isReservedSquare(nx, ny, dbPiece.color)) throw new Error("Invalid move: Reserved square violation");
+                if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) {
+                    throw new Error("Invalid move: Relocation offset bounds exceeded.");
+                }
+                if (dbPiece.pieceType === 'LASER') {
+                    throw new Error("Invalid move: Sphinx (LASER) structural column immobilized.");
+                }
+                if (isReservedSquare(nx, ny, dbPiece.color)) {
+                    throw new Error("Invalid move: Restricted landing zone column conflict.");
+                }
 
                 const pieceAtTarget = getPieceAt(piecesDryRun, nx, ny);
                 if (pieceAtTarget) {
+                    // Check swap legality requirements
                     if (dbPiece.pieceType === 'SWITCH' && (pieceAtTarget.pieceType === 'DEFLECTOR' || pieceAtTarget.pieceType === 'DEFENDER')) {
                         if (isReservedSquare(dbPiece.x, dbPiece.y, pieceAtTarget.color)) {
-                            throw new Error("Invalid move: Swapped piece reserved square violation");
+                            throw new Error("Invalid move: Trapped swap rule violation on target zone.");
                         }
                     } else {
-                        throw new Error("Invalid move: Target square occupied");
+                        throw new Error("Invalid move: Destructive spatial overlap. Target square occupied.");
                     }
                 }
             }
+            // Rotational Symmetry Verification
             else if (intent.action === 'Rotate') {
                 const newRot = intent.changes.new.rotation;
-                if (dbPiece.pieceType === 'KING') throw new Error("Invalid rotate: Pharaoh cannot rotate");
+                if (dbPiece.pieceType === 'KING') {
+                    throw new Error("Invalid rotate: Pharaoh (KING) directional system locked.");
+                }
                 if (dbPiece.pieceType === 'LASER') {
-                    if (dbPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) throw new Error("Invalid rotate: Blue Sphinx restricted");
-                    if (dbPiece.color === 'RED' && (newRot === 3 || newRot === 0)) throw new Error("Invalid rotate: Red Sphinx restricted");
+                    if (dbPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) {
+                        throw new Error("Invalid rotate: Blue Sphinx sector limits restricted to 0 or 3.");
+                    }
+                    if (dbPiece.color === 'RED' && (newRot === 3 || newRot === 0)) {
+                        throw new Error("Invalid rotate: Red Sphinx sector limits restricted to 1 or 2.");
+                    }
                 }
             }
         }
     } catch (localErr) {
-        add(`Engine Rejection (Local Check): ${localErr.message}`, 'error-msg');
+        // SHORT-CIRCUIT: Log locally and abort instantly. No network traffic dispatched.
+        add(`Local Validation Rejected: ${localErr.message}`, 'error-msg');
         selectedOrigin = null;
         printTerminalMatrix(latestState);
-        return; // CRITICAL: Stop operational workflow here. Do not transmit to Worker.
+        return;
     }
 
-    // --- AUTHORITATIVE NETWORK HANDSHAKE LAYER ---
+    // -------------------------------------------------------------------------
+    // --- PHASE 2: AUTHORITATIVE REMOTE NETWORK HANDSHAKE ---------------------
+    // -------------------------------------------------------------------------
     add(`Transmitting intent: ${intent.action}...`, 'system-msg');
     try {
       const response = await fetch(MOVE_CHECKER_URL, {
@@ -330,7 +397,9 @@
       return;
     }
 
-    // --- LOCAL ANIMATION & PERSISTENCE SYNCHRONIZATION ---
+    // -------------------------------------------------------------------------
+    // --- PHASE 3: LOCAL ANIMATION & PERSISTENCE SYNCHRONIZATION -------------
+    // -------------------------------------------------------------------------
     isAnimatingLocalTurn = true; 
     const stateCopy = JSON.parse(JSON.stringify(latestState));
     let pieces = getBoardPieces(stateCopy);
@@ -355,14 +424,12 @@
                 add(`ROTATION METADATA: ${dbPiece.pieceType} modified to position ${newRot}`, 'success-msg');
             }
 
-            // PHASE 1 RENDER: Render the command affected copy
             activeMatrixContainer = null; 
             printTerminalMatrix(stateCopy);
             await sleep(500);
         }
 
-        // PHASE 2 ENGINE: Visual Laser Vector trace engine overlay calculation
-        const shooter = pieces.find(p => p && p.pieceType === 'LASER' && p.color === userColor);
+        const shooter = pieces.find(p => p && p.pieceType === 'LASER' && p.color === myColor);
         if (shooter) {
             const startDir = normalizeRotation(shooter.rotation);
             const trace = resolveLaserVector(shooter.x + DIRS[startDir].dx, shooter.y + DIRS[startDir].dy, startDir, pieces);
@@ -371,9 +438,7 @@
             printTerminalMatrix(stateCopy, trace.path);
             await sleep(1200);
             
-            if (trace.looped) {
-                // Loop boundary recursion threshold caught silently
-            } else if (trace.hit && trace.hit.destroyed) {
+            if (!trace.looped && trace.hit && trace.hit.destroyed) {
                 const targetKilled = trace.hit.piece;
                 
                 pieces = pieces.filter(p => !(p.x === targetKilled.x && p.y === targetKilled.y));
@@ -381,8 +446,8 @@
 
                 add(`Laser beam eliminated ${targetKilled.pieceType} at coordinate (${targetKilled.x}, ${targetKilled.y}).`, "error-msg");
                 if (targetKilled.pieceType === 'KING') {
-                    stateCopy.status = `${userColor}_WIN`;
-                    add(`CRITICAL ALERT: KING DESTROYED. ${userColor} achieves victory.`, "success-msg");
+                    stateCopy.status = `${myColor}_WIN`;
+                    add(`CRITICAL ALERT: KING DESTROYED. ${myColor} achieves victory.`, "success-msg");
                 }
 
                 activeMatrixContainer = null;
@@ -392,10 +457,10 @@
         }
 
         if (stateCopy.board) {
-            stateCopy.board.turn = userColor === 'RED' ? 'BLUE' : 'RED';
+            stateCopy.board.turn = myColor === 'RED' ? 'BLUE' : 'RED';
             stateCopy.board.moveNumber = (stateCopy.board.moveNumber || 0) + 1;
         } else {
-            stateCopy.turn = userColor === 'RED' ? 'BLUE' : 'RED';
+            stateCopy.turn = myColor === 'RED' ? 'BLUE' : 'RED';
             stateCopy.moveNumber = (stateCopy.moveNumber || 0) + 1;
         }
 
@@ -464,7 +529,7 @@
     }
   }
 
-  function terminateMatch(msg) { add(msg, 'error-msg'); localStorage.removeItem(KEY_RID); lockedMatchId = null; activeMatrixContainer = null; modeShown = false; setStatus("IDLE"); startPolling(); }
+  function terminateMatch(msg) { add(msg, 'error-msg'); localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); lockedMatchId = null; activeMatrixContainer = null; modeShown = false; setStatus("IDLE"); startPolling(); }
 
   function lockOntoMatch(id, entry) {
     lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); stopHostGamePolling(); toggleWaiting(false); modeShown = false;
@@ -496,7 +561,7 @@
     if (rid) { 
         const snap = await dbGame.ref(`G/${rid}`).once('value'); 
         if (snap.exists()) return lockOntoMatch(rid, snap.val()); 
-        else { localStorage.removeItem(KEY_RID); add("Stale match ID cleared.", "system-msg"); }
+        else { localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); add("Stale match ID cleared.", "system-msg"); }
     }
     if (!await searchForGameDBMatch()) await startPolling();
   }
@@ -554,6 +619,7 @@
     isHostRequestPending = true;
     setStatus("NEGOTIATING");
     toggleWaiting(true, "Negotiating Match");
+    localStorage.setItem('ls_my_color', color === 0 ? 'RED' : 'BLUE');
     try {
       const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), color, isIntercept }) }); const data = await res.json();
       if (data.ok) {
@@ -562,8 +628,8 @@
         stopPolling(); 
         if (data.matchName) { isHostRequestPending = false; setStatus("LOCKED"); lockOntoMatch(data.matchName, { status: 'SYNCING' }); } 
         else { setStatus("WAITING_FOR_DB"); startHostGamePolling(); }
-      } else { add(`Request rejected: ${data.error || 'Unknown'}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); }
-    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); }
+      } else { add(`Request rejected: ${data.error || 'Unknown'}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); localStorage.removeItem('ls_my_color'); }
+    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); localStorage.removeItem('ls_my_color'); }
   }
 
   window.addEventListener('DOMContentLoaded', boot);
