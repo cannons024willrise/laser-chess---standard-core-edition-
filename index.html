@@ -542,16 +542,95 @@
 
       async function showMode() {
         if (localStorage.getItem(KEY_RID)) return; while (processing) await sleep(10); if (modeShown) return; modeShown = true;
-        if (!currentHead) add('Queue Empty. [R] Host Red | [B] Blue', 'system-msg'); 
-        else if (currentHead.data.color === 0) add('RED at head. [A] Join as Blue | [R] Host Red', 'system-msg'); 
-        else add('BLUE at head. [A] Join as Red | [B] Host Blue', 'system-msg');
+        if (!currentHead) add('Queue Empty. [R] Host Red | [B] Blue | [P] Host Private | [J] Join Private', 'system-msg'); 
+        else if (currentHead.data.color === 0) add('RED at head. [A] Join as Blue | [R] Host Red | [P] Host Private | [J] Join Private', 'system-msg'); 
+        else add('BLUE at head. [A] Join as Red | [B] Host Blue | [P] Host Private | [J] Join Private', 'system-msg');
         add('MODE:', '', true, handleMode);
       }
 
       async function handleMode(val) {
         if (val === 'A') { if (!currentHead) { add('JOIN FAILED.', 'error-msg'); modeShown = false; return showMode(); } registerHost(currentHead.data.color === 0 ? 1 : 0, true); }
-        else if (val === 'R') registerHost(0, false); else if (val === 'B') registerHost(1, false);
+        else if (val === 'R') registerHost(0, false); 
+        else if (val === 'B') registerHost(1, false);
+        else if (val === 'P') {
+            add('Enter Target Username (or [ENTER] for open):', '', true, async (target) => {
+                add('Choose Color: [R] Red | [B] Blue', '', true, async (colorKey) => {
+                    const color = (colorKey === 'R') ? 0 : 1;
+                    requestPrivateMatch(color, target || null);
+                });
+            });
+        }
+        else if (val === 'J') {
+            add('Enter Invite Code:', '', true, async (code) => {
+                add('Choose Color: [R] Red | [B] Blue', '', true, async (colorKey) => {
+                    const color = (colorKey === 'R') ? 0 : 1;
+                    joinPrivateMatch(code, color);
+                });
+            });
+        }
         else { add('Unknown Command.', 'error-msg'); modeShown = false; showMode(); }
+      }
+
+      async function requestPrivateMatch(color, target) {
+          setStatus("NEGOTIATING_PRIVATE");
+          toggleWaiting(true, "Creating Private Lobby");
+          try {
+              const res = await fetch(WORKER_URL, { 
+                  method: 'POST', 
+                  headers: { 'Content-Type': 'application/json' }, 
+                  body: JSON.stringify({ 
+                      mode: "PRIVATE_MATCH_REQUEST", 
+                      body: { 
+                          requester: localStorage.getItem(KEY_USER), 
+                          secret: localStorage.getItem(KEY_PASS), 
+                          color, 
+                          target 
+                      } 
+                  }) 
+              });
+              const data = await res.json();
+              if (data.ok) {
+                  add(`Lobby Created! Invite Code: ${data.inviteCode}`, 'success-msg');
+                  setStatus("WAITING_FOR_GUEST");
+                  startHostGamePolling();
+              } else {
+                  add(`Private Request Rejected: ${data.error}`, 'error-msg');
+                  toggleWaiting(false);
+              }
+          } catch (e) {
+              add(`Connection Error: ${e.message}`, 'error-msg');
+              toggleWaiting(false);
+          }
+      }
+
+      async function joinPrivateMatch(inviteCode, color) {
+          setStatus("JOINING_PRIVATE");
+          toggleWaiting(true, "Joining Lobby");
+          try {
+              const res = await fetch(WORKER_URL, { 
+                  method: 'POST', 
+                  headers: { 'Content-Type': 'application/json' }, 
+                  body: JSON.stringify({ 
+                      username: localStorage.getItem(KEY_USER),
+                      password: localStorage.getItem(KEY_PASS),
+                      color,
+                      isPrivate: true,
+                      privateMode: "JOIN",
+                      inviteCode
+                  }) 
+              });
+              const data = await res.json();
+              if (data.ok) {
+                  add(`Successfully joined ${data.matchName}`, 'success-msg');
+                  lockOntoMatch(data.matchName, { status: 'SYNCING' });
+              } else {
+                  add(`Join Failed: ${data.error}`, 'error-msg');
+                  toggleWaiting(false);
+              }
+          } catch (e) {
+              add(`Connection Error: ${e.message}`, 'error-msg');
+              toggleWaiting(false);
+          }
       }
 
       async function registerHost(color, isIntercept = false) {
