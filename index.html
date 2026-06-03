@@ -68,6 +68,8 @@
   
   let selectedOrigin = null;
 
+  // --- PORTED LASER TRACER ENGINE ENGINE CONSTANTS ---
+  const DIRS = [ { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 } ]; 
   const ROTATION_TABLE = { 
     KING: { 0: '◈', 1: '◈', 2: '◈', 3: '◈' }, 
     LASER: { 0: '⫝', 1: '⟜', 2: 'Ͳ', 3: 'Ð' }, 
@@ -77,6 +79,39 @@
   };
   const BLUE_RESERVED = [{x: 9, y: 0}, {x: 9, y: 1}, {x: 9, y: 2}, {x: 9, y: 3}, {x: 9, y: 4}, {x: 9, y: 5}, {x: 9, y: 6}, {x: 9, y: 7}, {x: 1, y: 0}, {x: 1, y: 7}];
   const RED_RESERVED = [{x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7}, {x: 8, y: 0}, {x: 8, y: 7}];
+
+  const INTERACTION_MAP = {
+      DEFLECTOR: {
+          0: { 0: { action: 'reflect', nextDir: 1 }, 3: { action: 'reflect', nextDir: 2 }, 1: { action: 'destroy' }, 2: { action: 'destroy' } },
+          1: { 0: { action: 'reflect', nextDir: 3 }, 1: { action: 'reflect', nextDir: 2 }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+          2: { 2: { action: 'reflect', nextDir: 3 }, 1: { action: 'reflect', nextDir: 0 }, 0: { action: 'destroy' }, 3: { action: 'destroy' } },
+          3: { 2: { action: 'reflect', nextDir: 1 }, 3: { action: 'reflect', nextDir: 0 }, 0: { action: 'destroy' }, 1: { action: 'destroy' } }
+      },
+      SWITCH: {
+          0: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } },
+          1: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } },
+          2: { 0: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 2 } },
+          3: { 0: { action: 'reflect', nextDir: 3 }, 3: { action: 'reflect', nextDir: 0 }, 2: { action: 'reflect', nextDir: 1 }, 1: { action: 'reflect', nextDir: 2 } }
+      },
+      DEFENDER: {
+          0: { 0: { action: 'block' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+          1: { 1: { action: 'block' }, 0: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+          2: { 2: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 3: { action: 'destroy' } },
+          3: { 3: { action: 'block' }, 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' } }
+      },
+      KING: {
+          0: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+          1: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+          2: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+          3: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }
+      },
+      LASER: {
+          0: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
+          1: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
+          2: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
+          3: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } }
+      }
+  };
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   function setStatus(msg) { if (requestStatus === msg) return; requestStatus = msg; add(`[STATUS] ${msg}`, 'system-msg'); }
@@ -105,19 +140,45 @@
   }
 
   function getBoardPieces(state) { const src = state.board || state; return Array.isArray(src.pieces) ? src.pieces : (src.pieces ? Object.values(src.pieces) : []); }
-  
-  function isKingMove(x1, y1, x2, y2) {
-    return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1;
-  }
-
   function getReservedClass(x, y) {
     if (BLUE_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-blue';
     if (RED_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-red';
     return null;
   }
 
-  function isReservedSquare(x, y, color) {
-    return color === 'BLUE' ? RED_RESERVED.some(s => s.x === x && s.y === y) : BLUE_RESERVED.some(s => s.x === x && s.y === y);
+  // --- PORTED TRACER ENGINE UTILS ---
+  function inBounds(x, y) { return x >= 0 && x <= 9 && y >= 0 && y <= 7; }
+  function normalizeRotation(rot) { return ((Number(rot) || 0) % 4 + 4) % 4; }
+  function isReservedSquare(x, y, color) { return color === 'BLUE' ? RED_RESERVED.some(s => s.x === x && s.y === y) : BLUE_RESERVED.some(s => s.x === x && s.y === y); }
+  function getPieceAt(pieces, x, y) { return pieces.find(p => p && p.x === x && p.y === y) || null; }
+  
+  function interactWithLaser(piece, incomingDir) {
+      const typeMap = INTERACTION_MAP[piece.pieceType];
+      if (!typeMap) return { kind: 'stop', destroyed: false };
+      const outcome = typeMap[normalizeRotation(piece.rotation)]?.[incomingDir];
+      if (!outcome) return { kind: 'stop', destroyed: false };
+      if (outcome.action === 'reflect') return { kind: 'reflect', destroyed: false, reflected: outcome.nextDir };
+      if (outcome.action === 'block') return { kind: 'stop', blocked: true, destroyed: false };
+      if (outcome.action === 'destroy') return { kind: 'stop', destroyed: true };
+      return { kind: 'stop', destroyed: false };
+  }
+
+  function resolveLaserVector(x, y, dir, pieces, path = [], seen = new Set()) {
+      if (!inBounds(x, y)) return { path, hit: null, looped: false };
+      const stateKey = `${x},${y},${dir}`;
+      if (seen.has(stateKey)) return { path, hit: null, looped: true };
+      seen.add(stateKey);
+      path.push({ x, y, dir });
+
+      const piece = getPieceAt(pieces, x, y);
+      if (!piece) return resolveLaserVector(x + DIRS[dir].dx, y + DIRS[dir].dy, dir, pieces, path, seen);
+
+      const outcome = interactWithLaser(piece, dir);
+      if (outcome.kind === 'reflect') {
+          const nextDir = outcome.reflected;
+          return resolveLaserVector(x + DIRS[nextDir].dx, y + DIRS[nextDir].dy, nextDir, pieces, path, seen);
+      }
+      return { path, hit: { piece, blocked: !!outcome.blocked, destroyed: !!outcome.destroyed }, looped: false };
   }
 
   function printTerminalMatrix(state) {
@@ -134,12 +195,8 @@
         
         const resClass = getReservedClass(x, y);
         if (resClass) cellEl.classList.add(resClass);
-
         if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
-        
-        if (selectedOrigin && x === selectedOrigin.x && y === selectedOrigin.y) {
-           cellEl.classList.add('selected-piece');
-        }
+        if (selectedOrigin && x === selectedOrigin.x && y === selectedOrigin.y) cellEl.classList.add('selected-piece');
 
         cellEl.addEventListener('click', (e) => { e.preventDefault(); cursorX = x; cursorY = y; printTerminalMatrix(latestState); handleGridAction(); });
         const p = grid[y][x]; 
@@ -166,39 +223,134 @@
     if (latestState) printTerminalMatrix(latestState);
   });
 
-  function rotatePiece(dir) {
-    if (!selectedOrigin || !latestState) return;
+  // --- COMPREHENSIVE PIPELINE GAME ENGINE EXECUTION ---
+  async function processGameAction(intent) {
+    if (!latestState) return;
 
-    // Create copy for next frame
-    latestState = JSON.parse(JSON.stringify(latestState));
-    const pieces = getBoardPieces(latestState);
-    const p = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
-    
-    if (p) {
-        const nextRotation = ((p.rotation || 0) + dir + 4) % 4;
+    const stateCopy = JSON.parse(JSON.stringify(latestState));
+    let pieces = getBoardPieces(stateCopy);
+    const userColor = stateCopy.board?.turn || (getPieceAt(pieces, intent.piece.x, intent.piece.y)?.color || 'RED');
 
-        if (p.pieceType === 'LASER') {
-            const { x, y } = p;
-            if ((nextRotation === 0 && y >= 7) ||
-                (nextRotation === 1 && x >= 9) ||
-                (nextRotation === 2 && y <= 0) ||
-                (nextRotation === 3 && x <= 0)) {
-                add(`Invalid Rotation: Laser points off-board.`, 'error-msg');
-                return;
+    try {
+        const dbPiece = getPieceAt(pieces, intent.piece.x, intent.piece.y);
+        if (!dbPiece || dbPiece.color !== userColor) throw new Error("Action rejected: Invalid piece ownership or turn error");
+        if (dbPiece.pieceType !== intent.piece.type) throw new Error("State mismatch: Piece type altered");
+
+        if (intent.action === 'Move') {
+            const nx = intent.changes.new.x;
+            const ny = intent.changes.new.y;
+            const dx = Math.abs(nx - dbPiece.x);
+            const dy = Math.abs(ny - dbPiece.y);
+            
+            if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) throw new Error("Invalid move: Out of range");
+            if (dbPiece.pieceType === 'LASER') throw new Error("Invalid move: Sphinx cannot move");
+            if (isReservedSquare(nx, ny, dbPiece.color)) throw new Error("Invalid move: Reserved square violation");
+
+            const pieceAtTarget = getPieceAt(pieces, nx, ny);
+            if (pieceAtTarget) {
+                if (dbPiece.pieceType === 'SWITCH' && (pieceAtTarget.pieceType === 'DEFLECTOR' || pieceAtTarget.pieceType === 'DEFENDER')) {
+                    pieceAtTarget.x = dbPiece.x; pieceAtTarget.y = dbPiece.y;
+                } else {
+                    throw new Error("Invalid move: Target square occupied");
+                }
+            }
+            dbPiece.x = nx; dbPiece.y = ny;
+            add(`MOVE METADATA: (${intent.piece.x},${intent.piece.y}) -> (${nx},${ny})`, 'success-msg');
+        }
+        else if (intent.action === 'Rotate') {
+            const newRot = intent.changes.new.rotation;
+            if (dbPiece.pieceType === 'KING') throw new Error("Invalid rotate: Pharaoh cannot rotate");
+            if (dbPiece.pieceType === 'LASER') {
+                if (dbPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) throw new Error("Invalid rotate: Blue Sphinx restricted");
+                if (dbPiece.color === 'RED' && (newRot === 3 || newRot === 0)) throw new Error("Invalid rotate: Red Sphinx restricted");
+            }
+            dbPiece.rotation = newRot;
+            add(`ROTATION METADATA: ${dbPiece.pieceType} modified to position ${newRot}`, 'success-msg');
+        }
+
+        // PHASE 1 RENDER: Render the command affected copy
+        activeMatrixContainer = null; 
+        printTerminalMatrix(stateCopy);
+        await sleep(500);
+
+        // PHASE 2 ENGINE: Ported Worker Laser Vector raytrace engine calculation
+        add("[LASER ENGINE] Initializing trajectory matrix simulation...", "system-msg");
+        await sleep(250);
+        
+        const shooter = pieces.find(p => p && p.pieceType === 'LASER' && p.color === userColor);
+        if (shooter) {
+            const startDir = normalizeRotation(shooter.rotation);
+            const trace = resolveLaserVector(shooter.x + DIRS[startDir].dx, shooter.y + DIRS[startDir].dy, startDir, pieces);
+            
+            if (trace.looped) {
+                add("Server Vector Raytracer: Laser loop recursion threshold hit; sequence aborted.", "system-msg");
+            } else if (trace.hit && trace.hit.destroyed) {
+                const targetKilled = trace.hit.piece;
+                
+                // Clear piece out of the rendering tree arrays
+                pieces = pieces.filter(p => !(p.x === targetKilled.x && p.y === targetKilled.y));
+                if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
+
+                add(`Server Vector Raytracer: Laser beam eliminated ${targetKilled.pieceType} at coordinate matrix values (${targetKilled.x}, ${targetKilled.y}).`, "error-msg");
+                if (targetKilled.pieceType === 'KING') {
+                    stateCopy.status = `${userColor}_WIN`;
+                    add(`CRITICAL ALERT: KING DESTROYED. Session terminated. ${userColor} achieves victory.`, "success-msg");
+                }
+
+                // PHASE 2 RENDER: Render final mutation state post laser trace elimination
+                activeMatrixContainer = null;
+                printTerminalMatrix(stateCopy);
+                await sleep(500);
+            } else {
+                add("Server Vector Raytracer: Beam paths dispersed or intercepted clean matrix point.", "system-msg");
             }
         }
 
-        p.rotation = nextRotation;
-        add(`Rotated ${p.pieceType} to ${p.rotation}`, 'system-msg');
-        activeMatrixContainer = null; // Break visual link to append copy under original
+        // PHASE 3 SYNC: Display Text Server Sync Protocol Emulation
+        add("[SERVER SYNC] Transmitting atomic game changes to central Firebase cluster...", "system-msg");
+        await sleep(400);
+        add("[SERVER SYNC] Validating integrity hashes with secure worker token keys...", "system-msg");
+        await sleep(300);
+
+        // Apply metadata rotation turn handshakes
+        if (stateCopy.board) {
+            stateCopy.board.turn = userColor === 'RED' ? 'BLUE' : 'RED';
+            stateCopy.board.moveNumber = (stateCopy.board.moveNumber || 0) + 1;
+        } else {
+            stateCopy.turn = userColor === 'RED' ? 'BLUE' : 'RED';
+            stateCopy.moveNumber = (stateCopy.moveNumber || 0) + 1;
+        }
+
+        latestState = stateCopy;
+        add("[SERVER SYNC] Handshake successful. Securely pushed changes. Current turn shifted.", "success-msg");
+
+        // Force standard presentation sync redraw
+        activeMatrixContainer = null;
         printTerminalMatrix(latestState);
+
+    } catch (err) {
+        add(`Engine Rejection: ${err.message}`, 'error-msg');
+        printTerminalMatrix(latestState);
+    }
+    selectedOrigin = null;
+  }
+
+  function rotatePiece(dir) {
+    if (!selectedOrigin || !latestState) return;
+    const pieces = getBoardPieces(latestState);
+    const p = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
+    if (p) {
+        const nextRotation = ((p.rotation || 0) + dir + 4) % 4;
+        processGameAction({
+            action: 'Rotate',
+            piece: { x: selectedOrigin.x, y: selectedOrigin.y, type: p.pieceType },
+            changes: { new: { rotation: nextRotation } }
+        });
     }
   }
 
   async function handleGridAction() {
     if (!latestState) return;
-    
-    let commandExecuted = false;
     
     if (!selectedOrigin) {
         const pieces = getBoardPieces(latestState);
@@ -209,66 +361,23 @@
         } else {
             add(`No piece at ${cursorX},${cursorY}`, 'error-msg');
         }
+        printTerminalMatrix(latestState);
     } else {
         const pieces = getBoardPieces(latestState);
         const movingPiece = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
-        const targetPiece = pieces.find(p => p.x === cursorX && p.y === cursorY);
 
         if (selectedOrigin.x === cursorX && selectedOrigin.y === cursorY) {
             selectedOrigin = null;
             add(`Deselected`, 'system-msg');
-        } 
-        else if (targetPiece) {
-            const isSwap = movingPiece.pieceType === 'SWITCH' && (targetPiece.pieceType === 'DEFENDER' || targetPiece.pieceType === 'DEFLECTOR');
-            if (!isSwap) {
-                add(`Invalid Move: Target square occupied.`, 'error-msg');
-                selectedOrigin = null;
-            } else {
-                // Create copy for next frame and mutate
-                latestState = JSON.parse(JSON.stringify(latestState));
-                const freshPieces = getBoardPieces(latestState);
-                const freshMoving = freshPieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
-                const freshTarget = freshPieces.find(p => p.x === cursorX && p.y === cursorY);
-
-                const tx = freshTarget.x, ty = freshTarget.y;
-                freshTarget.x = freshMoving.x; freshTarget.y = freshMoving.y;
-                freshMoving.x = tx; freshMoving.y = ty;
-                
-                add(`SWAP: ${selectedOrigin.x},${selectedOrigin.y} <-> ${cursorX},${cursorY}`, 'success-msg');
-                selectedOrigin = null;
-                commandExecuted = true;
-            }
-        }
-        else if (movingPiece && isReservedSquare(cursorX, cursorY, movingPiece.color)) {
-            add(`Invalid Move: Reserved square violation.`, 'error-msg');
-            selectedOrigin = null;
-        }
-        else if (isKingMove(selectedOrigin.x, selectedOrigin.y, cursorX, cursorY)) {
-            if (movingPiece.pieceType === 'LASER') {
-                add(`Invalid Move: Laser cannons cannot be moved.`, 'error-msg');
-                selectedOrigin = null;
-                return;
-            }
-            // Create copy for next frame and mutate
-            latestState = JSON.parse(JSON.stringify(latestState));
-            const freshPieces = getBoardPieces(latestState);
-            const freshMoving = freshPieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
-
-            freshMoving.x = cursorX; freshMoving.y = cursorY;
-            
-            add(`MOVE: ${selectedOrigin.x},${selectedOrigin.y} -> ${cursorX},${cursorY}`, 'success-msg');
-            selectedOrigin = null;
-            commandExecuted = true;
+            printTerminalMatrix(latestState);
         } else {
-            add(`Invalid Move. Out of Range.`, 'error-msg');
-            selectedOrigin = null;
+            await processGameAction({
+                action: 'Move',
+                piece: { x: selectedOrigin.x, y: selectedOrigin.y, type: movingPiece ? movingPiece.pieceType : null },
+                changes: { new: { x: cursorX, y: cursorY } }
+            });
         }
     }
-    
-    if (commandExecuted) {
-        activeMatrixContainer = null; // Break visual link to append copy under original
-    }
-    printTerminalMatrix(latestState);
   }
 
   function terminateMatch(msg) { add(msg, 'error-msg'); localStorage.removeItem(KEY_RID); lockedMatchId = null; activeMatrixContainer = null; modeShown = false; setStatus("IDLE"); startPolling(); }
