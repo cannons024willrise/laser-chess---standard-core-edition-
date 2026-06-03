@@ -29,8 +29,8 @@
         .matrix-row { display: flex; height: 36px; align-items: center; }
         .matrix-cell { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; font-weight: bold; touch-action: manipulation; }
         .matrix-cell.cursor { outline: 1px solid var(--bright); background: rgba(255,255,255,0.1); }
-        /* NEW: Selection outline */
-        .target-cursor { outline: 2px dashed var(--bright) !important; outline-offset: -2px; }
+        /* NEW: Green dashed selection outline */
+        .selected-piece { outline: 2px dashed #00ff00 !important; outline-offset: -2px; }
         
         .matrix-lbl { color: var(--muted); font-weight: normal; }
         .p-blue { color: var(--blue); }
@@ -117,9 +117,9 @@
         // Visual Cursor
         if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
         
-        // NEW: Visual dashed outline for valid move targets
-        if (selectedOrigin && isKingMove(selectedOrigin.x, selectedOrigin.y, x, y) && !(x === selectedOrigin.x && y === selectedOrigin.y)) {
-           cellEl.classList.add('target-cursor');
+        // NEW: Visual green dashed outline for selected piece
+        if (selectedOrigin && x === selectedOrigin.x && y === selectedOrigin.y) {
+           cellEl.classList.add('selected-piece');
         }
 
         cellEl.addEventListener('click', (e) => { e.preventDefault(); cursorX = x; cursorY = y; printTerminalMatrix(latestState); handleGridAction(); });
