@@ -25,7 +25,7 @@
         .reserved-red { background: var(--red-tint); }
         .p-red { color: var(--red); }
         .p-blue { color: var(--blue); }
-        .cursor { border: 2px solid var(--bright); }
+        .cursor { border: 2px solid var(--bright); box-sizing: border-box; }
         .selected-piece { background: var(--line); }
         .error-msg { color: var(--error); }
         .success-msg { color: var(--waiting); }
@@ -148,6 +148,19 @@
       function isReservedSquare(x, y, color) { return color === 'BLUE' ? RED_RESERVED.some(s => s.x === x && s.y === y) : BLUE_RESERVED.some(s => s.x === x && s.y === y); }
       function getPieceAt(pieces, x, y) { return pieces.find(p => p && p.x === x && p.y === y) || null; }
       
+      function updateCursorUI() {
+          const cells = document.querySelectorAll('.matrix-cell');
+          cells.forEach(c => c.classList.remove('cursor'));
+          if (activeMatrixContainer) {
+              const rows = activeMatrixContainer.querySelectorAll('.matrix-row');
+              const targetRow = rows[7 - cursorY];
+              if (targetRow) {
+                  const targetCell = targetRow.querySelectorAll('.matrix-cell')[cursorX];
+                  if (targetCell) targetCell.classList.add('cursor');
+              }
+          }
+      }
+
       function interactWithLaser(piece, incomingDir) {
           const typeMap = INTERACTION_MAP[piece.pieceType];
           if (!typeMap) return { kind: 'stop', destroyed: false };
@@ -235,10 +248,9 @@
             
             const resClass = getReservedClass(x, y);
             if (resClass) cellEl.classList.add(resClass);
-            if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
             if (selectedOrigin && x === selectedOrigin.x && y === selectedOrigin.y) cellEl.classList.add('selected-piece');
 
-            cellEl.addEventListener('click', (e) => { e.preventDefault(); if (isAnimatingLocalTurn) return; cursorX = x; cursorY = y; printTerminalMatrix(latestState); handleGridAction(); });
+            cellEl.addEventListener('click', (e) => { e.preventDefault(); if (isAnimatingLocalTurn) return; cursorX = x; cursorY = y; updateCursorUI(); handleGridAction(); });
             const p = grid[y][x]; 
             if (p) { 
               cellEl.textContent = getPieceChar(p); 
@@ -261,7 +273,8 @@
         if (replace && activeMatrixContainer && activeMatrixContainer.parentNode) activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); 
         else if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); else logContainer.appendChild(container); 
         
-        if (replace) activeMatrixContainer = container; 
+        activeMatrixContainer = container;
+        updateCursorUI();
       }
 
       window.addEventListener('keydown', (e) => {
@@ -275,7 +288,7 @@
         else if (e.key.toLowerCase() === 'l') rotatePiece(-1);
         else if (e.key.toLowerCase() === 'f') skipTurnAndFire();
         else return;
-        if (latestState) printTerminalMatrix(latestState);
+        updateCursorUI();
       });
 
       async function processGameAction(intent) {
