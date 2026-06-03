@@ -32,9 +32,6 @@
         .p-blue { color: var(--blue); }
         .p-red { color: var(--red); }
         
-        .laser-path { color: var(--laser) !important; font-weight: bold; text-shadow: 0 0 5px rgba(255,255,0,0.5); }
-        .laser-bounce { background-color: rgba(255, 255, 0, 0.2) !important; }
-        
         .reserved-blue { background-color: var(--blue-tint) !important; }
         .reserved-red { background-color: var(--red-tint) !important; }
     </style>
@@ -65,12 +62,13 @@
   let rqPollInterval = null, waitAnimationInterval = null, hostGamePollInterval = null;
   let currentHead = null, modeShown = false, isPollingStarting = false; 
   let cursorX = 0, cursorY = 0, latestState = null, activeMatrixContainer = null;
-  let isHostRequestPending = false; // Guard for duplicate requests
+  let isHostRequestPending = false, requestStatus = "IDLE"; // Status tracker
 
   const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
   const ROTATION_TABLE = { KING: { 0: '◈' }, LASER: { 0: '⫝' }, SWITCH: { 0: '⟋' }, DEFENDER: { 0: '⬓' }, DEFLECTOR: { 0: '◤' } };
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+  function setStatus(msg) { if (requestStatus === msg) return; requestStatus = msg; add(`[STATUS] ${msg}`, 'system-msg'); }
   function createLine(cls='') { const d = document.createElement('div'); d.className = `history-line ${cls}`; if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap); else logContainer.appendChild(d); return d; }
   function add(text, cls='', req=false, handler=null) { if (!req && processing) { type(text, cls, true); return; } queue.push({text,cls,req,handler}); if (!processing) run(); }
   async function run() { processing = true; while(queue.length) { const i = queue.shift(); if (i.req) await prompt(i.text, i.cls, i.handler || handleAuth); else await type(i.text, i.cls); } processing = false; }
@@ -116,15 +114,13 @@
     activeMatrixContainer = container; 
   }
 
-  async function handleGridAction() {
-    if (!latestState) return;
-    add(`Selected: ${cursorX},${cursorY}`, 'system-msg');
-  }
+  async function handleGridAction() { if (!latestState) return; add(`Selected: ${cursorX},${cursorY}`, 'system-msg'); }
 
-  function terminateMatch(msg) { add(msg, 'error-msg'); localStorage.removeItem(KEY_RID); lockedMatchId = null; activeMatrixContainer = null; modeShown = false; startPolling(); }
+  function terminateMatch(msg) { add(msg, 'error-msg'); localStorage.removeItem(KEY_RID); lockedMatchId = null; activeMatrixContainer = null; modeShown = false; setStatus("IDLE"); startPolling(); }
 
   function lockOntoMatch(id, entry) {
     lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); stopHostGamePolling(); toggleWaiting(false); modeShown = false;
+    setStatus("LOCKED");
     add(`LINK ESTABLISHED: ${id}`, 'success-msg'); 
     const gameRef = dbGame.ref(`G/${id}`);
     gameRef.on('value', snap => { const state = snap.val(); if (state) printTerminalMatrix(state); else { terminateMatch('MATCH TERMINATED.'); gameRef.off(); } });
@@ -160,7 +156,7 @@
   }
 
   function stopPolling() { if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } }
-  function startHostGamePolling() { if (hostGamePollInterval) return; hostGamePollInterval = setInterval(async () => { if (await searchForGameDBMatch()) { isHostRequestPending = false; stopHostGamePolling(); } }, 3000); }
+  function startHostGamePolling() { if (hostGamePollInterval) return; setStatus("SCANNING_DB"); hostGamePollInterval = setInterval(async () => { if (await searchForGameDBMatch()) { isHostRequestPending = false; stopHostGamePolling(); } }, 3000); }
   function stopHostGamePolling() { if (hostGamePollInterval) { clearInterval(hostGamePollInterval); hostGamePollInterval = null; } toggleWaiting(false); }
 
   async function searchForGameDBMatch() {
@@ -203,6 +199,7 @@
   async function registerHost(color, isIntercept = false) {
     if (isHostRequestPending) { add("Request already in progress.", "error-msg"); return; }
     isHostRequestPending = true;
+    setStatus("NEGOTIATING");
     toggleWaiting(true, "Negotiating Match");
     try {
       const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), color, isIntercept }) }); const data = await res.json();
@@ -210,10 +207,10 @@
         const idToStore = data.matchName || data.requestId || data.timestamp; 
         if (idToStore) localStorage.setItem(KEY_RID, idToStore); 
         stopPolling(); 
-        if (data.matchName) { isHostRequestPending = false; lockOntoMatch(data.matchName, { status: 'SYNCING' }); } 
-        else startHostGamePolling();
-      } else { add(`Request rejected: ${data.error || 'Unknown'}`, 'error-msg'); isHostRequestPending = false; toggleWaiting(false); }
-    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); isHostRequestPending = false; toggleWaiting(false); }
+        if (data.matchName) { isHostRequestPending = false; setStatus("LOCKED"); lockOntoMatch(data.matchName, { status: 'SYNCING' }); } 
+        else { setStatus("WAITING_FOR_DB"); startHostGamePolling(); }
+      } else { add(`Request rejected: ${data.error || 'Unknown'}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); }
+    } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); }
   }
 
   window.addEventListener('DOMContentLoaded', boot);
