@@ -160,9 +160,21 @@
     else if (e.key === 'ArrowLeft' && cursorX > 0) cursorX--;
     else if (e.key === 'ArrowRight' && cursorX < 9) cursorX++;
     else if (e.key === 'Enter') handleGridAction();
+    else if (e.key.toLowerCase() === 'r') rotatePiece(1);
+    else if (e.key.toLowerCase() === 'l') rotatePiece(-1);
     else return;
     if (latestState) printTerminalMatrix(latestState);
   });
+
+  function rotatePiece(dir) {
+    if (!selectedOrigin || !latestState) return;
+    const pieces = getBoardPieces(latestState);
+    const p = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
+    if (p) {
+        p.rotation = ((p.rotation || 0) + dir + 4) % 4;
+        add(`Rotated ${p.pieceType} to ${p.rotation}`, 'system-msg');
+    }
+  }
 
   async function handleGridAction() {
     if (!latestState) return;
