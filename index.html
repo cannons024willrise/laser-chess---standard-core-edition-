@@ -68,7 +68,13 @@
   
   let selectedOrigin = null;
 
-  const ROTATION_TABLE = { KING: { 0: '◈' }, LASER: { 0: '⫝' }, SWITCH: { 0: '⟋' }, DEFENDER: { 0: '⬓' }, DEFLECTOR: { 0: '◤' } };
+  const ROTATION_TABLE = { 
+    KING: { 0: '◈', 1: '◈', 2: '◈', 3: '◈' }, 
+    LASER: { 0: '⫝', 1: '⟜', 2: 'Ͳ', 3: 'Ð' }, 
+    SWITCH: { 0: '⟋', 1: '⟍', 2: '⟋', 3: '⟍' }, 
+    DEFENDER: { 0: '⬓', 1: '◧', 2: '⬒', 3: '◨' }, 
+    DEFLECTOR: { 0: '◤', 1: '◥', 2: '◢', 3: '◣' } 
+  };
   const BLUE_RESERVED = [{x: 9, y: 0}, {x: 9, y: 1}, {x: 9, y: 2}, {x: 9, y: 3}, {x: 9, y: 4}, {x: 9, y: 5}, {x: 9, y: 6}, {x: 9, y: 7}, {x: 1, y: 0}, {x: 1, y: 7}];
   const RED_RESERVED = [{x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7}, {x: 8, y: 0}, {x: 8, y: 7}];
 
@@ -93,7 +99,11 @@
     });
   }
 
-  function getPieceChar(piece) { return ROTATION_TABLE[piece.pieceType] ? ROTATION_TABLE[piece.pieceType][0] : '?'; }
+  function getPieceChar(piece) { 
+      const rot = piece.rotation || 0;
+      return ROTATION_TABLE[piece.pieceType] ? ROTATION_TABLE[piece.pieceType][rot] : '?'; 
+  }
+
   function getBoardPieces(state) { const src = state.board || state; return Array.isArray(src.pieces) ? src.pieces : (src.pieces ? Object.values(src.pieces) : []); }
   
   function isKingMove(x1, y1, x2, y2) {
@@ -169,7 +179,6 @@
     } else {
         const pieces = getBoardPieces(latestState);
         const movingPiece = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
-        if (movingPiece && movingPiece.pieceType === 'LASER') { add(`Invalid Move: Lasers cannot move.`, 'error-msg'); selectedOrigin = null; printTerminalMatrix(latestState); return; }
         const targetPiece = pieces.find(p => p.x === cursorX && p.y === cursorY);
 
         if (selectedOrigin.x === cursorX && selectedOrigin.y === cursorY) {
