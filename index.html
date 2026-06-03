@@ -181,7 +181,7 @@
       return { path, hit: { piece, blocked: !!outcome.blocked, destroyed: !!outcome.destroyed }, looped: false };
   }
 
-  function printTerminalMatrix(state) {
+  function printTerminalMatrix(state, laserPath = []) {
     latestState = state;
     const pieces = getBoardPieces(state);
     const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
@@ -200,7 +200,19 @@
 
         cellEl.addEventListener('click', (e) => { e.preventDefault(); cursorX = x; cursorY = y; printTerminalMatrix(latestState); handleGridAction(); });
         const p = grid[y][x]; 
-        if (p) { cellEl.textContent = getPieceChar(p); cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue'); } else { cellEl.textContent = '·'; }
+        if (p) { 
+          cellEl.textContent = getPieceChar(p); 
+          cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue'); 
+        } else {
+          const pathSegment = laserPath.find(seg => seg.x === x && seg.y === y);
+          if (pathSegment) {
+            const syms = ['^', '>', 'v', '<'];
+            cellEl.textContent = syms[pathSegment.dir];
+            cellEl.style.color = 'var(--laser)';
+          } else {
+            cellEl.textContent = '·'; 
+          }
+        }
         rowEl.appendChild(cellEl);
       }
       container.appendChild(rowEl);
@@ -249,6 +261,9 @@
             const pieceAtTarget = getPieceAt(pieces, nx, ny);
             if (pieceAtTarget) {
                 if (dbPiece.pieceType === 'SWITCH' && (pieceAtTarget.pieceType === 'DEFLECTOR' || pieceAtTarget.pieceType === 'DEFENDER')) {
+                    if (isReservedSquare(dbPiece.x, dbPiece.y, pieceAtTarget.color)) {
+                        throw new Error("Invalid move: Swapped piece reserved square violation");
+                    }
                     pieceAtTarget.x = dbPiece.x; pieceAtTarget.y = dbPiece.y;
                 } else {
                     throw new Error("Invalid move: Target square occupied");
@@ -273,17 +288,19 @@
         printTerminalMatrix(stateCopy);
         await sleep(500);
 
-        // PHASE 2 ENGINE: Ported Worker Laser Vector raytrace engine calculation
-        add("[LASER ENGINE] Initializing trajectory matrix simulation...", "system-msg");
-        await sleep(250);
-        
+        // PHASE 2 ENGINE: Visual Laser Vector trace engine overlay calculation
         const shooter = pieces.find(p => p && p.pieceType === 'LASER' && p.color === userColor);
         if (shooter) {
             const startDir = normalizeRotation(shooter.rotation);
             const trace = resolveLaserVector(shooter.x + DIRS[startDir].dx, shooter.y + DIRS[startDir].dy, startDir, pieces);
             
+            // Render the board showing the active laser travel pathways via directional characters
+            activeMatrixContainer = null; 
+            printTerminalMatrix(stateCopy, trace.path);
+            await sleep(1200);
+            
             if (trace.looped) {
-                add("Server Vector Raytracer: Laser loop recursion threshold hit; sequence aborted.", "system-msg");
+                // Loop boundary recursion threshold caught silently
             } else if (trace.hit && trace.hit.destroyed) {
                 const targetKilled = trace.hit.piece;
                 
@@ -291,26 +308,18 @@
                 pieces = pieces.filter(p => !(p.x === targetKilled.x && p.y === targetKilled.y));
                 if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
 
-                add(`Server Vector Raytracer: Laser beam eliminated ${targetKilled.pieceType} at coordinate matrix values (${targetKilled.x}, ${targetKilled.y}).`, "error-msg");
+                add(`Laser beam eliminated ${targetKilled.pieceType} at coordinate (${targetKilled.x}, ${targetKilled.y}).`, "error-msg");
                 if (targetKilled.pieceType === 'KING') {
                     stateCopy.status = `${userColor}_WIN`;
-                    add(`CRITICAL ALERT: KING DESTROYED. Session terminated. ${userColor} achieves victory.`, "success-msg");
+                    add(`CRITICAL ALERT: KING DESTROYED. ${userColor} achieves victory.`, "success-msg");
                 }
 
                 // PHASE 2 RENDER: Render final mutation state post laser trace elimination
                 activeMatrixContainer = null;
                 printTerminalMatrix(stateCopy);
                 await sleep(500);
-            } else {
-                add("Server Vector Raytracer: Beam paths dispersed or intercepted clean matrix point.", "system-msg");
             }
         }
-
-        // PHASE 3 SYNC: Display Text Server Sync Protocol Emulation
-        add("[SERVER SYNC] Transmitting atomic game changes to central Firebase cluster...", "system-msg");
-        await sleep(400);
-        add("[SERVER SYNC] Validating integrity hashes with secure worker token keys...", "system-msg");
-        await sleep(300);
 
         // Apply metadata rotation turn handshakes
         if (stateCopy.board) {
@@ -322,7 +331,6 @@
         }
 
         latestState = stateCopy;
-        add("[SERVER SYNC] Handshake successful. Securely pushed changes. Current turn shifted.", "success-msg");
 
         // Force standard presentation sync redraw
         activeMatrixContainer = null;
