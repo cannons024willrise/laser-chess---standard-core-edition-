@@ -168,6 +168,9 @@
 
   function rotatePiece(dir) {
     if (!selectedOrigin || !latestState) return;
+
+    // Create copy for next frame
+    latestState = JSON.parse(JSON.stringify(latestState));
     const pieces = getBoardPieces(latestState);
     const p = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
     
@@ -187,7 +190,7 @@
 
         p.rotation = nextRotation;
         add(`Rotated ${p.pieceType} to ${p.rotation}`, 'system-msg');
-        printTerminalMatrix(latestState); // RE-RENDER ON ROTATE
+        printTerminalMatrix(latestState);
     }
   }
 
@@ -218,10 +221,15 @@
                 add(`Invalid Move: Target square occupied.`, 'error-msg');
                 selectedOrigin = null;
             } else {
-                // APPLY SWAP LOCALLY
-                const tx = targetPiece.x, ty = targetPiece.y;
-                targetPiece.x = movingPiece.x; targetPiece.y = movingPiece.y;
-                movingPiece.x = tx; movingPiece.y = ty;
+                // Create copy for next frame and mutate
+                latestState = JSON.parse(JSON.stringify(latestState));
+                const freshPieces = getBoardPieces(latestState);
+                const freshMoving = freshPieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
+                const freshTarget = freshPieces.find(p => p.x === cursorX && p.y === cursorY);
+
+                const tx = freshTarget.x, ty = freshTarget.y;
+                freshTarget.x = freshMoving.x; freshTarget.y = freshMoving.y;
+                freshMoving.x = tx; freshMoving.y = ty;
                 
                 add(`SWAP: ${selectedOrigin.x},${selectedOrigin.y} <-> ${cursorX},${cursorY}`, 'success-msg');
                 selectedOrigin = null;
@@ -237,8 +245,12 @@
                 selectedOrigin = null;
                 return;
             }
-            // APPLY MOVE LOCALLY
-            movingPiece.x = cursorX; movingPiece.y = cursorY;
+            // Create copy for next frame and mutate
+            latestState = JSON.parse(JSON.stringify(latestState));
+            const freshPieces = getBoardPieces(latestState);
+            const freshMoving = freshPieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
+
+            freshMoving.x = cursorX; freshMoving.y = cursorY;
             
             add(`MOVE: ${selectedOrigin.x},${selectedOrigin.y} -> ${cursorX},${cursorY}`, 'success-msg');
             selectedOrigin = null;
