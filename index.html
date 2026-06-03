@@ -419,13 +419,25 @@
       }
 
       async function applyRemoteState(state) {
+        const status = state.status || '';
+        const ld = state.metadata?.lastdestroyed;
+        const currentMoveNum = state.board?.moveNumber || state.moveNumber || 0;
+        
+        let gameOverDetected = false;
+        let victoryMsg = "";
+
+        if (status.endsWith('_WIN')) {
+            gameOverDetected = true;
+            const winnerColor = status.split('_')[0];
+            const loserColor = winnerColor === 'RED' ? 'BLUE' : 'RED';
+            victoryMsg = `CRITICAL ALERT: ${loserColor} KING ELIMINATED. ${winnerColor} ACHIEVES VICTORY!`;
+        } else if (status === 'DRAW_REPETITION') {
+            gameOverDetected = true;
+            victoryMsg = `GAME DRAWN: Three-fold repetition detected.`;
+        }
+
         isAnimatingLocalTurn = true;
         try {
-          const currentMoveNum = state.board?.moveNumber || state.moveNumber || 0;
-          const ld = state.metadata?.lastdestroyed;
-          let gameOverDetected = false;
-          let victoryMsg = "";
-
           if (ld && ld.turn === currentMoveNum - 1 && lastAnimatedTurn !== ld.turn) {
               lastAnimatedTurn = ld.turn;
               await playLaserAnimation(state, getBoardPieces(state), ld.shooterColor, ld.piece);
@@ -436,34 +448,21 @@
                   const winnerColor = ld.piece.color === 'RED' ? 'BLUE' : 'RED';
                   victoryMsg = `CRITICAL ALERT: ${ld.piece.color} KING DESTROYED. ${winnerColor} ACHIEVES VICTORY!`;
               }
-              printTerminalMatrix(state, [], false);
-          } else {
-              printTerminalMatrix(state); 
           }
 
-          if (!gameOverDetected && state.status) {
-              if (state.status.endsWith('_WIN')) {
-                  gameOverDetected = true;
-                  const winnerColor = state.status.split('_')[0];
-                  const loserColor = winnerColor === 'RED' ? 'BLUE' : 'RED';
-                  victoryMsg = `CRITICAL ALERT: ${loserColor} KING ELIMINATED. ${winnerColor} ACHIEVES VICTORY!`;
-              } else if (state.status === 'DRAW_REPETITION') {
-                  gameOverDetected = true;
-                  victoryMsg = `GAME DRAWN: Three-fold repetition detected.`;
-              }
-          }
+          printTerminalMatrix(state); 
 
           if (gameOverDetected) {
               add(victoryMsg, "success-msg");
               add("Game Over. Disconnecting terminal and rolling back to lobby setup in 5 seconds...", "system-msg");
+              pendingStateUpdate = null;
               if (activeGameRef) { activeGameRef.off(); activeGameRef = null; }
               await sleep(5000);
               terminateMatch('Handshake reset complete.');
-              return;
           }
         } finally {
           isAnimatingLocalTurn = false;
-          if (pendingStateUpdate) {
+          if (pendingStateUpdate && !gameOverDetected) {
               const s = pendingStateUpdate;
               pendingStateUpdate = null;
               applyRemoteState(s);
@@ -504,7 +503,6 @@
         if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
         add('System Online.', 'success-msg');
         
-        // Verify only against game database, no access to 'A'
         if (rid) { 
             const snapGame = await dbGame.ref(`G/${rid}`).once('value'); 
             if (snapGame.exists()) return lockOntoMatch(rid, snapGame.val()); 
