@@ -365,46 +365,17 @@
         return;
     }
 
-    // -------------------------------------------------------------------------
-    // --- PHASE 2: AUTHORITATIVE REMOTE NETWORK HANDSHAKE ---------------------
-    // -------------------------------------------------------------------------
-    add(`Transmitting intent: ${intent.action}...`, 'system-msg');
-    try {
-      const response = await fetch(MOVE_CHECKER_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          matchId: matchId,
-          username: myName,
-          password: myPass,
-          intent: intent
-        })
-      });
-
-      const result = await response.json();
-      if (!response.ok || !result.ok) {
-        throw new Error(result.error || "Unknown validation failure.");
-      }
-      
-      if (result.logs && result.logs.length) {
-        result.logs.forEach(log => add(log, 'system-msg'));
-      }
-
-    } catch (netErr) {
-      add(`Server Validation Rejected: ${netErr.message}`, 'error-msg');
-      selectedOrigin = null;
-      printTerminalMatrix(latestState);
-      return;
-    }
-
-    // -------------------------------------------------------------------------
-    // --- PHASE 3: LOCAL ANIMATION & PERSISTENCE SYNCHRONIZATION -------------
-    // -------------------------------------------------------------------------
+    // Preserve original layout snapshot in case remote worker rejects mutation pipeline
+    const initialStateBackup = JSON.parse(JSON.stringify(latestState));
     isAnimatingLocalTurn = true; 
-    const stateCopy = JSON.parse(JSON.stringify(latestState));
-    let pieces = getBoardPieces(stateCopy);
 
     try {
+        // -------------------------------------------------------------------------
+        // --- PHASE 2: LOCAL ANIMATION & PERSISTENCE SYNCHRONIZATION -------------
+        // -------------------------------------------------------------------------
+        const stateCopy = JSON.parse(JSON.stringify(latestState));
+        let pieces = getBoardPieces(stateCopy);
+
         if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
             const dbPiece = getPieceAt(pieces, intent.piece.x, intent.piece.y);
 
@@ -423,6 +394,9 @@
                 dbPiece.rotation = newRot;
                 add(`ROTATION METADATA: ${dbPiece.pieceType} modified to position ${newRot}`, 'success-msg');
             }
+
+            // Forcefully map the tracking array back onto the object payload
+            if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
 
             activeMatrixContainer = null; 
             printTerminalMatrix(stateCopy);
@@ -466,8 +440,33 @@
 
         latestState = stateCopy;
 
+        // -------------------------------------------------------------------------
+        // --- PHASE 3: AUTHORITATIVE REMOTE NETWORK HANDSHAKE ---------------------
+        // -------------------------------------------------------------------------
+        add(`Transmitting intent: ${intent.action}...`, 'system-msg');
+        const response = await fetch(MOVE_CHECKER_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                matchId: matchId,
+                username: myName,
+                password: myPass,
+                intent: intent
+            })
+        });
+
+        const result = await response.json();
+        if (!response.ok || !result.ok) {
+            throw new Error(result.error || "Unknown validation failure.");
+        }
+        
+        if (result.logs && result.logs.length) {
+            result.logs.forEach(log => add(log, 'system-msg'));
+        }
+
     } catch (err) {
         add(`Engine Mutation Failure: ${err.message}`, 'error-msg');
+        latestState = initialStateBackup;
     } finally {
         activeMatrixContainer = null;
         isAnimatingLocalTurn = false;
