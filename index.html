@@ -113,6 +113,7 @@
           1: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
           2: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
           3: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } }
+      }
   };
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -401,11 +402,6 @@
             activeMatrixContainer = null; 
             printTerminalMatrix(stateCopy);
             await sleep(500);
-        } else if (intent.action === 'Turn End' || intent.action === 'Manual Fire') {
-            // Re-render initial matrix to clear up elements when skipping move phase to fire directly
-            activeMatrixContainer = null;
-            printTerminalMatrix(stateCopy);
-            await sleep(100);
         }
 
         const shooter = pieces.find(p => p && p.pieceType === 'LASER' && p.color === myColor);
