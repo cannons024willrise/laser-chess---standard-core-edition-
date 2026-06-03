@@ -176,8 +176,14 @@
             add(`Deselected`, 'system-msg');
         } 
         else if (targetPiece) {
-            add(`Invalid Move: Target square occupied.`, 'error-msg');
-            selectedOrigin = null;
+            const isSwap = movingPiece.pieceType === 'SWITCH' && (targetPiece.pieceType === 'DEFENDER' || targetPiece.pieceType === 'DEFLECTOR');
+            if (!isSwap) {
+                add(`Invalid Move: Target square occupied.`, 'error-msg');
+                selectedOrigin = null;
+            } else {
+                add(`SWAP: ${selectedOrigin.x},${selectedOrigin.y} <-> ${cursorX},${cursorY}`, 'success-msg');
+                selectedOrigin = null;
+            }
         }
         else if (movingPiece && isReservedSquare(cursorX, cursorY, movingPiece.color)) {
             add(`Invalid Move: Reserved square violation.`, 'error-msg');
