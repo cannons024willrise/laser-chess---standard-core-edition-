@@ -29,8 +29,7 @@
         .matrix-row { display: flex; height: 36px; align-items: center; }
         .matrix-cell { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; font-weight: bold; touch-action: manipulation; }
         .matrix-cell.cursor { outline: 1px solid var(--bright); background: rgba(255,255,255,0.1); }
-        /* NEW: Green dashed selection outline */
-        .selected-piece { outline: 2px dashed #00ff00 !important; outline-offset: -2px; }
+        .target-cursor { outline: 2px dashed var(--bright) !important; outline-offset: -2px; }
         
         .matrix-lbl { color: var(--muted); font-weight: normal; }
         .p-blue { color: var(--blue); }
@@ -68,10 +67,11 @@
   let cursorX = 0, cursorY = 0, latestState = null, activeMatrixContainer = null;
   let isHostRequestPending = false, requestStatus = "IDLE";
   
-  // NEW: Track selected origin
   let selectedOrigin = null;
 
   const ROTATION_TABLE = { KING: { 0: '◈' }, LASER: { 0: '⫝' }, SWITCH: { 0: '⟋' }, DEFENDER: { 0: '⬓' }, DEFLECTOR: { 0: '◤' } };
+  const BLUE_RESERVED = [{x: 9, y: 0}, {x: 9, y: 1}, {x: 9, y: 2}, {x: 9, y: 3}, {x: 9, y: 4}, {x: 9, y: 5}, {x: 9, y: 6}, {x: 9, y: 7}, {x: 1, y: 0}, {x: 1, y: 7}];
+  const RED_RESERVED = [{x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}, {x: 0, y: 4}, {x: 0, y: 5}, {x: 0, y: 6}, {x: 0, y: 7}, {x: 8, y: 0}, {x: 8, y: 7}];
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   function setStatus(msg) { if (requestStatus === msg) return; requestStatus = msg; add(`[STATUS] ${msg}`, 'system-msg'); }
@@ -97,9 +97,14 @@
   function getPieceChar(piece) { return ROTATION_TABLE[piece.pieceType] ? ROTATION_TABLE[piece.pieceType][0] : '?'; }
   function getBoardPieces(state) { const src = state.board || state; return Array.isArray(src.pieces) ? src.pieces : (src.pieces ? Object.values(src.pieces) : []); }
   
-  // NEW: King distance check
   function isKingMove(x1, y1, x2, y2) {
     return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1;
+  }
+
+  function getReservedClass(x, y) {
+    if (BLUE_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-blue';
+    if (RED_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-red';
+    return null;
   }
 
   function printTerminalMatrix(state) {
@@ -114,12 +119,13 @@
       for (let x = 0; x < 10; x++) {
         let cellEl = document.createElement('span'); cellEl.className = 'matrix-cell';
         
-        // Visual Cursor
+        const resClass = getReservedClass(x, y);
+        if (resClass) cellEl.classList.add(resClass);
+
         if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
         
-        // NEW: Visual green dashed outline for selected piece
-        if (selectedOrigin && x === selectedOrigin.x && y === selectedOrigin.y) {
-           cellEl.classList.add('selected-piece');
+        if (selectedOrigin && isKingMove(selectedOrigin.x, selectedOrigin.y, x, y) && !(x === selectedOrigin.x && y === selectedOrigin.y)) {
+           cellEl.classList.add('target-cursor');
         }
 
         cellEl.addEventListener('click', (e) => { e.preventDefault(); cursorX = x; cursorY = y; printTerminalMatrix(latestState); handleGridAction(); });
@@ -145,12 +151,10 @@
     if (latestState) printTerminalMatrix(latestState);
   });
 
-  // NEW: Handle selection and movement logic
   async function handleGridAction() {
     if (!latestState) return;
     
     if (!selectedOrigin) {
-        // Try to select
         const pieces = getBoardPieces(latestState);
         const p = pieces.find(p => p.x === cursorX && p.y === cursorY);
         if (p) {
@@ -160,9 +164,8 @@
             add(`No piece at ${cursorX},${cursorY}`, 'error-msg');
         }
     } else {
-        // Try to move
         if (selectedOrigin.x === cursorX && selectedOrigin.y === cursorY) {
-            selectedOrigin = null; // Deselect
+            selectedOrigin = null;
             add(`Deselected`, 'system-msg');
         } else if (isKingMove(selectedOrigin.x, selectedOrigin.y, cursorX, cursorY)) {
             add(`MOVE: ${selectedOrigin.x},${selectedOrigin.y} -> ${cursorX},${cursorY}`, 'success-msg');
