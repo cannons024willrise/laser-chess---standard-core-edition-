@@ -136,6 +136,7 @@
     });
   }
 
+  // --- COMPREHENSIVE PIPELINE GAME ENGINE EXECUTION ---
   function getPieceChar(piece) { 
       const rot = piece.rotation || 0;
       return ROTATION_TABLE[piece.pieceType] ? ROTATION_TABLE[piece.pieceType][rot] : '?'; 
@@ -251,6 +252,54 @@
       return;
     }
 
+    // --- PHASE 0: PRE-FLIGHT LOCAL DRY-RUN CHECKS ---
+    const piecesDryRun = getBoardPieces(latestState);
+    const userColor = latestState.board?.turn || 
+                      (intent.piece ? (getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y)?.color || 'RED') : 'RED');
+
+    try {
+        if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
+            const dbPiece = getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y);
+            if (!dbPiece || dbPiece.color !== userColor) throw new Error("Action rejected: Invalid piece ownership or turn error");
+            if (dbPiece.pieceType !== intent.piece.type) throw new Error("State mismatch: Piece type altered");
+
+            if (intent.action === 'Move') {
+                const nx = intent.changes.new.x;
+                const ny = intent.changes.new.y;
+                const dx = Math.abs(nx - dbPiece.x);
+                const dy = Math.abs(ny - dbPiece.y);
+                
+                if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) throw new Error("Invalid move: Out of range");
+                if (dbPiece.pieceType === 'LASER') throw new Error("Invalid move: Sphinx cannot move");
+                if (isReservedSquare(nx, ny, dbPiece.color)) throw new Error("Invalid move: Reserved square violation");
+
+                const pieceAtTarget = getPieceAt(piecesDryRun, nx, ny);
+                if (pieceAtTarget) {
+                    if (dbPiece.pieceType === 'SWITCH' && (pieceAtTarget.pieceType === 'DEFLECTOR' || pieceAtTarget.pieceType === 'DEFENDER')) {
+                        if (isReservedSquare(dbPiece.x, dbPiece.y, pieceAtTarget.color)) {
+                            throw new Error("Invalid move: Swapped piece reserved square violation");
+                        }
+                    } else {
+                        throw new Error("Invalid move: Target square occupied");
+                    }
+                }
+            }
+            else if (intent.action === 'Rotate') {
+                const newRot = intent.changes.new.rotation;
+                if (dbPiece.pieceType === 'KING') throw new Error("Invalid rotate: Pharaoh cannot rotate");
+                if (dbPiece.pieceType === 'LASER') {
+                    if (dbPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) throw new Error("Invalid rotate: Blue Sphinx restricted");
+                    if (dbPiece.color === 'RED' && (newRot === 3 || newRot === 0)) throw new Error("Invalid rotate: Red Sphinx restricted");
+                }
+            }
+        }
+    } catch (localErr) {
+        add(`Engine Rejection (Local Check): ${localErr.message}`, 'error-msg');
+        selectedOrigin = null;
+        printTerminalMatrix(latestState);
+        return; // CRITICAL: Stop operational workflow here. Do not transmit to Worker.
+    }
+
     // --- AUTHORITATIVE NETWORK HANDSHAKE LAYER ---
     add(`Transmitting intent: ${intent.action}...`, 'system-msg');
     try {
@@ -285,47 +334,23 @@
     isAnimatingLocalTurn = true; 
     const stateCopy = JSON.parse(JSON.stringify(latestState));
     let pieces = getBoardPieces(stateCopy);
-    
-    const userColor = stateCopy.board?.turn || 
-                      (intent.piece ? (getPieceAt(pieces, intent.piece.x, intent.piece.y)?.color || 'RED') : 'RED');
 
     try {
         if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
             const dbPiece = getPieceAt(pieces, intent.piece.x, intent.piece.y);
-            if (!dbPiece || dbPiece.color !== userColor) throw new Error("Action rejected: Invalid piece ownership or turn error");
-            if (dbPiece.pieceType !== intent.piece.type) throw new Error("State mismatch: Piece type altered");
 
             if (intent.action === 'Move') {
                 const nx = intent.changes.new.x;
                 const ny = intent.changes.new.y;
-                const dx = Math.abs(nx - dbPiece.x);
-                const dy = Math.abs(ny - dbPiece.y);
-                
-                if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) throw new Error("Invalid move: Out of range");
-                if (dbPiece.pieceType === 'LASER') throw new Error("Invalid move: Sphinx cannot move");
-                if (isReservedSquare(nx, ny, dbPiece.color)) throw new Error("Invalid move: Reserved square violation");
-
                 const pieceAtTarget = getPieceAt(pieces, nx, ny);
-                if (pieceAtTarget) {
-                    if (dbPiece.pieceType === 'SWITCH' && (pieceAtTarget.pieceType === 'DEFLECTOR' || pieceAtTarget.pieceType === 'DEFENDER')) {
-                        if (isReservedSquare(dbPiece.x, dbPiece.y, pieceAtTarget.color)) {
-                            throw new Error("Invalid move: Swapped piece reserved square violation");
-                        }
-                        pieceAtTarget.x = dbPiece.x; pieceAtTarget.y = dbPiece.y;
-                    } else {
-                        throw new Error("Invalid move: Target square occupied");
-                    }
+                if (pieceAtTarget && dbPiece.pieceType === 'SWITCH') {
+                    pieceAtTarget.x = dbPiece.x; pieceAtTarget.y = dbPiece.y;
                 }
                 dbPiece.x = nx; dbPiece.y = ny;
                 add(`MOVE METADATA: (${intent.piece.x},${intent.piece.y}) -> (${nx},${ny})`, 'success-msg');
             }
             else if (intent.action === 'Rotate') {
                 const newRot = intent.changes.new.rotation;
-                if (dbPiece.pieceType === 'KING') throw new Error("Invalid rotate: Pharaoh cannot rotate");
-                if (dbPiece.pieceType === 'LASER') {
-                    if (dbPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) throw new Error("Invalid rotate: Blue Sphinx restricted");
-                    if (dbPiece.color === 'RED' && (newRot === 3 || newRot === 0)) throw new Error("Invalid rotate: Red Sphinx restricted");
-                }
                 dbPiece.rotation = newRot;
                 add(`ROTATION METADATA: ${dbPiece.pieceType} modified to position ${newRot}`, 'success-msg');
             }
@@ -377,7 +402,7 @@
         latestState = stateCopy;
 
     } catch (err) {
-        add(`Engine Rejection: ${err.message}`, 'error-msg');
+        add(`Engine Mutation Failure: ${err.message}`, 'error-msg');
     } finally {
         activeMatrixContainer = null;
         isAnimatingLocalTurn = false;
