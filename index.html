@@ -441,11 +441,16 @@
               printTerminalMatrix(state); 
           }
 
-          if (!gameOverDetected && state.status && state.status.endsWith('_WIN')) {
-              gameOverDetected = true;
-              const winnerColor = state.status.split('_')[0];
-              const loserColor = winnerColor === 'RED' ? 'BLUE' : 'RED';
-              victoryMsg = `CRITICAL ALERT: ${loserColor} KING ELIMINATED. ${winnerColor} ACHIEVES VICTORY!`;
+          if (!gameOverDetected && state.status) {
+              if (state.status.endsWith('_WIN')) {
+                  gameOverDetected = true;
+                  const winnerColor = state.status.split('_')[0];
+                  const loserColor = winnerColor === 'RED' ? 'BLUE' : 'RED';
+                  victoryMsg = `CRITICAL ALERT: ${loserColor} KING ELIMINATED. ${winnerColor} ACHIEVES VICTORY!`;
+              } else if (state.status === 'DRAW_REPETITION') {
+                  gameOverDetected = true;
+                  victoryMsg = `GAME DRAWN: Three-fold repetition detected.`;
+              }
           }
 
           if (gameOverDetected) {
