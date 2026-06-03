@@ -71,7 +71,6 @@
   
   let selectedOrigin = null;
 
-  // --- LASER TRACER ENGINE ENGINE CONSTANTS ---
   const DIRS = [ { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 } ]; 
   const ROTATION_TABLE = { 
     KING: { 0: '◈', 1: '◈', 2: '◈', 3: '◈' }, 
@@ -265,7 +264,6 @@
     if (latestState) printTerminalMatrix(latestState);
   });
 
-  // --- REFACTORED SECURE PIPELINE GAME ENGINE EXECUTION ---
   async function processGameAction(intent) {
     if (!latestState) return;
 
@@ -278,9 +276,6 @@
       return;
     }
 
-    // -------------------------------------------------------------------------
-    // --- PHASE 1: COMPREHENSIVE LOCAL VALIDATION DRY-RUN CHECKS -------------
-    // -------------------------------------------------------------------------
     const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
     let myColor = localStorage.getItem('ls_my_color');
     
@@ -295,87 +290,55 @@
     }
 
     try {
-        // 1. Validate Turn Handshake
-        if (currentTurn !== myColor) {
-            throw new Error(`Turn violation: It is ${currentTurn}'s turn, but you are ${myColor}.`);
-        }
+        if (currentTurn !== myColor) throw new Error(`Turn violation: It is ${currentTurn}'s turn, but you are ${myColor}.`);
 
-        // 2. Piece Mutation Constraints Verification
         if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
             const piecesDryRun = getBoardPieces(latestState);
             const dbPiece = getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y);
             
-            if (!dbPiece) {
-                throw new Error("Selection configuration anomaly: No piece occupies chosen origin.");
-            }
-            if (dbPiece.color !== myColor) {
-                throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but your assignment is ${myColor}.`);
-            }
-            if (dbPiece.pieceType !== intent.piece.type) {
-                throw new Error("State discrepancy: Local component entity mismatch.");
-            }
+            if (!dbPiece) throw new Error("Selection configuration anomaly: No piece occupies chosen origin.");
+            if (dbPiece.color !== myColor) throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but your assignment is ${myColor}.`);
+            if (dbPiece.pieceType !== intent.piece.type) throw new Error("State discrepancy: Local component entity mismatch.");
 
-            // Movement Vector Boundary Audits
             if (intent.action === 'Move') {
                 const nx = intent.changes.new.x;
                 const ny = intent.changes.new.y;
                 const dx = Math.abs(nx - dbPiece.x);
                 const dy = Math.abs(ny - dbPiece.y);
                 
-                if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) {
-                    throw new Error("Invalid move: Relocation offset bounds exceeded.");
-                }
-                if (dbPiece.pieceType === 'LASER') {
-                    throw new Error("Invalid move: Sphinx (LASER) structural column immobilized.");
-                }
-                if (isReservedSquare(nx, ny, dbPiece.color)) {
-                    throw new Error("Invalid move: Restricted landing zone column conflict.");
-                }
+                if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) throw new Error("Invalid move: Relocation offset bounds exceeded.");
+                if (dbPiece.pieceType === 'LASER') throw new Error("Invalid move: Sphinx (LASER) structural column immobilized.");
+                if (isReservedSquare(nx, ny, dbPiece.color)) throw new Error("Invalid move: Restricted landing zone column conflict.");
 
                 const pieceAtTarget = getPieceAt(piecesDryRun, nx, ny);
                 if (pieceAtTarget) {
-                    // Check swap legality requirements
                     if (dbPiece.pieceType === 'SWITCH' && (pieceAtTarget.pieceType === 'DEFLECTOR' || pieceAtTarget.pieceType === 'DEFENDER')) {
-                        if (isReservedSquare(dbPiece.x, dbPiece.y, pieceAtTarget.color)) {
-                            throw new Error("Invalid move: Trapped swap rule violation on target zone.");
-                        }
+                        if (isReservedSquare(dbPiece.x, dbPiece.y, pieceAtTarget.color)) throw new Error("Invalid move: Trapped swap rule violation on target zone.");
                     } else {
                         throw new Error("Invalid move: Destructive spatial overlap. Target square occupied.");
                     }
                 }
             }
-            // Rotational Symmetry Verification
             else if (intent.action === 'Rotate') {
                 const newRot = intent.changes.new.rotation;
-                if (dbPiece.pieceType === 'KING') {
-                    throw new Error("Invalid rotate: Pharaoh (KING) directional system locked.");
-                }
+                if (dbPiece.pieceType === 'KING') throw new Error("Invalid rotate: Pharaoh (KING) directional system locked.");
                 if (dbPiece.pieceType === 'LASER') {
-                    if (dbPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) {
-                        throw new Error("Invalid rotate: Blue Sphinx sector limits restricted to 0 or 3.");
-                    }
-                    if (dbPiece.color === 'RED' && (newRot === 3 || newRot === 0)) {
-                        throw new Error("Invalid rotate: Red Sphinx sector limits restricted to 1 or 2.");
-                    }
+                    if (dbPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) throw new Error("Invalid rotate: Blue Sphinx sector limits restricted to 0 or 3.");
+                    if (dbPiece.color === 'RED' && (newRot === 3 || newRot === 0)) throw new Error("Invalid rotate: Red Sphinx sector limits restricted to 1 or 2.");
                 }
             }
         }
     } catch (localErr) {
-        // SHORT-CIRCUIT: Log locally and abort instantly. No network traffic dispatched.
         add(`Local Validation Rejected: ${localErr.message}`, 'error-msg');
         selectedOrigin = null;
         printTerminalMatrix(latestState);
         return;
     }
 
-    // Preserve original layout snapshot in case remote worker rejects mutation pipeline
     const initialStateBackup = JSON.parse(JSON.stringify(latestState));
     isAnimatingLocalTurn = true; 
 
     try {
-        // -------------------------------------------------------------------------
-        // --- PHASE 2: LOCAL ANIMATION & PERSISTENCE SYNCHRONIZATION -------------
-        // -------------------------------------------------------------------------
         const stateCopy = JSON.parse(JSON.stringify(latestState));
         let pieces = getBoardPieces(stateCopy);
 
@@ -398,7 +361,6 @@
                 add(`ROTATION METADATA: ${dbPiece.pieceType} modified to position ${newRot}`, 'success-msg');
             }
 
-            // Forcefully map the tracking array back onto the object payload
             if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
 
             activeMatrixContainer = null; 
@@ -417,7 +379,6 @@
             
             if (!trace.looped && trace.hit && trace.hit.destroyed) {
                 const targetKilled = trace.hit.piece;
-                
                 pieces = pieces.filter(p => !(p.x === targetKilled.x && p.y === targetKilled.y));
                 if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
 
@@ -443,29 +404,16 @@
 
         latestState = stateCopy;
 
-        // -------------------------------------------------------------------------
-        // --- PHASE 3: AUTHORITATIVE REMOTE NETWORK HANDSHAKE ---------------------
-        // -------------------------------------------------------------------------
         add(`Transmitting intent: ${intent.action}...`, 'system-msg');
         const response = await fetch(MOVE_CHECKER_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                matchId: matchId,
-                username: myName,
-                password: myPass,
-                intent: intent
-            })
+            body: JSON.stringify({ matchId: matchId, username: myName, password: myPass, intent: intent })
         });
 
         const result = await response.json();
-        if (!response.ok || !result.ok) {
-            throw new Error(result.error || "Unknown validation failure.");
-        }
-        
-        if (result.logs && result.logs.length) {
-            result.logs.forEach(log => add(log, 'system-msg'));
-        }
+        if (!response.ok || !result.ok) throw new Error(result.error || "Unknown validation failure.");
+        if (result.logs && result.logs.length) result.logs.forEach(log => add(log, 'system-msg'));
 
     } catch (err) {
         add(`Engine Mutation Failure: ${err.message}`, 'error-msg');
@@ -481,9 +429,7 @@
   async function skipTurnAndFire() {
     if (!latestState) return;
     add("Initiating direct fire / skipping move phase...", "system-msg");
-    await processGameAction({
-        action: 'Turn End'
-    });
+    await processGameAction({ action: 'Turn End' });
   }
 
   function rotatePiece(dir) {
@@ -547,22 +493,44 @@
       const currentMoveNum = state.board?.moveNumber || state.moveNumber || 0;
       const ld = state.metadata?.lastdestroyed;
 
-      // EXPLANATION LAYER: Sequence into three distinct frames
+      // 1. Detect Direct Fire (No movement/rotation, but turn switch OR piece removed)
+      let isDirectFire = false;
+      if (latestState) {
+          const oldPieces = getBoardPieces(latestState);
+          const newPieces = getBoardPieces(state);
+          const oldTurn = latestState.board?.turn || latestState.turn;
+          const newTurn = state.board?.turn || state.turn;
+          const turnSwitched = (oldTurn !== newTurn);
+          
+          if (turnSwitched) {
+              const sortFn = (a,b) => (a.x + a.y*10) - (b.x + b.y*10);
+              
+              // Case A: Exact Match (No movement)
+              const str1 = JSON.stringify(oldPieces.sort(sortFn));
+              const str2 = JSON.stringify(newPieces.sort(sortFn));
+              
+              // Case B: Match after removing destroyed piece
+              let str1WithRemoval = null;
+              if (ld && ld.piece) {
+                  const oldWithoutVictim = oldPieces.filter(p => !(p.x === ld.piece.x && p.y === ld.piece.y));
+                  str1WithRemoval = JSON.stringify(oldWithoutVictim.sort(sortFn));
+              }
+              
+              if (str1 === str2 || (str1WithRemoval && str1WithRemoval === str2)) {
+                  isDirectFire = true;
+              }
+          }
+      }
+
+      // 2. Animate
       if (ld && ld.turn === currentMoveNum - 1 && lastAnimatedTurn !== ld.turn) {
           lastAnimatedTurn = ld.turn;
           isAnimatingLocalTurn = true; 
-
           add(`Opponent (${ld.shooterColor}) completed action sequence. Simulating tracing pipeline...`, 'system-msg');
-
-          // Prepare the Replay State (Victim is alive)
           const replayState = JSON.parse(JSON.stringify(state));
           let replayPieces = getBoardPieces(replayState);
-          if (!replayPieces.some(p => p.x === ld.piece.x && p.y === ld.piece.y)) {
-              replayPieces.push(ld.piece);
-          }
+          if (!replayPieces.some(p => p.x === ld.piece.x && p.y === ld.piece.y)) replayPieces.push(ld.piece);
           if (replayState.board) replayState.board.pieces = replayPieces; else replayState.pieces = replayPieces;
-
-          // Pre-calculate path on the reconstructed pieces
           const oppShooter = replayPieces.find(p => p && p.pieceType === 'LASER' && p.color === ld.shooterColor);
           let laserPath = [];
           if (oppShooter) {
@@ -570,24 +538,27 @@
               const trace = resolveLaserVector(oppShooter.x + DIRS[startDir].dx, oppShooter.y + DIRS[startDir].dy, startDir, replayPieces);
               laserPath = trace.path;
           }
-
-          // FRAME 1: The Reconstructed State (Victim Present)
-          // We set replace=false to append this frame to the log
           printTerminalMatrix(replayState, [], false);
           await sleep(1000); 
-
-          // FRAME 2: The Laser Path Render
           printTerminalMatrix(replayState, laserPath, false);
           await sleep(1500); 
-
           add(`Visual Summary: Laser blast vaporized your ${ld.piece.pieceType} at (${ld.piece.x}, ${ld.piece.y}).`, "error-msg");
-
-          // FRAME 3: The Authoritative State (Piece Removed)
           isAnimatingLocalTurn = false;
           printTerminalMatrix(state, [], false);
-          
+      } else if (isDirectFire) {
+          // Direct Fire detected
+          const firedColor = (state.board?.turn === 'RED' ? 'BLUE' : 'RED');
+          const shooter = getBoardPieces(state).find(p => p && p.pieceType === 'LASER' && p.color === firedColor);
+          if (shooter) {
+              const startDir = normalizeRotation(shooter.rotation);
+              const trace = resolveLaserVector(shooter.x + DIRS[startDir].dx, shooter.y + DIRS[startDir].dy, startDir, getBoardPieces(state));
+              printTerminalMatrix(state, trace.path, false);
+              await sleep(1500);
+              printTerminalMatrix(state, [], false);
+          } else {
+              printTerminalMatrix(state); 
+          }
       } else {
-          // Standard Update Routine
           printTerminalMatrix(state); 
       }
     });
