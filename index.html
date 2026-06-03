@@ -498,12 +498,21 @@
         const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
         if (!u || !p) return add('TERMINAL LOCKED', 'system-msg'), add('User ID:', '', true, handleAuth);
         add('System Online.', 'success-msg');
+        
+        // Dynamic Cross-Check on Boot
         if (rid) { 
-            const snap = await dbGame.ref(`G/${rid}`).once('value'); 
-            if (snap.exists()) return lockOntoMatch(rid, snap.val()); 
-            else { localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); add("Stale match ID cleared.", "system-msg"); }
+            const snapGame = await dbGame.ref(`G/${rid}`).once('value'); 
+            const snapPending = await dbMatch.ref(`A/${rid}`).once('value');
+            if (snapGame.exists()) return lockOntoMatch(rid, snapGame.val()); 
+            else if (snapPending.exists()) {
+                add("Pending host request found.", "system-msg");
+                isHostRequestPending = true;
+                startHostGamePolling();
+            } else { 
+                localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); add("Stale match data cleared.", "system-msg"); 
+            }
         }
-        if (!await searchForGameDBMatch()) await startPolling();
+        if (!lockedMatchId) await startPolling();
       }
 
       async function startPolling() {
@@ -541,20 +550,38 @@
       }
 
       async function showMode() {
-        if (localStorage.getItem(KEY_RID)) return; while (processing) await sleep(10); if (modeShown) return; modeShown = true;
-        if (!currentHead) add('Queue Empty. [R] Host Red | [B] Blue | [P] Host Private | [J] Join Private', 'system-msg'); 
-        else if (currentHead.data.color === 0) add('RED at head. [A] Join as Blue | [R] Host Red | [P] Host Private | [J] Join Private', 'system-msg'); 
-        else add('BLUE at head. [A] Join as Red | [B] Host Blue | [P] Host Private | [J] Join Private', 'system-msg');
+        if (lockedMatchId) return; 
+        while (processing) await sleep(10); 
+        if (modeShown) return; 
+        modeShown = true;
+        
+        let menu = "--- MENU ---\n";
+        if (isHostRequestPending) {
+            menu += "[X] Cancel Pending Request";
+        } else {
+            if (!currentHead) menu += "Queue Empty.\n";
+            else if (currentHead.data.color === 0) menu += "RED at head. [A] Join as Blue\n"; 
+            else menu += "BLUE at head. [A] Join as Red\n";
+            menu += "[R] Host Red | [B] Host Blue | [P] Host Private | [J] Join Private";
+        }
+        add(menu, 'system-msg');
         add('MODE:', '', true, handleMode);
       }
 
       async function handleMode(val) {
-        if (val === 'A') { if (!currentHead) { add('JOIN FAILED.', 'error-msg'); modeShown = false; return showMode(); } registerHost(currentHead.data.color === 0 ? 1 : 0, true); }
-        else if (val === 'R') registerHost(0, false); 
-        else if (val === 'B') registerHost(1, false);
+        if (isHostRequestPending && val === 'X') {
+            localStorage.removeItem(KEY_RID);
+            window.location.reload();
+            return;
+        }
+        if (val === 'A') { 
+            if (!currentHead) { add('JOIN FAILED.', 'error-msg'); modeShown = false; return showMode(); } 
+            registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
+        } else if (val === 'R') { registerHost(0, false); } 
+        else if (val === 'B') { registerHost(1, false); }
         else if (val === 'P') {
-            add('Enter Target Username (or [ENTER] for open):', '', true, async (target) => {
-                add('Choose Color: [R] Red | [B] Blue', '', true, async (colorKey) => {
+            add('Target Username ([ENTER] for open):', '', true, async (target) => {
+                add('Choose Color:\n[R] Red | [B] Blue', '', true, async (colorKey) => {
                     const color = (colorKey === 'R') ? 0 : 1;
                     requestPrivateMatch(color, target || null);
                 });
@@ -562,10 +589,7 @@
         }
         else if (val === 'J') {
             add('Enter Invite Code:', '', true, async (code) => {
-                add('Choose Color: [R] Red | [B] Blue', '', true, async (colorKey) => {
-                    const color = (colorKey === 'R') ? 0 : 1;
-                    joinPrivateMatch(code, color);
-                });
+                joinPrivateMatch(code);
             });
         }
         else { add('Unknown Command.', 'error-msg'); modeShown = false; showMode(); }
@@ -590,7 +614,8 @@
               });
               const data = await res.json();
               if (data.ok) {
-                  add(`Lobby Created! Invite Code: ${data.inviteCode}`, 'success-msg');
+                  add(`Lobby Created!\nInvite Code: ${data.inviteCode}`, 'success-msg');
+                  localStorage.setItem(KEY_RID, data.requestId);
                   setStatus("WAITING_FOR_GUEST");
                   startHostGamePolling();
               } else {
@@ -603,7 +628,7 @@
           }
       }
 
-      async function joinPrivateMatch(inviteCode, color) {
+      async function joinPrivateMatch(inviteCode) {
           setStatus("JOINING_PRIVATE");
           toggleWaiting(true, "Joining Lobby");
           try {
@@ -613,7 +638,6 @@
                   body: JSON.stringify({ 
                       username: localStorage.getItem(KEY_USER),
                       password: localStorage.getItem(KEY_PASS),
-                      color,
                       isPrivate: true,
                       privateMode: "JOIN",
                       inviteCode
