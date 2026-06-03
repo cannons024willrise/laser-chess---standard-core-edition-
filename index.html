@@ -31,6 +31,7 @@
         .success-msg { color: var(--waiting); }
         .system-msg { color: var(--muted); }
         .highlight { color: var(--bright); }
+        a { color: var(--blue); text-decoration: none; }
     </style>
 </head>
 <body>
@@ -117,6 +118,7 @@
       function setStatus(msg) { if (requestStatus === msg) return; requestStatus = msg; add(`[STATUS] ${msg}`, 'system-msg'); }
       function createLine(cls='') { const d = document.createElement('div'); d.className = `history-line ${cls}`; if (currentPromptWrap) logContainer.insertBefore(d, currentPromptWrap); else logContainer.appendChild(d); scrollToBottom(); return d; }
       function add(text, cls='', req=false, handler=null) { if (!req && processing) { type(text, cls, true); return; } queue.push({text,cls,req,handler}); if (!processing) run(); }
+      function addHTML(html, cls='') { const l = createLine(cls); l.innerHTML = html; }
       async function run() { processing = true; while(queue.length) { const i = queue.shift(); if (i.req) await prompt(i.text, i.cls, i.handler || handleAuth); else await type(i.text, i.cls); } processing = false; }
       async function type(text, cls, immediate=false) { const l = createLine(cls); if (immediate) { l.textContent = text; return l; } for (const c of text) { l.textContent += c; await sleep(10); } return l; }
       
@@ -517,9 +519,15 @@
         const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
         
         if (!u) {
-            add('============================================================================================================', 'system-msg');
+            add('====================================================', 'system-msg');
             add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg');
-            add('============================================================================================================', 'system-msg');
+            add('====================================================', 'system-msg');
+            
+            // Added Links
+            addHTML('Video Tutorial: <a href="https://www.youtube.com/watch?v=UqLa-LOficM" target="_blank">Watch Here</a>', 'system-msg');
+            addHTML('Discord: <a href="https://discord.gg/HnBHssXq" target="_blank">Join Server</a>', 'system-msg');
+            addHTML('Support: <a href="mailto:later5143@gmail.com">later5143@gmail.com</a>', 'system-msg');
+            
             return add('Session Username:', '', true, handleAuth);
         }
         
