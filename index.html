@@ -106,7 +106,6 @@
     return null;
   }
 
-  // Helper added for movement validation
   function isReservedSquare(x, y, color) {
     return color === 'BLUE' ? RED_RESERVED.some(s => s.x === x && s.y === y) : BLUE_RESERVED.some(s => s.x === x && s.y === y);
   }
@@ -170,12 +169,16 @@
     } else {
         const pieces = getBoardPieces(latestState);
         const movingPiece = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
+        const targetPiece = pieces.find(p => p.x === cursorX && p.y === cursorY);
 
         if (selectedOrigin.x === cursorX && selectedOrigin.y === cursorY) {
             selectedOrigin = null;
             add(`Deselected`, 'system-msg');
         } 
-        // Blocking logic here
+        else if (targetPiece) {
+            add(`Invalid Move: Target square occupied.`, 'error-msg');
+            selectedOrigin = null;
+        }
         else if (movingPiece && isReservedSquare(cursorX, cursorY, movingPiece.color)) {
             add(`Invalid Move: Reserved square violation.`, 'error-msg');
             selectedOrigin = null;
