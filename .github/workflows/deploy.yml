@@ -1,27 +1,7 @@
-name: Deploy to Itch.io
-
-on:
-  push:
-    branches:
-      - main  # Change this if your main branch is named 'master'
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Install Butler
-        run: |
-          curl -L -o butler.zip https://broth.itch.ovh/butler/linux-amd64/LATEST/archive/default
-          unzip butler.zip
-          chmod +x butler
-          sudo mv butler /usr/local/bin/
-
-      - name: Push to Itch.io
+- name: Deploy to Itch.io
+        uses: josephbmanley/butler-publish-it-action@master
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
-        run: |
-          # REPLACE the part below with your actual itch.io info
-          butler push . your-username/your-game-slug:html
+          CHANNEL: html
+          ITCH_GAME: cannons024willrise/laserchess
+          ITCH_USER: cannons024willrise
