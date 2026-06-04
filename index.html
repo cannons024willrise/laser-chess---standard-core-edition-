@@ -63,7 +63,7 @@
       let currentHead = null, modeShown = false, isPollingStarting = false; 
       let cursorX = 0, cursorY = 0, latestState = null, activeMatrixContainer = null;
       let isHostRequestPending = false, requestStatus = "IDLE";
-      let isAnimatingLocalTurn = false;
+      let isAnimatingLocalTurn = false, isLMode = false;
       let lastAnimatedTurn = null;
       let pendingStateUpdate = null;
       let activeGameRef = null;
@@ -203,6 +203,27 @@
           isAnimatingLocalTurn = false;
       }
 
+      function startLocalGame() {
+          isLMode = true;
+          modeShown = false;
+          lockedMatchId = 'LOCAL_GAME';
+          localStorage.setItem('ls_my_color', 'RED');
+          latestState = {
+              board: {
+                  turn: 'RED',
+                  moveNumber: 1,
+                  pieces: [
+                      {x: 0, y: 7, pieceType: 'LASER', color: 'RED', rotation: 1},
+                      {x: 9, y: 0, pieceType: 'LASER', color: 'BLUE', rotation: 3},
+                      {x: 4, y: 7, pieceType: 'KING', color: 'RED', rotation: 0},
+                      {x: 5, y: 0, pieceType: 'KING', color: 'BLUE', rotation: 2}
+                  ]
+              }
+          };
+          printTerminalMatrix(latestState);
+          add("Local Mode Initialized.", "success-msg");
+      }
+
       function printTerminalMatrix(state, laserPath = [], replace = true) {
         latestState = state;
         const pieces = getBoardPieces(state);
@@ -294,7 +315,7 @@
       async function processGameAction(intent) {
         if (!latestState) return;
         const myName = localStorage.getItem(KEY_USER); const myPass = localStorage.getItem(KEY_PASS); const matchId = lockedMatchId || localStorage.getItem(KEY_RID);
-        if (!matchId || !myName || !myPass) { add("Engine Rejection: Missing local session credentials.", "error-msg"); return; }
+        if (!isLMode && (!matchId || !myName || !myPass)) { add("Engine Rejection: Missing local session credentials.", "error-msg"); return; }
         const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
         let myColor = localStorage.getItem('ls_my_color');
         if (!myColor) {
@@ -307,7 +328,7 @@
           localStorage.setItem('ls_my_color', myColor);
         }
         try {
-            if (currentTurn !== myColor) throw new Error(`Turn violation: It is ${currentTurn}'s turn, but you are ${myColor}.`);
+            if (!isLMode && currentTurn !== myColor) throw new Error(`Turn violation: It is ${currentTurn}'s turn, but you are ${myColor}.`);
             if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
                 const piecesDryRun = getBoardPieces(latestState);
                 const dbPiece = getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y);
@@ -372,10 +393,15 @@
             if (stateCopy.board) { stateCopy.board.turn = myColor === 'RED' ? 'BLUE' : 'RED'; stateCopy.board.moveNumber = (stateCopy.board.moveNumber || 0) + 1; }
             else { stateCopy.turn = myColor === 'RED' ? 'BLUE' : 'RED'; stateCopy.moveNumber = (stateCopy.moveNumber || 0) + 1; }
             latestState = stateCopy;
-            add(`Transmitting intent: ${intent.action}...`, 'system-msg');
-            const response = await fetch(MOVE_CHECKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ matchId: matchId, username: myName, password: myPass, intent: intent }) });
-            const result = await response.json();
-            if (!response.ok || !result.ok) throw new Error(result.error || "Unknown validation failure.");
+            
+            let response = { ok: true }; let result = { ok: true };
+            if (!isLMode) {
+                add(`Transmitting intent: ${intent.action}...`, 'system-msg');
+                const resp = await fetch(MOVE_CHECKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ matchId: matchId, username: myName, password: myPass, intent: intent }) });
+                response = resp;
+                result = await response.json();
+                if (!response.ok || !result.ok) throw new Error(result.error || "Unknown validation failure.");
+            }
         } catch (err) { add(`Engine Mutation Failure: ${err.message}`, 'error-msg'); latestState = initialStateBackup; } finally { 
             activeMatrixContainer = null; 
             isAnimatingLocalTurn = false; 
@@ -416,6 +442,7 @@
         lockedMatchId = null; 
         activeMatrixContainer = null; 
         modeShown = false; 
+        isLMode = false;
         if (activeGameRef) { activeGameRef.off(); activeGameRef = null; }
         setStatus("IDLE"); 
         startPolling(); 
@@ -535,7 +562,6 @@
       async function boot() {
         const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
         
-        // CONSISTENT HEADER (Restore on login)
         add('====================================================', 'system-msg');
         add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg');
         add('====================================================', 'system-msg');
@@ -610,7 +636,7 @@
             if (!currentHead) menu += "Queue Empty.\n";
             else if (currentHead.data.color === 0) menu += "RED at head. [A] Join as Blue\n"; 
             else menu += "BLUE at head. [A] Join as Red\n";
-            menu += "[R] Host Red | [B] Host Blue | [P] Host Private | [J] Join Private";
+            menu += "[R] Host Red | [B] Host Blue | [P] Host Private | [J] Join Private | [L] Local Play";
         }
         add(menu, 'system-msg');
         add('MODE:', '', true, handleMode);
@@ -622,7 +648,8 @@
             window.location.reload();
             return;
         }
-        if (val === 'A') { 
+        if (val === 'L') { startLocalGame(); }
+        else if (val === 'A') { 
             if (!currentHead) { add('JOIN FAILED.', 'error-msg'); modeShown = false; return showMode(); } 
             registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
         } else if (val === 'R') { registerHost(0, false); } 
