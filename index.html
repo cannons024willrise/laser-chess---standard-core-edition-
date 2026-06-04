@@ -207,7 +207,6 @@
           isLMode = true;
           modeShown = false;
           lockedMatchId = 'LOCAL_GAME';
-          localStorage.setItem('ls_my_color', 'RED');
           
           const saved = localStorage.getItem(KEY_LOCAL_STATE);
           if (saved) {
@@ -266,19 +265,7 @@
         
         const container = document.createElement('div'); container.className = 'matrix-container';
 
-        const myName = (localStorage.getItem(KEY_USER) || '').toUpperCase();
-        let myColor = localStorage.getItem('ls_my_color');
-        if (!myColor && state) {
-          if (state.red && String(state.red).toUpperCase() === myName) myColor = 'RED';
-          else if (state.blue && String(state.blue).toUpperCase() === myName) myColor = 'BLUE';
-          else if (state.redPlayer && String(state.redPlayer).toUpperCase() === myName) myColor = 'RED';
-          else if (state.bluePlayer && String(state.bluePlayer).toUpperCase() === myName) myColor = 'BLUE';
-          else if (lockedMatchId && lockedMatchId.toUpperCase().startsWith(myName)) myColor = 'RED';
-          else myColor = 'BLUE';
-          localStorage.setItem('ls_my_color', myColor);
-        }
         const currentTurn = state.board?.turn || state.turn || 'RED';
-        const opponentColor = myColor === 'RED' ? 'BLUE' : 'RED';
 
         const statusBar = document.createElement('div');
         statusBar.className = 'history-line';
@@ -286,7 +273,7 @@
         statusBar.style.fontSize = '20px';
         statusBar.style.borderBottom = '1px dashed var(--line)';
         statusBar.style.paddingBottom = '6px';
-        statusBar.innerHTML = `[<span class="highlight">YOU</span>: <span class="p-${myColor?.toLowerCase()}">${myColor || 'UNKNOWN'}</span>] &nbsp;&nbsp; [<span class="highlight">OPPONENT</span>: <span class="p-${opponentColor.toLowerCase()}">${opponentColor}</span>] &nbsp;&nbsp; [<span class="highlight">CURRENT TURN</span>: <span class="p-${currentTurn.toLowerCase()}">${currentTurn}</span>]`;
+        statusBar.innerHTML = `[<span class="highlight">TURN</span>: <span class="p-${currentTurn.toLowerCase()}">${currentTurn}</span>]`;
         container.appendChild(statusBar);
 
         for (let y = 7; y >= 0; y--) {
@@ -337,7 +324,6 @@
 
       window.addEventListener('keydown', (e) => {
         if (currentPromptWrap || isAnimatingLocalTurn) return;
-        // Check for Resign
         if (e.key.toLowerCase() === 'q') { processGameAction({ action: 'Resign' }); return; }
 
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key) || 
@@ -360,11 +346,12 @@
 
       async function processGameAction(intent) {
         if (!latestState) return;
-        const myName = localStorage.getItem(KEY_USER); const myPass = localStorage.getItem(KEY_PASS); const matchId = lockedMatchId || localStorage.getItem(KEY_RID);
+        
+        const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
+        const activePlayer = isLMode ? currentTurn : (localStorage.getItem('ls_my_color') || 'RED');
         
         // Handle Resign
         if (intent.action === 'Resign') {
-            const currentTurn = latestState.board?.turn || 'RED';
             const winner = currentTurn === 'RED' ? 'BLUE' : 'RED';
             latestState.status = `${winner}_WIN`;
             add(`${currentTurn} RESIGNED. ${winner} WINS.`, "success-msg");
@@ -373,26 +360,19 @@
             return;
         }
 
-        if (!isLMode && (!matchId || !myName || !myPass)) { add("Engine Rejection: Missing local session credentials.", "error-msg"); return; }
-        const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
-        let myColor = localStorage.getItem('ls_my_color');
-        if (!myColor) {
-          if (latestState.red && String(latestState.red).toUpperCase() === myName.toUpperCase()) myColor = 'RED';
-          else if (latestState.blue && String(latestState.blue).toUpperCase() === myName.toUpperCase()) myColor = 'BLUE';
-          else if (latestState.redPlayer && String(latestState.redPlayer).toUpperCase() === myName.toUpperCase()) myColor = 'RED';
-          else if (latestState.bluePlayer && String(latestState.bluePlayer).toUpperCase() === myName.toUpperCase()) myColor = 'BLUE';
-          else if (lockedMatchId && lockedMatchId.toUpperCase().startsWith(myName.toUpperCase())) myColor = 'RED';
-          else myColor = 'BLUE';
-          localStorage.setItem('ls_my_color', myColor);
-        }
+        if (!isLMode && (!localStorage.getItem(KEY_RID) || !localStorage.getItem(KEY_USER) || !localStorage.getItem(KEY_PASS))) { add("Engine Rejection: Missing local session credentials.", "error-msg"); return; }
+
         try {
-            if (!isLMode && currentTurn !== myColor) throw new Error(`Turn violation: It is ${currentTurn}'s turn, but you are ${myColor}.`);
+            if (!isLMode && currentTurn !== activePlayer) throw new Error(`Turn violation: It is ${currentTurn}'s turn, but you are ${activePlayer}.`);
+            
             if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
                 const piecesDryRun = getBoardPieces(latestState);
                 const dbPiece = getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y);
+                
                 if (!dbPiece) throw new Error("Selection configuration anomaly: No piece occupies chosen origin.");
-                if (dbPiece.color !== myColor) throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but your assignment is ${myColor}.`);
+                if (dbPiece.color !== activePlayer) throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but it is ${activePlayer}'s turn.`);
                 if (dbPiece.pieceType !== intent.piece.type) throw new Error("State discrepancy: Local component entity mismatch.");
+                
                 if (intent.action === 'Move') {
                     const nx = intent.changes.new.x; const ny = intent.changes.new.y; const dx = Math.abs(nx - dbPiece.x); const dy = Math.abs(ny - dbPiece.y);
                     if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) throw new Error("Invalid move: Relocation offset bounds exceeded.");
@@ -414,6 +394,7 @@
                 }
             }
         } catch (localErr) { add(`Local Validation Rejected: ${localErr.message}`, 'error-msg'); selectedOrigin = null; printTerminalMatrix(latestState); return; }
+        
         const initialStateBackup = JSON.parse(JSON.stringify(latestState));
         isAnimatingLocalTurn = true; 
         try {
@@ -430,12 +411,12 @@
                 if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
                 activeMatrixContainer = null; printTerminalMatrix(stateCopy); await sleep(500);
             }
-            const shooter = pieces.find(p => p && p.pieceType === 'LASER' && p.color === myColor);
+            const shooter = pieces.find(p => p && p.pieceType === 'LASER' && p.color === activePlayer);
             if (shooter) {
                 const startDir = normalizeRotation(shooter.rotation);
                 const trace = resolveLaserVector(shooter.x + DIRS[startDir].dx, shooter.y + DIRS[startDir].dy, startDir, pieces);
                 const victim = (trace.hit && trace.hit.destroyed) ? trace.hit.piece : null;
-                await playLaserAnimation(stateCopy, pieces, myColor, victim);
+                await playLaserAnimation(stateCopy, pieces, activePlayer, victim);
                 if (victim) {
                     pieces = pieces.filter(p => !(p.x === victim.x && p.y === victim.y));
                     if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
@@ -449,22 +430,18 @@
                 }
             }
             
-            // FIX: Use the actual current turn, not myColor, to determine the next turn
             const nextTurn = currentTurn === 'RED' ? 'BLUE' : 'RED';
             if (stateCopy.board) { stateCopy.board.turn = nextTurn; stateCopy.board.moveNumber = (stateCopy.board.moveNumber || 0) + 1; }
             else { stateCopy.turn = nextTurn; stateCopy.moveNumber = (stateCopy.moveNumber || 0) + 1; }
             latestState = stateCopy;
             
-            // Persist
             if (isLMode) localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
 
-            let response = { ok: true }; let result = { ok: true };
             if (!isLMode) {
                 add(`Transmitting intent: ${intent.action}...`, 'system-msg');
-                const resp = await fetch(MOVE_CHECKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ matchId: matchId, username: myName, password: myPass, intent: intent }) });
-                response = resp;
-                result = await response.json();
-                if (!response.ok || !result.ok) throw new Error(result.error || "Unknown validation failure.");
+                const resp = await fetch(MOVE_CHECKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ matchId: lockedMatchId, username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), intent: intent }) });
+                const result = await resp.json();
+                if (!resp.ok || !result.ok) throw new Error(result.error || "Unknown validation failure.");
             }
         } catch (err) { add(`Engine Mutation Failure: ${err.message}`, 'error-msg'); latestState = initialStateBackup; } finally { 
             activeMatrixContainer = null; 
@@ -643,7 +620,6 @@
         }
         applyFontPreference(fontPref);
 
-        // Notify user about local save
         if (localStorage.getItem(KEY_LOCAL_STATE)) {
             add("Local game data found. Use [L] to resume.", "system-msg");
         }
