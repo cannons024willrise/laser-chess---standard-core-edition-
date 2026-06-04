@@ -305,6 +305,21 @@
         statusBar.innerHTML = `[<span class="highlight">TURN</span>: <span class="p-${currentTurn.toLowerCase()}">${currentTurn}</span>]`;
         container.appendChild(statusBar);
 
+        const instrHeader = document.createElement('div');
+        instrHeader.innerHTML = `<div style="font-size: 15px; border: 1px solid var(--line); padding: 10px; margin-bottom: 12px; background: var(--bg0); color: var(--text); font-family: monospace; line-height: 1.4;">
+<b style="color: var(--bright);">🏆 OBJECTIVE:</b> Eliminate the enemy <b>KING</b> by guiding your laser into it while protecting your own.<br>
+<b style="color: var(--bright);">🕹️ ACTIONS:</b> Perform 1 per turn: <b>Move</b> (1 sq any direction) | <b>Rotate</b> (90° via R/L) | <b>Fire Laser</b> (Auto-fires at end, or skip move to manually fire via F).<br>
+<b style="color: var(--bright);">🧭 VECTORS:</b> 0: +Y (Up) | 1: +X (Right) | 2: -Y (Down) | 3: -X (Left)<br>
+<b style="color: var(--bright);">♟️ PIECES:</b><br>
+- <b>KING</b> (◈): Moves 1 sq. Cannot rotate. Vulnerable from all sides (Game Over).<br>
+- <b>LASER</b> (⫝ ⟜ Ͳ Ð): Immobilized. Blocks all sides safely; fires beam.<br>
+- <b>SWITCH</b> (⟋ ⟍): Moves 1 sq. Swaps with Deflectors/Defenders. Reflects 90° (Immune).<br>
+- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Moves 1 sq. Front blocks lasers; other 3 sides fatal.<br>
+- <b>DEFLECTOR</b> (◤ ◥ ◢ ◣): Moves 1 sq. Diagonal reflects 90°; other sides fatal.<br>
+<b style="color: var(--bright);">⚠️ RULES:</b> No opponent home row entry | Blue Laser faces 0/3; Red faces 1/2 | No overlap unless SWITCH swapping.
+</div>`;
+        container.appendChild(instrHeader);
+
         for (let y = 7; y >= 0; y--) {
           let rowEl = document.createElement('div'); rowEl.className = 'matrix-row';
           for (let x = 0; x < 10; x++) {
@@ -712,6 +727,19 @@
         if (modeShown) return; 
         modeShown = true;
         
+        addHTML(`<div style="font-size: 15px; border: 1px solid var(--line); padding: 10px; margin-bottom: 12px; background: var(--bg0); color: var(--text); font-family: monospace; line-height: 1.4;">
+<b style="color: var(--bright);">🏆 OBJECTIVE:</b> Eliminate the enemy <b>KING</b> by guiding your laser into it while protecting your own.<br>
+<b style="color: var(--bright);">🕹️ ACTIONS:</b> Perform 1 per turn: <b>Move</b> (1 sq any direction) | <b>Rotate</b> (90° via R/L) | <b>Fire Laser</b> (Auto-fires at end, or skip move to manually fire via F).<br>
+<b style="color: var(--bright);">🧭 VECTORS:</b> 0: +Y (Up) | 1: +X (Right) | 2: -Y (Down) | 3: -X (Left)<br>
+<b style="color: var(--bright);">♟️ PIECES:</b><br>
+- <b>KING</b> (◈): Moves 1 sq. Cannot rotate. Vulnerable from all sides (Game Over).<br>
+- <b>LASER</b> (⫝ ⟜ Ͳ Ð): Immobilized. Blocks all sides safely; fires beam.<br>
+- <b>SWITCH</b> (⟋ ⟍): Moves 1 sq. Swaps with Deflectors/Defenders. Reflects 90° (Immune).<br>
+- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Moves 1 sq. Front blocks lasers; other 3 sides fatal.<br>
+- <b>DEFLECTOR</b> (◤ ◥ ◢ ◣): Moves 1 sq. Diagonal reflects 90°; other sides fatal.<br>
+<b style="color: var(--bright);">⚠️ RULES:</b> No opponent home row entry | Blue Laser faces 0/3; Red faces 1/2 | No overlap unless SWITCH swapping.
+</div>`, 'system-msg');
+
         let menu = "--- MENU ---\n";
         if (!currentHead) menu += "Queue Empty.\n";
         else if (currentHead.data.color === 0) menu += "RED at head. [A] Join as Blue\n"; 
