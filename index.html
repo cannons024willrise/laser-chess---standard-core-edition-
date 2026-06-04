@@ -105,7 +105,7 @@
               0: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
               1: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
               2: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
-              3: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }
+              3: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
           },
           LASER: {
               0: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
@@ -126,6 +126,8 @@
           activeRequestRef.on('value', async (snap) => {
               const val = snap.val();
               if (!val) { 
+                  isHostRequestPending = false;
+                  toggleWaiting(false);
                   localStorage.removeItem(KEY_RID);
                   activeRequestRef.off(); activeRequestRef = null;
                   setStatus("MATCH_FORMED_LOOKING");
@@ -657,7 +659,12 @@
             const snapReq = await dbMatch.ref(`RQ_D/${rid}`).once('value');
             if (snapGame.exists()) return lockOntoMatch(rid, snapGame.val()); 
             else if (!snapReq.exists()) { localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); add("Stale match data cleared.", "system-msg"); }
-            else { startRequestMonitoring(rid); }
+            else { 
+                isHostRequestPending = true;
+                setStatus("WAITING_FOR_MATCH");
+                toggleWaiting(true, "Awaiting Match");
+                startRequestMonitoring(rid); 
+            }
         }
         
         await scanOwnRequest();
