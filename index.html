@@ -517,22 +517,15 @@
       }
 
       function applyFontPreference(pref) {
-        if (pref === 'BASIC') {
-            document.body.classList.add('basic-font');
-        } else {
-            document.body.classList.remove('basic-font');
-        }
+        if (pref === 'BASIC') document.body.classList.add('basic-font');
+        else document.body.classList.remove('basic-font');
       }
 
       async function handleFontChoice(v) {
         const val = v.trim().toUpperCase();
-        if (val === 'T') {
-            localStorage.setItem(KEY_FONT, 'THEMATIC');
-            return boot();
-        } else if (val === 'B') {
-            localStorage.setItem(KEY_FONT, 'BASIC');
-            return boot();
-        } else {
+        if (val === 'T') { localStorage.setItem(KEY_FONT, 'THEMATIC'); return boot(); } 
+        else if (val === 'B') { localStorage.setItem(KEY_FONT, 'BASIC'); return boot(); } 
+        else {
             add("Invalid option. Please input 'T' or 'B'.", "error-msg");
             add("[T] Thematic Font: Looks good, but deflectors are hard to understand (DO NOT USE IF THIS IS YOUR FIRST TIME)\n\n[B] Basic Font: Looks ugly, but is clear to understand.", 'system-msg');
             return add('Selection (T/B):', '', true, handleFontChoice);
@@ -542,23 +535,16 @@
       async function boot() {
         const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
         
-        if (!u) {
-            add('====================================================', 'system-msg');
-            add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg');
-            add('====================================================', 'system-msg');
-            
-            // Added Links
-            addHTML('Tutorial: <a href="https://en.wikipedia.org/wiki/Khet_(game)" target="_blank">Watch Here</a> Or just search on Youtube.', 'system-msg');
-            addHTML('Discord: <a href="https://discord.gg/HnBHssXq" target="_blank">Join Server</a>', 'system-msg');
-            addHTML('Support: <a href="mailto:later5143@gmail.com">later5143@gmail.com</a>', 'system-msg');
-            
-            return add('Session Username:', '', true, handleAuth);
-        }
-        
-        if (!p) {
-            add('Username available (for now)', 'success-msg');
-            return add('Session Password:', '', true, handleAuth);
-        }
+        // CONSISTENT HEADER (Restore on login)
+        add('====================================================', 'system-msg');
+        add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg');
+        add('====================================================', 'system-msg');
+        addHTML('Tutorial: <a href="https://en.wikipedia.org/wiki/Khet_(game)" target="_blank">Watch Here</a> Or just search on Youtube.', 'system-msg');
+        addHTML('Discord: <a href="https://discord.gg/HnBHssXq" target="_blank">Join Server</a>', 'system-msg');
+        addHTML('Support: <a href="mailto:later5143@gmail.com">later5143@gmail.com</a>', 'system-msg');
+
+        if (!u) { return add('Session Username:', '', true, handleAuth); }
+        if (!p) { add('Username available (for now)', 'success-msg'); return add('Session Password:', '', true, handleAuth); }
 
         const fontPref = localStorage.getItem(KEY_FONT);
         if (!fontPref) {
@@ -572,9 +558,7 @@
         if (rid) { 
             const snapGame = await dbGame.ref(`G/${rid}`).once('value'); 
             if (snapGame.exists()) return lockOntoMatch(rid, snapGame.val()); 
-            else { 
-                localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); add("Stale match data cleared.", "system-msg"); 
-            }
+            else { localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); add("Stale match data cleared.", "system-msg"); }
         }
         if (!lockedMatchId) await startPolling();
       }
