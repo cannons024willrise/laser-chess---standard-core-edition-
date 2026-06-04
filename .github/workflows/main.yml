@@ -13,13 +13,16 @@ jobs:
       
       - name: Install Butler
         run: |
-          curl -L -o butler.zip https://broth.itch.ovh/butler/linux-amd64/LATEST/archive/default
+          # Use the updated itch.zone domain to prevent 404/download errors
+          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
           unzip butler.zip
           chmod +x butler
+          # Check version to confirm installation succeeded
+          ./butler -V
           
       - name: Push to Itch.io
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
         run: |
-          # Use --verbose to force it to tell us exactly why it fails
+          # Use --verbose to force it to output specific authentication/path errors
           ./butler push . cannons024willrise/laserchess:html --verbose
