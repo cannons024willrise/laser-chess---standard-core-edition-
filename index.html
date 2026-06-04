@@ -716,7 +716,7 @@
         if (!currentHead) menu += "Queue Empty.\n";
         else if (currentHead.data.color === 0) menu += "RED at head. [A] Join as Blue\n"; 
         else menu += "BLUE at head. [A] Join as Red\n";
-        menu += "[R] Host Red | [B] Host Blue | [P] Host Private | [J] Join Private | [L] Local Play";
+        menu += "[R] Host A PvP Match Where your color is Red | [B] Host A PvP Match Where your color is Blue | [P] Host A Private PvP Match. | [J] Join A Private Match | [L] Local Play (Pass and Play mode)";
         
         add(menu, 'system-msg');
         add('MODE:', '', true, handleMode);
