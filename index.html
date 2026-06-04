@@ -134,6 +134,8 @@
                   await sleep(1000); 
                   if (!(await searchForGameDBMatch())) {
                       add("Request fulfilled, but match not found yet. Retrying...", "error-msg");
+                      modeShown = false;
+                      startPolling();
                   }
                   return;
               }
@@ -350,7 +352,7 @@
       }
 
       window.addEventListener('keydown', (e) => {
-        if (currentPromptWrap || isAnimatingLocalTurn) return;
+        if (currentPromptWrap || isAnimatingLocalTurn || isHostRequestPending) return;
         if (e.key.toLowerCase() === 'q') { processGameAction({ action: 'Resign' }); return; }
 
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key) || 
@@ -705,7 +707,7 @@
       }
 
       async function showMode() {
-        if (lockedMatchId) return; 
+        if (lockedMatchId || isHostRequestPending) return; 
         while (processing) await sleep(10); 
         if (modeShown) return; 
         modeShown = true;
@@ -764,15 +766,22 @@
               if (data.ok) {
                   add(`Lobby Created!\nInvite Code: ${data.inviteCode}`, 'success-msg');
                   localStorage.setItem(KEY_RID, data.requestId);
+                  isHostRequestPending = true;
                   setStatus("WAITING_FOR_GUEST");
                   startRequestMonitoring(data.requestId);
               } else {
                   add(`Private Request Rejected: ${data.error}`, 'error-msg');
                   toggleWaiting(false);
+                  isHostRequestPending = false;
+                  modeShown = false;
+                  startPolling();
               }
           } catch (e) {
               add(`Connection Error: ${e.message}`, 'error-msg');
               toggleWaiting(false);
+              isHostRequestPending = false;
+              modeShown = false;
+              startPolling();
           }
       }
 
@@ -819,8 +828,8 @@
             stopPolling(); 
             if (data.matchName) { isHostRequestPending = false; setStatus("LOCKED"); lockOntoMatch(data.matchName, { status: 'SYNCING' }); } 
             else { setStatus("WAITING_FOR_MATCH"); startRequestMonitoring(idToStore); }
-          } else { add(`Request rejected: ${data.error || 'Unknown'}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); localStorage.removeItem('ls_my_color'); }
-        } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); localStorage.removeItem('ls_my_color'); }
+          } else { add(`Request rejected: ${data.error || 'Unknown'}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); localStorage.removeItem('ls_my_color'); modeShown = false; startPolling(); }
+        } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); localStorage.removeItem('ls_my_color'); modeShown = false; startPolling(); }
       }
 
       window.addEventListener('DOMContentLoaded', boot);
