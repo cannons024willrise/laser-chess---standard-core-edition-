@@ -226,7 +226,7 @@
                         {id: "pmpfnkxpm1", pieceType: "KING", color: "BLUE", rotation: 0, x: 4, y: 0},
                         {id: "pmpfnl4j03", pieceType: "KING", color: "RED", rotation: 0, x: 5, y: 7},
                         {id: "pmpfqugdq4", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 4, y: 7},
-                        {id: "pmpfquhvx5", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 6, y: 7},
+                        {id: "pmpfquhvx5", pieceType: "DEFENDER", color: "RED", rotation: 6, y: 7},
                         {id: "pmpfqunnp6", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 5, y: 0},
                         {id: "pmpfquoqi7", pieceType: "DEFENDER", color: "BLUE", rotation: 3, x: 3, y: 0},
                         {id: "pmpfqvc388", pieceType: "SWITCH", color: "BLUE", rotation: 0, x: 5, y: 3},
@@ -355,14 +355,19 @@
             const winner = currentTurn === 'RED' ? 'BLUE' : 'RED';
             latestState.status = `${winner}_WIN`;
             add(`${currentTurn} RESIGNED. ${winner} WINS.`, "success-msg");
-            localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
+            
+            // PATCH: Clear local storage for the game state only
+            localStorage.removeItem(KEY_LOCAL_STATE);
+            
             printTerminalMatrix(latestState);
             return;
         }
 
+        // Bypassed authentication if isLMode
         if (!isLMode && (!localStorage.getItem(KEY_RID) || !localStorage.getItem(KEY_USER) || !localStorage.getItem(KEY_PASS))) { add("Engine Rejection: Missing local session credentials.", "error-msg"); return; }
 
         try {
+            // Turn check
             if (!isLMode && currentTurn !== activePlayer) throw new Error(`Turn violation: It is ${currentTurn}'s turn, but you are ${activePlayer}.`);
             
             if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
@@ -370,7 +375,8 @@
                 const dbPiece = getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y);
                 
                 if (!dbPiece) throw new Error("Selection configuration anomaly: No piece occupies chosen origin.");
-                if (dbPiece.color !== activePlayer) throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but it is ${activePlayer}'s turn.`);
+                // Piece Ownership Check (Bypass in local mode)
+                if (!isLMode && dbPiece.color !== activePlayer) throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but it is ${activePlayer}'s turn.`);
                 if (dbPiece.pieceType !== intent.piece.type) throw new Error("State discrepancy: Local component entity mismatch.");
                 
                 if (intent.action === 'Move') {
