@@ -448,8 +448,11 @@
                     activeMatrixContainer = null; printTerminalMatrix(stateCopy); await sleep(500);
                 }
             }
-            if (stateCopy.board) { stateCopy.board.turn = myColor === 'RED' ? 'BLUE' : 'RED'; stateCopy.board.moveNumber = (stateCopy.board.moveNumber || 0) + 1; }
-            else { stateCopy.turn = myColor === 'RED' ? 'BLUE' : 'RED'; stateCopy.moveNumber = (stateCopy.moveNumber || 0) + 1; }
+            
+            // FIX: Use the actual current turn, not myColor, to determine the next turn
+            const nextTurn = currentTurn === 'RED' ? 'BLUE' : 'RED';
+            if (stateCopy.board) { stateCopy.board.turn = nextTurn; stateCopy.board.moveNumber = (stateCopy.board.moveNumber || 0) + 1; }
+            else { stateCopy.turn = nextTurn; stateCopy.moveNumber = (stateCopy.moveNumber || 0) + 1; }
             latestState = stateCopy;
             
             // Persist
