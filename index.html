@@ -116,19 +116,9 @@
       };
 
       async function scanOwnRequest() {
-        const myName = localStorage.getItem(KEY_USER);
-        if (!myName) return;
-        const snap = await dbMatch.ref('RQ_Q').once('value');
-        const data = snap.val();
-        if (!data) return;
-        for (const [key, entry] of Object.entries(data)) {
-            if (entry.username && entry.username.toUpperCase() === myName.toUpperCase()) {
-                add(`Recovering pending request: ${key}`, "system-msg");
-                localStorage.setItem(KEY_RID, key);
-                startRequestMonitoring(key);
-                return;
-            }
-        }
+        // Full queue scanning on RQ_Q violates database read rules.
+        // Session validation and state survival are securely handled strictly inside boot() via localStorage check.
+        return;
       }
 
       function startRequestMonitoring(requestId) {
@@ -261,7 +251,7 @@
                         {id: "pmpfnkxpm1", pieceType: "KING", color: "BLUE", rotation: 0, x: 4, y: 0},
                         {id: "pmpfnl4j03", pieceType: "KING", color: "RED", rotation: 0, x: 5, y: 7},
                         {id: "pmpfqugdq4", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 4, y: 7},
-                        {id: "pmpfquhvx5", pieceType: "DEFENDER", color: 6, y: 7},
+                        {id: "pmpfquhvx5", pieceType: "DEFENDER", color: "RED", rotation: 2, x: 6, y: 7},
                         {id: "pmpfqunnp6", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 5, y: 0},
                         {id: "pmpfquoqi7", pieceType: "DEFENDER", color: "BLUE", rotation: 3, x: 3, y: 0},
                         {id: "pmpfqvc388", pieceType: "SWITCH", color: "BLUE", rotation: 0, x: 5, y: 3},
