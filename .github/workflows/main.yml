@@ -1,0 +1,28 @@
+name: Deploy to Itch.io
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Butler
+        run: |
+          curl -L -o butler.zip https://broth.itch.ovh/butler/linux-amd64/LATEST/archive/default
+          unzip butler.zip
+          chmod +x butler
+          
+      - name: Debug and Push
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          # 1. Test Login (This will show us if the Key is valid)
+          ./butler login --api-key $BUTLER_API_KEY
+          
+          # 2. Push with Debug enabled (This forces specific error output)
+          BUTLER_VERBOSITY=DEBUG ./butler push . cannons024willrise/laserchess:html
