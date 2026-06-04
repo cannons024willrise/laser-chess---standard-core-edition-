@@ -115,11 +115,28 @@
           }
       };
 
+      async function scanOwnRequest() {
+        const myName = localStorage.getItem(KEY_USER);
+        if (!myName) return;
+        const snap = await dbMatch.ref('RQ_Q').once('value');
+        const data = snap.val();
+        if (!data) return;
+        for (const [key, entry] of Object.entries(data)) {
+            if (entry.username && entry.username.toUpperCase() === myName.toUpperCase()) {
+                add(`Recovering pending request: ${key}`, "system-msg");
+                localStorage.setItem(KEY_RID, key);
+                startRequestMonitoring(key);
+                return;
+            }
+        }
+      }
+
       function startRequestMonitoring(requestId) {
           activeRequestRef = dbMatch.ref(`RQ_D/${requestId}`);
           activeRequestRef.on('value', async (snap) => {
               const val = snap.val();
               if (!val) { 
+                  localStorage.removeItem(KEY_RID);
                   activeRequestRef.off(); activeRequestRef = null;
                   setStatus("MATCH_FORMED_LOOKING");
                   await sleep(1000); 
@@ -368,24 +385,18 @@
         const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
         const activePlayer = isLMode ? currentTurn : (localStorage.getItem('ls_my_color') || 'RED');
         
-        // Handle Resign
         if (intent.action === 'Resign') {
             const winner = currentTurn === 'RED' ? 'BLUE' : 'RED';
             latestState.status = `${winner}_WIN`;
             add(`${currentTurn} RESIGNED. ${winner} WINS.`, "success-msg");
-            
-            // PATCH: Clear local storage for the game state only
             localStorage.removeItem(KEY_LOCAL_STATE);
-            
             printTerminalMatrix(latestState);
             return;
         }
 
-        // Bypassed authentication if isLMode
         if (!isLMode && (!localStorage.getItem(KEY_RID) || !localStorage.getItem(KEY_USER) || !localStorage.getItem(KEY_PASS))) { add("Engine Rejection: Missing local session credentials.", "error-msg"); return; }
 
         try {
-            // Turn check
             if (!isLMode && currentTurn !== activePlayer) throw new Error(`Turn violation: It is ${currentTurn}'s turn, but you are ${activePlayer}.`);
             
             if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
@@ -393,7 +404,6 @@
                 const dbPiece = getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y);
                 
                 if (!dbPiece) throw new Error("Selection configuration anomaly: No piece occupies chosen origin.");
-                // Piece Ownership Check (Bypass in local mode)
                 if (!isLMode && dbPiece.color !== activePlayer) throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but it is ${activePlayer}'s turn.`);
                 if (dbPiece.pieceType !== intent.piece.type) throw new Error("State discrepancy: Local component entity mismatch.");
                 
@@ -459,6 +469,7 @@
             else { stateCopy.turn = nextTurn; stateCopy.moveNumber = (stateCopy.moveNumber || 0) + 1; }
             latestState = stateCopy;
             
+            localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
             if (isLMode) localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
 
             if (!isLMode) {
@@ -653,9 +664,14 @@
         
         if (rid) { 
             const snapGame = await dbGame.ref(`G/${rid}`).once('value'); 
+            const snapReq = await dbMatch.ref(`RQ_D/${rid}`).once('value');
             if (snapGame.exists()) return lockOntoMatch(rid, snapGame.val()); 
-            else { localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); add("Stale match data cleared.", "system-msg"); }
+            else if (!snapReq.exists()) { localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); add("Stale match data cleared.", "system-msg"); }
+            else { startRequestMonitoring(rid); }
         }
+        
+        await scanOwnRequest();
+
         if (!lockedMatchId) await startPolling();
       }
 
