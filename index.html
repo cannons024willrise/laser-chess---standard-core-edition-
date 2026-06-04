@@ -105,7 +105,7 @@
               0: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
               1: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
               2: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
-              3: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } },
+              3: { 0: { action: 'destroy' }, 1: { action: 'destroy' }, 2: { action: 'destroy' }, 3: { action: 'destroy' } }
           },
           LASER: {
               0: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } },
@@ -711,24 +711,16 @@
         modeShown = true;
         
         let menu = "--- MENU ---\n";
-        if (isHostRequestPending) {
-            menu += "[X] Cancel Pending Request";
-        } else {
-            if (!currentHead) menu += "Queue Empty.\n";
-            else if (currentHead.data.color === 0) menu += "RED at head. [A] Join as Blue\n"; 
-            else menu += "BLUE at head. [A] Join as Red\n";
-            menu += "[R] Host Red | [B] Host Blue | [P] Host Private | [J] Join Private | [L] Local Play";
-        }
+        if (!currentHead) menu += "Queue Empty.\n";
+        else if (currentHead.data.color === 0) menu += "RED at head. [A] Join as Blue\n"; 
+        else menu += "BLUE at head. [A] Join as Red\n";
+        menu += "[R] Host Red | [B] Host Blue | [P] Host Private | [J] Join Private | [L] Local Play";
+        
         add(menu, 'system-msg');
         add('MODE:', '', true, handleMode);
       }
 
       async function handleMode(val) {
-        if (isHostRequestPending && val === 'X') {
-            localStorage.removeItem(KEY_RID);
-            window.location.reload();
-            return;
-        }
         if (val === 'L') { startLocalGame(); }
         else if (val === 'A') { 
             if (!currentHead) { add('JOIN FAILED.', 'error-msg'); modeShown = false; return showMode(); } 
