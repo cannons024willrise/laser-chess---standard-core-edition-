@@ -59,7 +59,7 @@
       const logContainer = document.getElementById('terminal-log');
       const queue = [];
       let processing = false, currentPromptWrap = null, lockedMatchId = null;
-      let rqPollInterval = null, waitAnimationInterval = null, hostGamePollInterval = null;
+      let rqPollInterval = null, waitAnimationInterval = null;
       let currentHead = null, modeShown = false, isPollingStarting = false; 
       let cursorX = 0, cursorY = 0, latestState = null, activeMatrixContainer = null;
       let isHostRequestPending = false, requestStatus = "IDLE";
@@ -67,6 +67,7 @@
       let lastAnimatedTurn = null;
       let pendingStateUpdate = null;
       let activeGameRef = null;
+      let activeRequestRef = null;
       
       let selectedOrigin = null;
 
@@ -113,6 +114,23 @@
               3: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } }
           }
       };
+
+      function startRequestMonitoring(requestId) {
+          activeRequestRef = dbMatch.ref(`RQ_D/${requestId}`);
+          activeRequestRef.on('value', async (snap) => {
+              const val = snap.val();
+              if (!val) { 
+                  activeRequestRef.off(); activeRequestRef = null;
+                  setStatus("MATCH_FORMED_LOOKING");
+                  await sleep(1000); 
+                  if (!(await searchForGameDBMatch())) {
+                      add("Request fulfilled, but match not found yet. Retrying...", "error-msg");
+                  }
+                  return;
+              }
+              if (val.status) setStatus(`RQ_STATUS: ${val.status}`);
+          });
+      }
 
       function scrollToBottom() { window.scrollTo(0, document.body.scrollHeight); }
       const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -226,7 +244,7 @@
                         {id: "pmpfnkxpm1", pieceType: "KING", color: "BLUE", rotation: 0, x: 4, y: 0},
                         {id: "pmpfnl4j03", pieceType: "KING", color: "RED", rotation: 0, x: 5, y: 7},
                         {id: "pmpfqugdq4", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 4, y: 7},
-                        {id: "pmpfquhvx5", pieceType: "DEFENDER", color: "RED", rotation: 6, y: 7},
+                        {id: "pmpfquhvx5", pieceType: "DEFENDER", color: 6, y: 7},
                         {id: "pmpfqunnp6", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 5, y: 0},
                         {id: "pmpfquoqi7", pieceType: "DEFENDER", color: "BLUE", rotation: 3, x: 3, y: 0},
                         {id: "pmpfqvc388", pieceType: "SWITCH", color: "BLUE", rotation: 0, x: 5, y: 3},
@@ -491,6 +509,7 @@
         modeShown = false; 
         isLMode = false;
         if (activeGameRef) { activeGameRef.off(); activeGameRef = null; }
+        if (activeRequestRef) { activeRequestRef.off(); activeRequestRef = null; }
         setStatus("IDLE"); 
         startPolling(); 
       }
@@ -548,7 +567,7 @@
       }
 
       function lockOntoMatch(id, entry) {
-        lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); stopHostGamePolling(); toggleWaiting(false); modeShown = false;
+        lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); toggleWaiting(false); modeShown = false;
         setStatus("LOCKED");
         isAnimatingLocalTurn = false;
         pendingStateUpdate = null;
@@ -648,8 +667,6 @@
       }
 
       function stopPolling() { if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } }
-      function startHostGamePolling() { if (hostGamePollInterval) return; setStatus("SCANNING_DB"); hostGamePollInterval = setInterval(async () => { if (await searchForGameDBMatch()) { isHostRequestPending = false; stopHostGamePolling(); } }, 3000); }
-      function stopHostGamePolling() { if (hostGamePollInterval) { clearInterval(hostGamePollInterval); hostGamePollInterval = null; } toggleWaiting(false); }
 
       async function searchForGameDBMatch() {
         const myName = localStorage.getItem(KEY_USER); if (!myName) return false;
@@ -743,7 +760,7 @@
                   add(`Lobby Created!\nInvite Code: ${data.inviteCode}`, 'success-msg');
                   localStorage.setItem(KEY_RID, data.requestId);
                   setStatus("WAITING_FOR_GUEST");
-                  startHostGamePolling();
+                  startRequestMonitoring(data.requestId);
               } else {
                   add(`Private Request Rejected: ${data.error}`, 'error-msg');
                   toggleWaiting(false);
@@ -796,7 +813,7 @@
             if (idToStore) localStorage.setItem(KEY_RID, idToStore); 
             stopPolling(); 
             if (data.matchName) { isHostRequestPending = false; setStatus("LOCKED"); lockOntoMatch(data.matchName, { status: 'SYNCING' }); } 
-            else { setStatus("WAITING_FOR_DB"); startHostGamePolling(); }
+            else { setStatus("WAITING_FOR_MATCH"); startRequestMonitoring(idToStore); }
           } else { add(`Request rejected: ${data.error || 'Unknown'}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); localStorage.removeItem('ls_my_color'); }
         } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); localStorage.removeItem('ls_my_color'); }
       }
