@@ -1,7 +1,30 @@
-- name: Deploy to Itch.io
-        uses: josephbmanley/butler-publish-it-action@master
+name: Deploy to Itch.io
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install and Run Butler
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
-          CHANNEL: html
-          ITCH_GAME: cannons024willrise/laserchess
           ITCH_USER: cannons024willrise
+          ITCH_GAME: cannons024willrise/laserchess
+        run: |
+          # 1. Download Butler
+          curl -L -o butler.zip https://broth.itch.ovh/butler/linux-amd64/LATEST/archive/default
+          unzip butler.zip
+          chmod +x butler
+          
+          # 2. Verify Butler is there
+          ./butler --version
+          
+          # 3. Push to Itch.io
+          ./butler push . $ITCH_USER/$ITCH_GAME:html
