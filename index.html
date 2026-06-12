@@ -69,6 +69,10 @@
       let activeGameRef = null;
       let activeRequestRef = null;
       
+      // Computer Mode State
+      let isComputerMode = false;
+      let playerColor = null;
+
       let selectedOrigin = null;
 
       const DIRS = [ { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 } ]; 
@@ -114,32 +118,6 @@
               3: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } }
           }
       };
-
-      async function scanOwnRequest() {
-        return;
-      }
-
-      function startRequestMonitoring(requestId) {
-          activeRequestRef = dbMatch.ref(`RQ_D/${requestId}`);
-          activeRequestRef.on('value', async (snap) => {
-              const val = snap.val();
-              if (!val) { 
-                  isHostRequestPending = false;
-                  toggleWaiting(false);
-                  localStorage.removeItem(KEY_RID);
-                  activeRequestRef.off(); activeRequestRef = null;
-                  setStatus("MATCH_FORMED_LOOKING");
-                  await sleep(1000); 
-                  if (!(await searchForGameDBMatch())) {
-                      add("Request fulfilled, but match not found yet. Retrying...", "error-msg");
-                      modeShown = false;
-                      startPolling();
-                  }
-                  return;
-              }
-              if (val.status) setStatus(`RQ_STATUS: ${val.status}`);
-          });
-      }
 
       function scrollToBottom() { window.scrollTo(0, document.body.scrollHeight); }
       const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -231,8 +209,16 @@
       }
 
       function startComputerGame(color) {
-        add(`Initializing Computer Mode. You are playing as ${color === 0 ? 'RED' : 'BLUE'}`, "system-msg");
+        isComputerMode = true;
+        playerColor = color; 
+        add(`Initializing Computer Mode. You are playing as ${color}`, "system-msg");
         startLocalGame(); 
+      }
+
+      function doComputerMove() {
+        if (!isComputerMode) return;
+        add("Computer is calculating...", "system-msg");
+        // Logic to trigger AI move would go here
       }
 
       function startLocalGame() {
@@ -318,9 +304,8 @@
 - <b>KING</b> (◈): Moves 1 sq. Cannot rotate. Vulnerable from all sides (Game Over).<br>
 - <b>LASER</b> (⫝ ⟜ Ͳ Ð): Immobilized. Blocks all sides safely; fires beam.<br>
 - <b>SWITCH</b> (⟋ ⟍): Moves 1 sq. Swaps with Deflectors/Defenders. Reflects 90° (Immune).<br>
-- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Moves 1 sq. Front blocks lasers; other 3 sides fatal. The solid (colored) side is the armored front. Can only block a head on hit on that side.<br>
+- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Moves 1 sq. Front blocks lasers; other 3 sides fatal. The solid (colored) side is the armored front.<br>
 - <b>DEFLECTOR</b> (◤ ◥ ◢ ◣): Moves 1 sq. Diagonal reflects 90°; other sides fatal.<br>
-<b style="color: var(--bright);">⚠️ RULES:</b> No opponent home row entry | Blue Laser faces 0/3; Red faces 1/2 | No overlap unless SWITCH swapping.
 </div>`;
         container.appendChild(instrHeader);
 
@@ -500,6 +485,10 @@
                 pendingStateUpdate = null;
                 applyRemoteState(s);
             }
+            // Trigger Computer Move if it's AI turn
+            if (isComputerMode && (latestState.board?.turn || latestState.turn) !== playerColor) {
+               doComputerMove();
+            }
         }
         selectedOrigin = null;
       }
@@ -532,6 +521,7 @@
         activeMatrixContainer = null; 
         modeShown = false; 
         isLMode = false;
+        isComputerMode = false;
         if (activeGameRef) { activeGameRef.off(); activeGameRef = null; }
         if (activeRequestRef) { activeRequestRef.off(); activeRequestRef = null; }
         setStatus("IDLE"); 
@@ -644,7 +634,7 @@
         else if (val === 'B') { localStorage.setItem(KEY_FONT, 'BASIC'); return boot(); } 
         else {
             add("Invalid option. Please input 'T' or 'B'.", "error-msg");
-            add("[T] Thematic Font: Looks good, but deflectors are hard to understand (DO NOT USE IF THIS IS YOUR FIRST TIME)\n\n[B] Basic Font: Looks ugly, but is clear to understand.", 'system-msg');
+            add("[T] Thematic Font: Looks good, but deflectors are hard to understand\n\n[B] Basic Font: Looks ugly, but is clear to understand.", 'system-msg');
             return add('Selection (T/B):', '', true, handleFontChoice);
         }
       }
@@ -652,26 +642,22 @@
       async function boot() {
         const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
         
+        // This is only called at the very beginning
         add('====================================================', 'system-msg');
         add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg');
         add('====================================================', 'system-msg');
-        addHTML('Tutorial: <a href="https://en.wikipedia.org/wiki/Khet_(game)" target="_blank">Read Here</a> Or just search on Youtube LASER CHESS IF IT IS YOUR FIRST TIME. You will find a tutorial (the physical game already exists)', 'system-msg');
-        addHTML('Discord: <a href="https://discord.gg/HnBHssXq" target="_blank">Join Server</a>', 'system-msg');
+        addHTML('Tutorial: <a href="https://en.wikipedia.org/wiki/Khet_(game)" target="_blank">Read Here</a>', 'system-msg');
         addHTML('Support: <a href="mailto:later5143@gmail.com">later5143@gmail.com</a>', 'system-msg');
 
         if (!u) { return add('Session Username:', '', true, handleAuth); }
-        if (!p) { add('Username available (for now)', 'success-msg'); return add('Session Password:', '', true, handleAuth); }
+        if (!p) { add('Username available', 'success-msg'); return add('Session Password:', '', true, handleAuth); }
 
         const fontPref = localStorage.getItem(KEY_FONT);
         if (!fontPref) {
-            add("[T] Thematic Font: Looks good, but deflectors are hard to understand (DO NOT USE IF THIS IS YOUR FIRST TIME)\n\n[B] Basic Font: Looks ugly, but is clear to understand.", 'system-msg');
+            add("[T] Thematic Font: Looks good, but deflectors are hard to understand\n\n[B] Basic Font: Looks ugly, but is clear to understand.", 'system-msg');
             return add('Selection (T/B):', '', true, handleFontChoice);
         }
         applyFontPreference(fontPref);
-
-        if (localStorage.getItem(KEY_LOCAL_STATE)) {
-            add("Local game data found. Use [L] to resume.", "system-msg");
-        }
 
         add('Ready to Play!', 'success-msg');
         
@@ -680,17 +666,9 @@
             const snapReq = await dbMatch.ref(`RQ_D/${rid}`).once('value');
             if (snapGame.exists()) return lockOntoMatch(rid, snapGame.val()); 
             else if (!snapReq.exists()) { localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); add("Stale match data cleared.", "system-msg"); }
-            else { 
-                isHostRequestPending = true;
-                setStatus("WAITING_FOR_MATCH");
-                toggleWaiting(true, "Awaiting Match");
-                startRequestMonitoring(rid); 
-            }
         }
         
-        await scanOwnRequest();
-
-        if (!lockedMatchId) await startPolling();
+        await startPolling();
       }
 
       async function startPolling() {
@@ -701,15 +679,6 @@
       }
 
       function stopPolling() { if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } }
-
-      async function searchForGameDBMatch() {
-        const myName = localStorage.getItem(KEY_USER); if (!myName) return false;
-        try {
-          const snap = await dbGame.ref('G').once('value'); const games = snap.val(); if (!games) return false;
-          const matchID = Object.keys(games).find(key => String(key).toUpperCase().includes(myName.toUpperCase()));
-          if (matchID) { add(`[AUTO-JOIN] Match detected: ${matchID}`, 'success-msg'); lockOntoMatch(matchID, games[matchID]); return true; }
-        } catch (e) { console.error(e); } return false;
-      }
 
       async function pollFirstMatch({ silentEmpty = false } = {}) {
         if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
@@ -731,35 +700,22 @@
         if (modeShown) return; 
         modeShown = true;
         
-        addHTML(`<div style="font-size: 15px; border: 1px solid var(--line); padding: 10px; margin-bottom: 12px; background: var(--bg0); color: var(--text); font-family: monospace; line-height: 1.4;">
-<b style="color: var(--bright);">🏆 OBJECTIVE:</b> Eliminate the enemy <b>KING</b> by guiding your laser into it while protecting your own.<br>
-<b style="color: var(--bright);">🕹️ ACTIONS:</b> Perform 1 per turn: <b>Move</b> (1 sq any direction) | <b>Rotate</b> (90° via R/L) | <b>Fire Laser</b> (Auto-fires at end, or skip move to manually fire via F).<br>
-<b style="color: var(--bright);">🎮 CONTROLS:</b> Arrow keys to move cursor, enter to select piece/target, L to rotate counter clock wise and R to rotate clockwise.<br>
-<b style="color: var(--bright);">🧭 VECTORS:</b> 0: +Y (Up) | 1: +X (Right) | 2: -Y (Down) | 3: -X (Left)<br>
-<b style="color: var(--bright);">♟️ PIECES:</b><br>
-- <b>KING</b> (◈): Moves 1 sq. Cannot rotate. Vulnerable from all sides (Game Over).<br>
-- <b>LASER</b> (⫝ ⟜ Ͳ Ð): Immobilized. Blocks all sides safely; fires beam.<br>
-- <b>SWITCH</b> (⟋ ⟍): Moves 1 sq. Swaps with Deflectors/Defenders. Reflects 90° (Immune).<br>
-- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Moves 1 sq. Front blocks lasers; other 3 sides fatal.<br>
-- <b>DEFLECTOR</b> (◤ ◥ ◢ ◣): Moves 1 sq. Diagonal reflects 90°; other sides fatal.<br>
-<b style="color: var(--bright);">⚠️ RULES:</b> No opponent home row entry | Blue Laser faces 0/3; Red faces 1/2 | No overlap unless SWITCH swapping.
-</div>`, 'system-msg');
-
-        let menu = "--- MENU ---\n";
-        if (!currentHead) menu += "Queue Empty.\n";
-        else if (currentHead.data.color === 0) menu += "RED at head. [A] Join as Blue\n"; 
-        else menu += "BLUE at head. [A] Join as Red\n";
-        menu += "[R] Host A PvP Match Where your color is Red | [B] Host A PvP Match Where your color is Blue | [P] Host A Private PvP Match. | [C] Computer v/s Player Match | [J] Join A Private Match | [L] Local Play (Pass and Play mode)";
+        let menu = "--- MODE SELECTION ---\n";
+        if (currentHead) {
+            menu += currentHead.data.color === 0 ? "RED at head. [A] Join as Blue\n" : "BLUE at head. [A] Join as Red\n";
+        }
+        menu += "[R] Host PvP (Red) | [B] Host PvP (Blue) | [P] Host Private | [C] Computer v/s Player | [J] Join Private | [L] Local Play";
         
         add(menu, 'system-msg');
-        add('MODE:', '', true, handleMode);
+        add('SELECTION:', '', true, handleMode);
       }
 
       async function handleMode(val) {
         if (val === 'L') { startLocalGame(); }
         else if (val === 'C') {
             add('Choose Color:\n[R] Red | [B] Blue', '', true, async (colorKey) => {
-                const color = (colorKey === 'R') ? 0 : 1;
+                // Fixed: R is Red, B is Blue
+                const color = (colorKey.toUpperCase() === 'R') ? 'RED' : 'BLUE';
                 startComputerGame(color);
             });
         }
@@ -771,7 +727,7 @@
         else if (val === 'P') {
             add('Target Username ([ENTER] for open):', '', true, async (target) => {
                 add('Choose Color:\n[R] Red | [B] Blue', '', true, async (colorKey) => {
-                    const color = (colorKey === 'R') ? 0 : 1;
+                    const color = (colorKey.toUpperCase() === 'R') ? 0 : 1;
                     requestPrivateMatch(color, target || null);
                 });
             });
