@@ -116,8 +116,6 @@
       };
 
       async function scanOwnRequest() {
-        // Full queue scanning on RQ_Q violates database read rules.
-        // Session validation and state survival are securely handled strictly inside boot() via localStorage check.
         return;
       }
 
@@ -230,6 +228,11 @@
               await sleep(1500);
           }
           isAnimatingLocalTurn = false;
+      }
+
+      function startComputerGame(color) {
+        add(`Initializing Computer Mode. You are playing as ${color === 0 ? 'RED' : 'BLUE'}`, "system-msg");
+        startLocalGame(); 
       }
 
       function startLocalGame() {
@@ -746,7 +749,7 @@
         if (!currentHead) menu += "Queue Empty.\n";
         else if (currentHead.data.color === 0) menu += "RED at head. [A] Join as Blue\n"; 
         else menu += "BLUE at head. [A] Join as Red\n";
-        menu += "[R] Host A PvP Match Where your color is Red | [B] Host A PvP Match Where your color is Blue | [P] Host A Private PvP Match. | [J] Join A Private Match | [L] Local Play (Pass and Play mode)";
+        menu += "[R] Host A PvP Match Where your color is Red | [B] Host A PvP Match Where your color is Blue | [P] Host A Private PvP Match. | [C] Computer v/s Player Match | [J] Join A Private Match | [L] Local Play (Pass and Play mode)";
         
         add(menu, 'system-msg');
         add('MODE:', '', true, handleMode);
@@ -754,6 +757,12 @@
 
       async function handleMode(val) {
         if (val === 'L') { startLocalGame(); }
+        else if (val === 'C') {
+            add('Choose Color:\n[R] Red | [B] Blue', '', true, async (colorKey) => {
+                const color = (colorKey === 'R') ? 0 : 1;
+                startComputerGame(color);
+            });
+        }
         else if (val === 'A') { 
             if (!currentHead) { add('JOIN FAILED.', 'error-msg'); modeShown = false; return showMode(); } 
             registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
