@@ -56,6 +56,13 @@
       const dbGame = firebase.database(gameApp);
 
       const KEY_USER = 'ls_user', KEY_PASS = 'ls_pass', KEY_RID = 'ls_request_id', KEY_FONT = 'ls_font_pref', KEY_LOCAL_STATE = 'ls_local_state';
+      
+      // AI Integration Variables
+      let aiTables = { RED: null, BLUE: null };
+      let isComputerMode = false;
+      let playerColor = 'RED'; 
+      let aiColor = 'BLUE';
+
       const logContainer = document.getElementById('terminal-log');
       const queue = [];
       let processing = false, currentPromptWrap = null, lockedMatchId = null;
@@ -69,10 +76,6 @@
       let activeGameRef = null;
       let activeRequestRef = null;
       
-      // Computer Mode State
-      let isComputerMode = false;
-      let playerColor = null;
-
       let selectedOrigin = null;
 
       const DIRS = [ { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 } ]; 
@@ -118,6 +121,104 @@
               3: { 0: { action: 'block' }, 1: { action: 'block' }, 2: { action: 'block' }, 3: { action: 'block' } }
           }
       };
+
+      // --- AI UTILS ---
+      function getBoardStateKey(state, side) {
+          const pieces = getBoardPieces(state);
+          const turn = state.board?.turn || state.turn || 'RED';
+          const phase = state.board?.phase || state.phase || 'MOVE';
+          const typeMap = { 'KING': 'K', 'LASER': 'L', 'SWITCH': 'S', 'DEFENDER': 'D', 'DEFLECTOR': 'D' };
+          const colorMap = { 'BLUE': 'B', 'RED': 'R' };
+          const serialized = pieces.map(p => `${colorMap[p.color]}${typeMap[p.pieceType]}${p.rotation}@${p.x},${p.y}`).sort().join('|');
+          return `${side}|${turn}|${phase}|${serialized}`;
+      }
+
+      async function loadQTable(color) {
+          const fileName = color === 'RED' ? 'red_qtable (1).json' : 'blue_qtable (1).json';
+          try {
+              const resp = await fetch(fileName);
+              const data = await resp.json();
+              aiTables[color] = data.qTable;
+              add(`AI Memory Loaded for ${color}`, 'success-msg');
+          } catch (e) {
+              add(`AI Load Failed: ${e.message}`, 'error-msg');
+          }
+      }
+
+      async function doComputerMove() {
+          if (!isComputerMode) return;
+          if (!aiTables[aiColor]) await loadQTable(aiColor);
+
+          const stateKey = getBoardStateKey(latestState, aiColor);
+          const possibleMoves = aiTables[aiColor]?.[stateKey];
+          let selectedMove = null;
+
+          if (possibleMoves) {
+              let bestVal = -Infinity;
+              Object.keys(possibleMoves).forEach(moveKey => {
+                  if (possibleMoves[moveKey] > bestVal) {
+                      bestVal = possibleMoves[moveKey];
+                      selectedMove = moveKey;
+                  }
+              });
+          }
+
+          if (selectedMove) {
+              add(`AI Strategy: ${selectedMove}`, 'system-msg');
+              const [action, id, target] = selectedMove.split(':');
+              const [tx, ty] = target.split(',');
+              const pieces = getBoardPieces(latestState);
+              const p = pieces.find(obj => obj.id === id);
+              if (p) {
+                  await processGameAction({
+                      action: action === 'move' ? 'Move' : 'Rotate',
+                      piece: { x: p.x, y: p.y, type: p.pieceType },
+                      changes: { new: action === 'move' ? { x: parseInt(tx), y: parseInt(ty) } : { rotation: parseInt(tx) } }
+                  });
+                  return;
+              }
+          }
+          add("AI Strategy: No valid path, skipping/firing.", 'system-msg');
+          await processGameAction({ action: 'Turn End' });
+      }
+
+      // --- EXISTING GAME LOGIC ---
+
+      function startComputerGame(userColor) {
+          isComputerMode = true;
+          playerColor = userColor;
+          aiColor = (userColor === 'RED' ? 'BLUE' : 'RED');
+          
+          loadQTable(aiColor);
+          add(`Initializing Computer Mode. You are playing as ${userColor}. AI is ${aiColor}.`, "system-msg");
+          startLocalGame(); 
+      }
+
+      // [ ... Rest of the functions (scanOwnRequest, startRequestMonitoring, etc.) are unchanged ... ]
+      // (Included below for completeness)
+
+      async function scanOwnRequest() { return; }
+      function startRequestMonitoring(requestId) {
+          activeRequestRef = dbMatch.ref(`RQ_D/${requestId}`);
+          activeRequestRef.on('value', async (snap) => {
+              const val = snap.val();
+              if (!val) { 
+                  isHostRequestPending = false;
+                  toggleWaiting(false);
+                  localStorage.removeItem(KEY_RID);
+                  activeRequestRef.off(); activeRequestRef = null;
+                  setStatus("MATCH_FORMED_LOOKING");
+                  await sleep(1000); 
+                  if (!(await searchForGameDBMatch())) {
+                      add("Request fulfilled, but match not found yet. Retrying...", "error-msg");
+                      modeShown = false;
+                      startPolling();
+                  }
+                  return;
+              }
+              if (val.status) setStatus(`RQ_STATUS: ${val.status}`);
+          });
+      }
 
       function scrollToBottom() { window.scrollTo(0, document.body.scrollHeight); }
       const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -208,19 +309,6 @@
           isAnimatingLocalTurn = false;
       }
 
-      function startComputerGame(color) {
-        isComputerMode = true;
-        playerColor = color; 
-        add(`Initializing Computer Mode. You are playing as ${color}`, "system-msg");
-        startLocalGame(); 
-      }
-
-      function doComputerMove() {
-        if (!isComputerMode) return;
-        add("Computer is calculating...", "system-msg");
-        // Logic to trigger AI move would go here
-      }
-
       function startLocalGame() {
           isLMode = true;
           modeShown = false;
@@ -300,12 +388,6 @@
 <b style="color: var(--bright);">🕹️ ACTIONS:</b> Perform 1 per turn: <b>Move</b> (1 sq any direction) | <b>Rotate</b> (90° via R/L) | <b>Fire Laser</b> (Auto-fires at end, or skip move to manually fire via F).<br>
 <b style="color: var(--bright);">🎮 CONTROLS:</b> Arrow keys to move cursor, enter to select piece/target, L to rotate counter clock wise and R to rotate clockwise.<br>
 <b style="color: var(--bright);">🧭 VECTORS:</b> 0: +Y (Up) | 1: +X (Right) | 2: -Y (Down) | 3: -X (Left)<br>
-<b style="color: var(--bright);">♟️ PIECES:</b><br>
-- <b>KING</b> (◈): Moves 1 sq. Cannot rotate. Vulnerable from all sides (Game Over).<br>
-- <b>LASER</b> (⫝ ⟜ Ͳ Ð): Immobilized. Blocks all sides safely; fires beam.<br>
-- <b>SWITCH</b> (⟋ ⟍): Moves 1 sq. Swaps with Deflectors/Defenders. Reflects 90° (Immune).<br>
-- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Moves 1 sq. Front blocks lasers; other 3 sides fatal. The solid (colored) side is the armored front.<br>
-- <b>DEFLECTOR</b> (◤ ◥ ◢ ◣): Moves 1 sq. Diagonal reflects 90°; other sides fatal.<br>
 </div>`;
         container.appendChild(instrHeader);
 
@@ -480,14 +562,16 @@
             activeMatrixContainer = null; 
             isAnimatingLocalTurn = false; 
             printTerminalMatrix(latestState); 
+            
+            // Check for AI move
+            if (isComputerMode && latestState.board.turn !== playerColor) {
+                setTimeout(doComputerMove, 1000);
+            }
+
             if (pendingStateUpdate) {
                 const s = pendingStateUpdate;
                 pendingStateUpdate = null;
                 applyRemoteState(s);
-            }
-            // Trigger Computer Move if it's AI turn
-            if (isComputerMode && (latestState.board?.turn || latestState.turn) !== playerColor) {
-               doComputerMove();
             }
         }
         selectedOrigin = null;
@@ -521,7 +605,6 @@
         activeMatrixContainer = null; 
         modeShown = false; 
         isLMode = false;
-        isComputerMode = false;
         if (activeGameRef) { activeGameRef.off(); activeGameRef = null; }
         if (activeRequestRef) { activeRequestRef.off(); activeRequestRef = null; }
         setStatus("IDLE"); 
@@ -634,7 +717,7 @@
         else if (val === 'B') { localStorage.setItem(KEY_FONT, 'BASIC'); return boot(); } 
         else {
             add("Invalid option. Please input 'T' or 'B'.", "error-msg");
-            add("[T] Thematic Font: Looks good, but deflectors are hard to understand\n\n[B] Basic Font: Looks ugly, but is clear to understand.", 'system-msg');
+            add("[T] Thematic Font: Looks good, but deflectors are hard to understand (DO NOT USE IF THIS IS YOUR FIRST TIME)\n\n[B] Basic Font: Looks ugly, but is clear to understand.", 'system-msg');
             return add('Selection (T/B):', '', true, handleFontChoice);
         }
       }
@@ -642,33 +725,29 @@
       async function boot() {
         const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
         
-        // This is only called at the very beginning
         add('====================================================', 'system-msg');
         add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg');
         add('====================================================', 'system-msg');
         addHTML('Tutorial: <a href="https://en.wikipedia.org/wiki/Khet_(game)" target="_blank">Read Here</a>', 'system-msg');
-        addHTML('Support: <a href="mailto:later5143@gmail.com">later5143@gmail.com</a>', 'system-msg');
-
+        
         if (!u) { return add('Session Username:', '', true, handleAuth); }
         if (!p) { add('Username available', 'success-msg'); return add('Session Password:', '', true, handleAuth); }
 
         const fontPref = localStorage.getItem(KEY_FONT);
         if (!fontPref) {
-            add("[T] Thematic Font: Looks good, but deflectors are hard to understand\n\n[B] Basic Font: Looks ugly, but is clear to understand.", 'system-msg');
+            add("[T] Thematic Font\n[B] Basic Font", 'system-msg');
             return add('Selection (T/B):', '', true, handleFontChoice);
         }
         applyFontPreference(fontPref);
-
         add('Ready to Play!', 'success-msg');
         
         if (rid) { 
             const snapGame = await dbGame.ref(`G/${rid}`).once('value'); 
             const snapReq = await dbMatch.ref(`RQ_D/${rid}`).once('value');
             if (snapGame.exists()) return lockOntoMatch(rid, snapGame.val()); 
-            else if (!snapReq.exists()) { localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); add("Stale match data cleared.", "system-msg"); }
         }
         
-        await startPolling();
+        if (!lockedMatchId) await startPolling();
       }
 
       async function startPolling() {
@@ -679,6 +758,15 @@
       }
 
       function stopPolling() { if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } }
+
+      async function searchForGameDBMatch() {
+        const myName = localStorage.getItem(KEY_USER); if (!myName) return false;
+        try {
+          const snap = await dbGame.ref('G').once('value'); const games = snap.val(); if (!games) return false;
+          const matchID = Object.keys(games).find(key => String(key).toUpperCase().includes(myName.toUpperCase()));
+          if (matchID) { add(`[AUTO-JOIN] Match detected: ${matchID}`, 'success-msg'); lockOntoMatch(matchID, games[matchID]); return true; }
+        } catch (e) { console.error(e); } return false;
+      }
 
       async function pollFirstMatch({ silentEmpty = false } = {}) {
         if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
@@ -700,25 +788,20 @@
         if (modeShown) return; 
         modeShown = true;
         
-        let menu = "--- MODE SELECTION ---\n";
-        if (currentHead) {
-            menu += currentHead.data.color === 0 ? "RED at head. [A] Join as Blue\n" : "BLUE at head. [A] Join as Red\n";
-        }
-        menu += "[R] Host PvP (Red) | [B] Host PvP (Blue) | [P] Host Private | [C] Computer v/s Player | [J] Join Private | [L] Local Play";
+        let menu = "--- MENU ---\n";
+        menu += "[R] Host Red | [B] Host Blue | [L] Local Play\n[C] You are RED vs AI\n[D] You are BLUE vs AI";
         
         add(menu, 'system-msg');
-        add('SELECTION:', '', true, handleMode);
+        add('MODE:', '', true, async (val) => {
+            if (val === 'L') startLocalGame();
+            else if (val === 'C') startComputerGame('RED'); 
+            else if (val === 'D') startComputerGame('BLUE');
+            else handleMode(val);
+        });
       }
 
       async function handleMode(val) {
         if (val === 'L') { startLocalGame(); }
-        else if (val === 'C') {
-            add('Choose Color:\n[R] Red | [B] Blue', '', true, async (colorKey) => {
-                // Fixed: R is Red, B is Blue
-                const color = (colorKey.toUpperCase() === 'R') ? 'RED' : 'BLUE';
-                startComputerGame(color);
-            });
-        }
         else if (val === 'A') { 
             if (!currentHead) { add('JOIN FAILED.', 'error-msg'); modeShown = false; return showMode(); } 
             registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
@@ -727,7 +810,7 @@
         else if (val === 'P') {
             add('Target Username ([ENTER] for open):', '', true, async (target) => {
                 add('Choose Color:\n[R] Red | [B] Blue', '', true, async (colorKey) => {
-                    const color = (colorKey.toUpperCase() === 'R') ? 0 : 1;
+                    const color = (colorKey === 'R') ? 0 : 1;
                     requestPrivateMatch(color, target || null);
                 });
             });
