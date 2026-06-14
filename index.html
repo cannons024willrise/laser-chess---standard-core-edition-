@@ -69,6 +69,14 @@
       let activeGameRef = null;
       let activeRequestRef = null;
       
+      // --- AI STATE VARIABLES ---
+      let isAIMode = false;
+      let aiColor = null;
+      let humanColor = null;
+      let qTables = { BLUE: null, RED: null };
+      let isAIThinking = false;
+      // --------------------------
+
       let selectedOrigin = null;
 
       const DIRS = [ { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 } ]; 
@@ -232,6 +240,194 @@
           isAnimatingLocalTurn = false;
       }
 
+      // --- AI LOGIC PORT ---
+      async function loadQTables() {
+          if (qTables.BLUE && qTables.RED) return true; // Already loaded
+          try {
+              add("Loading neural pathways from Q-tables...", "system-msg");
+              const [resBlue, resRed] = await Promise.all([
+                  fetch('blue_qtable (1).json'),
+                  fetch('red_qtable (1).json')
+              ]);
+              const dataBlue = await resBlue.json();
+              const dataRed = await resRed.json();
+              qTables.BLUE = dataBlue.qTable || dataBlue;
+              qTables.RED = dataRed.qTable || dataRed;
+              add("AI parameters loaded successfully.", "success-msg");
+              return true;
+          } catch (e) {
+              add(`Engine Error: Failed to load Q-tables. Ensure the JSON files are accessible. (${e.message})`, "error-msg");
+              return false;
+          }
+      }
+
+      function getBoardStateKey(state, side) {
+          const targetBoard = state.board || state;
+          const pieces = [...getBoardPieces(targetBoard)]
+            .map(p => `${p.color[0]}${p.pieceType[0]}${normalizeRotation(p.rotation)}@${p.x},${p.y}`)
+            .sort()
+            .join('|');
+          return `${side}|${targetBoard.turn}|${targetBoard.phase || 'MOVE'}|${pieces}`;
+      }
+
+      function generateAIActions(state, side) {
+          const pieces = getBoardPieces(state).filter(p => p.color === side);
+          const allPieces = getBoardPieces(state);
+          const actions = [];
+          
+          for (const p of pieces) {
+              if (p.pieceType !== 'LASER') {
+                  for (let dx = -1; dx <= 1; dx++) {
+                      for (let dy = -1; dy <= 1; dy++) {
+                          if (dx === 0 && dy === 0) continue;
+                          const nx = p.x + dx, ny = p.y + dy;
+                          if (!inBounds(nx, ny) || isReservedSquare(nx, ny, side)) continue;
+                          
+                          const target = getPieceAt(allPieces, nx, ny);
+                          if (!target) {
+                              actions.push({ kind: 'move', pieceId: p.id, from: { x: p.x, y: p.y }, to: { x: nx, y: ny }, pieceType: p.pieceType });
+                          } else if (p.pieceType === 'SWITCH' && (target.pieceType === 'DEFLECTOR' || target.pieceType === 'DEFENDER') && !isReservedSquare(p.x, p.y, target.color)) {
+                              actions.push({ kind: 'swap', pieceId: p.id, from: { x: p.x, y: p.y }, to: { x: nx, y: ny }, pieceType: p.pieceType });
+                          }
+                      }
+                  }
+              }
+              if (p.pieceType !== 'KING') {
+                  const r1 = normalizeRotation((p.rotation || 0) + 1);
+                  const r2 = normalizeRotation((p.rotation || 0) - 1);
+                  const canRotateR1 = p.pieceType !== 'LASER' || (p.color === 'BLUE' && (r1 === 0 || r1 === 3)) || (p.color === 'RED' && (r1 === 1 || r1 === 2));
+                  const canRotateR2 = p.pieceType !== 'LASER' || (p.color === 'BLUE' && (r2 === 0 || r2 === 3)) || (p.color === 'RED' && (r2 === 1 || r2 === 2));
+                  if (canRotateR1) actions.push({ kind: 'rotate', pieceId: p.id, delta: 1, rot: r1, from: { x: p.x, y: p.y }, pieceType: p.pieceType });
+                  if (canRotateR2) actions.push({ kind: 'rotate', pieceId: p.id, delta: -1, rot: r2, from: { x: p.x, y: p.y }, pieceType: p.pieceType });
+              }
+          }
+          actions.push({ kind: 'fire' });
+          return actions;
+      }
+
+      function serializeAIAction(a) {
+          if (a.kind === 'move' || a.kind === 'swap') return `${a.kind}:${a.pieceId}:${a.to.x},${a.to.y}`;
+          if (a.kind === 'rotate') return `${a.kind}:${a.pieceId}:${a.delta}`;
+          return a.kind;
+      }
+
+      function selectAIAction(state, side) {
+          const actions = generateAIActions(state, side);
+          const sKey = getBoardStateKey(state, side);
+          if (!actions.length) return null;
+          
+          let bestV = -Infinity;
+          let bestActions = [];
+          const table = qTables[side] || {};
+          const stateVals = table[sKey] || {};
+
+          for (const a of actions) {
+              const v = stateVals[serializeAIAction(a)] || 0;
+              if (v > bestV + 1e-12) {
+                  bestV = v;
+                  bestActions = [a];
+              } else if (Math.abs(v - bestV) <= 1e-12) {
+                  bestActions.push(a);
+              }
+          }
+          // Fallback to random optimal move if multiple actions share the max Q-value
+          return bestActions[Math.floor(Math.random() * bestActions.length)];
+      }
+
+      async function checkAITurn() {
+          if (!isAIMode || !latestState || isAIThinking) return;
+          const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
+          if (currentTurn === aiColor && !(latestState.status && latestState.status.endsWith('_WIN'))) {
+              isAIThinking = true;
+              add(`[AI] Agent is computing move for ${aiColor}...`, 'system-msg');
+              
+              await sleep(600); // Artificial delay to avoid instant jarring moves
+              const action = selectAIAction(latestState, aiColor);
+              
+              if (!action) {
+                  add(`[AI] Agent yielded. No valid moves found.`, 'error-msg');
+                  isAIThinking = false;
+                  await processGameAction({ action: 'Turn End' });
+                  return;
+              }
+
+              let intent;
+              if (action.kind === 'move' || action.kind === 'swap') {
+                  intent = { action: 'Move', piece: { x: action.from.x, y: action.from.y, type: action.pieceType }, changes: { new: { x: action.to.x, y: action.to.y } } };
+              } else if (action.kind === 'rotate') {
+                  intent = { action: 'Rotate', piece: { x: action.from.x, y: action.from.y, type: action.pieceType }, changes: { new: { rotation: action.rot } } };
+              } else {
+                  intent = { action: 'Manual Fire' }; 
+              }
+              
+              isAIThinking = false;
+              await processGameAction(intent);
+          }
+      }
+
+      async function startAIGame(chosenColor) {
+          if (!(await loadQTables())) {
+              modeShown = false;
+              showMode();
+              return;
+          }
+          
+          isLMode = true; // Use local validation rules
+          isAIMode = true;
+          modeShown = false;
+          lockedMatchId = 'AI_GAME';
+          humanColor = chosenColor === 'RED' ? 'RED' : 'BLUE';
+          aiColor = humanColor === 'RED' ? 'BLUE' : 'RED';
+
+          latestState = {
+              board: {
+                  turn: "BLUE",
+                  phase: "MOVE",
+                  moveNumber: 1,
+                  pieces: [
+                      {id: "pmpfnkxpm1", pieceType: "KING", color: "BLUE", rotation: 0, x: 4, y: 0},
+                      {id: "pmpfnl4j03", pieceType: "KING", color: "RED", rotation: 0, x: 5, y: 7},
+                      {id: "pmpfqugdq4", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 4, y: 7},
+                      {id: "pmpfquhvx5", pieceType: "DEFENDER", color: "RED", rotation: 2, x: 6, y: 7},
+                      {id: "pmpfqunnp6", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 5, y: 0},
+                      {id: "pmpfquoqi7", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 3, y: 0},
+                      {id: "pmpfqvc388", pieceType: "SWITCH", color: "BLUE", rotation: 0, x: 5, y: 3},
+                      {id: "pmpfqvfrb9", pieceType: "SWITCH", color: "BLUE", rotation: 1, x: 4, y: 3},
+                      {id: "pmpfqvl06a", pieceType: "SWITCH", color: "RED", rotation: 0, x: 4, y: 4},
+                      {id: "pmpfqvre4b", pieceType: "SWITCH", color: "RED", rotation: 1, x: 5, y: 4},
+                      {id: "pmpfqwdqec", pieceType: "LASER", color: "RED", rotation: 2, x: 0, y: 7},
+                      {id: "pmpfqy5dve", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 0},
+                      {id: "pmpfqya0pf", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 3},
+                      {id: "pmpfqyd1rg", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 2, y: 4},
+                      {id: "pmpfqz0jlj", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 0, y: 3},
+                      {id: "pmpfqz7fpk", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 0, y: 4},
+                      {id: "pmpfqzj2ul", pieceType: "DEFLECTOR", color: "BLUE", rotation: 3, x: 7, y: 1},
+                      {id: "pmpfr0e5km", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 6, y: 2},
+                      {id: "pmpfr0t7zn", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 4},
+                      {id: "pmpfr0ww1o", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 7, y: 3},
+                      {id: "pmpfr18esp", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 9, y: 3},
+                      {id: "pmpfr1bjtq", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 9, y: 4},
+                      {id: "pmpfr2ek5s", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 3, y: 5},
+                      {id: "pmpfr2sl8u", pieceType: "DEFLECTOR", color: "RED", rotation: 1, x: 2, y: 6},
+                      {id: "pmpfr337lv", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 7},
+                      {id: "pmpfr69imw", pieceType: "LASER", color: "BLUE", rotation: 0, x: 9, y: 0}
+                  ]
+              }
+          };
+          
+          printTerminalMatrix(latestState);
+          add(`AI Environment Set. You are controlling ${humanColor}.`, "success-msg");
+          
+          if (latestState.board.turn === aiColor) checkAITurn();
+      }
+      
+      function isHumanTurn() {
+          if (!latestState) return false;
+          const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
+          return isAIMode ? currentTurn === humanColor : true;
+      }
+      // --------------------------
+
       function startLocalGame() {
           isLMode = true;
           modeShown = false;
@@ -368,7 +564,7 @@
       }
 
       window.addEventListener('keydown', (e) => {
-        if (currentPromptWrap || isAnimatingLocalTurn || isHostRequestPending) return;
+        if (currentPromptWrap || isAnimatingLocalTurn || isHostRequestPending || !isHumanTurn()) return;
         if (e.key.toLowerCase() === 'q') { processGameAction({ action: 'Resign' }); return; }
 
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key) || 
@@ -497,19 +693,20 @@
                 pendingStateUpdate = null;
                 applyRemoteState(s);
             }
+            if (isAIMode) setTimeout(checkAITurn, 100);
         }
         selectedOrigin = null;
       }
 
       async function skipTurnAndFire() { if (!latestState) return; add("Initiating direct fire / skipping move phase...", "system-msg"); await processGameAction({ action: 'Turn End' }); }
       function rotatePiece(dir) {
-        if (!selectedOrigin || !latestState) return;
+        if (!selectedOrigin || !latestState || !isHumanTurn()) return;
         const pieces = getBoardPieces(latestState); const p = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
         if (p) { const nextRotation = ((p.rotation || 0) + dir + 4) % 4; processGameAction({ action: 'Rotate', piece: { x: selectedOrigin.x, y: selectedOrigin.y, type: p.pieceType }, changes: { new: { rotation: nextRotation } } }); }
       }
 
       async function handleGridAction() {
-        if (!latestState || isAnimatingLocalTurn) return;
+        if (!latestState || isAnimatingLocalTurn || !isHumanTurn()) return;
         if (!selectedOrigin) {
             const pieces = getBoardPieces(latestState); const p = pieces.find(p => p.x === cursorX && p.y === cursorY);
             if (p) { selectedOrigin = { x: cursorX, y: cursorY }; add(`Selected: ${cursorX},${cursorY}`, 'system-msg'); } else { add(`No piece at ${cursorX},${cursorY}`, 'error-msg'); }
@@ -529,6 +726,7 @@
         activeMatrixContainer = null; 
         modeShown = false; 
         isLMode = false;
+        isAIMode = false;
         if (activeGameRef) { activeGameRef.off(); activeGameRef = null; }
         if (activeRequestRef) { activeRequestRef.off(); activeRequestRef = null; }
         setStatus("IDLE"); 
@@ -746,7 +944,7 @@
         if (!currentHead) menu += "Queue Empty.\n";
         else if (currentHead.data.color === 0) menu += "RED at head. [A] Join as Blue\n"; 
         else menu += "BLUE at head. [A] Join as Red\n";
-        menu += "[R] Host A PvP Match Where your color is Red | [B] Host A PvP Match Where your color is Blue | [P] Host A Private PvP Match. | [J] Join A Private Match | [L] Local Play (Pass and Play mode)";
+        menu += "[R] Host A PvP Match Where your color is Red | [B] Host A PvP Match Where your color is Blue | [P] Host A Private PvP Match. | [J] Join A Private Match | [L] Local Play (Pass and Play mode) | [C] Play vs Computer (AI)";
         
         add(menu, 'system-msg');
         add('MODE:', '', true, handleMode);
@@ -770,6 +968,12 @@
         else if (val === 'J') {
             add('Enter Invite Code:', '', true, async (code) => {
                 joinPrivateMatch(code);
+            });
+        }
+        else if (val === 'C') {
+            add('Target Assignment:\n[R] Play as Red | [B] Play as Blue', '', true, async (colorKey) => {
+                const color = (colorKey === 'R') ? 'RED' : 'BLUE';
+                startAIGame(color);
             });
         }
         else { add('Unknown Command.', 'error-msg'); modeShown = false; showMode(); }
