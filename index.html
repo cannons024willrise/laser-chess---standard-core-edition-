@@ -124,8 +124,6 @@
       };
 
       async function scanOwnRequest() {
-        // Full queue scanning on RQ_Q violates database read rules.
-        // Session validation and state survival are securely handled strictly inside boot() via localStorage check.
         return;
       }
 
@@ -240,9 +238,8 @@
           isAnimatingLocalTurn = false;
       }
 
-      // --- AI LOGIC PORT ---
       async function loadQTables() {
-          if (qTables.BLUE && qTables.RED) return true; // Already loaded
+          if (qTables.BLUE && qTables.RED) return true;
           try {
               add("Loading neural pathways from Q-tables...", "system-msg");
               const [resBlue, resRed] = await Promise.all([
@@ -330,7 +327,6 @@
                   bestActions.push(a);
               }
           }
-          // Fallback to random optimal move if multiple actions share the max Q-value
           return bestActions[Math.floor(Math.random() * bestActions.length)];
       }
 
@@ -341,7 +337,7 @@
               isAIThinking = true;
               add(`[AI] Agent is computing move for ${aiColor}...`, 'system-msg');
               
-              await sleep(600); // Artificial delay to avoid instant jarring moves
+              await sleep(600);
               const action = selectAIAction(latestState, aiColor);
               
               if (!action) {
@@ -372,7 +368,7 @@
               return;
           }
           
-          isLMode = true; // Use local validation rules
+          isLMode = true; 
           isAIMode = true;
           modeShown = false;
           lockedMatchId = 'AI_GAME';
@@ -426,7 +422,6 @@
           const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
           return isAIMode ? currentTurn === humanColor : true;
       }
-      // --------------------------
 
       function startLocalGame() {
           isLMode = true;
@@ -511,7 +506,7 @@
 - <b>KING</b> (◈): Moves 1 sq. Cannot rotate. Vulnerable from all sides (Game Over).<br>
 - <b>LASER</b> (⫝ ⟜ Ͳ Ð): Immobilized. Blocks all sides safely; fires beam.<br>
 - <b>SWITCH</b> (⟋ ⟍): Moves 1 sq. Swaps with Deflectors/Defenders. Reflects 90° (Immune).<br>
-- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Moves 1 sq. Front blocks lasers; other 3 sides fatal. The solid (colored) side is the armored front. Can only block a head on hit on that side.<br>
+- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Moves 1 sq. Front blocks lasers; other 3 sides fatal.<br>
 - <b>DEFLECTOR</b> (◤ ◥ ◢ ◣): Moves 1 sq. Diagonal reflects 90°; other sides fatal.<br>
 <b style="color: var(--bright);">⚠️ RULES:</b> No opponent home row entry | Blue Laser faces 0/3; Red faces 1/2 | No overlap unless SWITCH swapping.
 </div>`;
@@ -597,6 +592,16 @@
             add(`${currentTurn} RESIGNED. ${winner} WINS.`, "success-msg");
             localStorage.removeItem(KEY_LOCAL_STATE);
             printTerminalMatrix(latestState);
+            
+            if (isLMode || isAIMode) {
+                add("Returning to lobby in 5 seconds...", "system-msg");
+                setTimeout(() => {
+                    isLMode = false;
+                    isAIMode = false;
+                    modeShown = false;
+                    showMode();
+                }, 5000);
+            }
             return;
         }
 
@@ -665,6 +670,17 @@
                         const winnerColor = victim.color === 'RED' ? 'BLUE' : 'RED';
                         stateCopy.status = `${winnerColor}_WIN`; 
                         add(`CRITICAL ALERT: ${victim.color} KING DESTROYED. ${winnerColor} ACHIEVES VICTORY.`, "success-msg"); 
+                        
+                        localStorage.removeItem(KEY_LOCAL_STATE);
+                        if (isLMode || isAIMode) {
+                            add("Returning to lobby in 5 seconds...", "system-msg");
+                            setTimeout(() => {
+                                isLMode = false;
+                                isAIMode = false;
+                                modeShown = false;
+                                showMode();
+                            }, 5000);
+                        }
                     }
                     activeMatrixContainer = null; printTerminalMatrix(stateCopy); await sleep(500);
                 }
