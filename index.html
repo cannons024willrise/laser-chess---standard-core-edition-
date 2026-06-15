@@ -596,6 +596,7 @@
             if (isLMode || isAIMode) {
                 add("Returning to lobby in 5 seconds...", "system-msg");
                 setTimeout(() => {
+                    lockedMatchId = null;
                     isLMode = false;
                     isAIMode = false;
                     modeShown = false;
@@ -675,6 +676,7 @@
                         if (isLMode || isAIMode) {
                             add("Returning to lobby in 5 seconds...", "system-msg");
                             setTimeout(() => {
+                                lockedMatchId = null;
                                 isLMode = false;
                                 isAIMode = false;
                                 modeShown = false;
@@ -691,8 +693,12 @@
             else { stateCopy.turn = nextTurn; stateCopy.moveNumber = (stateCopy.moveNumber || 0) + 1; }
             latestState = stateCopy;
             
-            localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
-            if (isLMode) localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
+            if (latestState.status && latestState.status.endsWith('_WIN')) {
+                localStorage.removeItem(KEY_LOCAL_STATE);
+            } else {
+                localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
+                if (isLMode) localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
+            }
 
             if (!isLMode) {
                 add(`Transmitting intent: ${intent.action}...`, 'system-msg');
