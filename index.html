@@ -59,7 +59,7 @@
       const logContainer = document.getElementById('terminal-log');
       const queue = [];
       let processing = false, currentPromptWrap = null, lockedMatchId = null;
-      let rqPollInterval = null, waitAnimationInterval = null;
+      let waitAnimationInterval = null;
       let currentHead = null, modeShown = false, isPollingStarting = false; 
       let cursorX = 0, cursorY = 0, latestState = null, activeMatrixContainer = null;
       let isHostRequestPending = false, requestStatus = "IDLE";
@@ -68,14 +68,13 @@
       let pendingStateUpdate = null;
       let activeGameRef = null;
       let activeRequestRef = null;
+      let queueRef = null;
       
-      // --- AI STATE VARIABLES ---
       let isAIMode = false;
       let aiColor = null;
       let humanColor = null;
       let qTables = { BLUE: null, RED: null };
       let isAIThinking = false;
-      // --------------------------
 
       let selectedOrigin = null;
 
@@ -123,16 +122,10 @@
           }
       };
 
-      async function scanOwnRequest() {
-        return;
-      }
-
       function startRequestMonitoring(requestId) {
           activeRequestRef = dbMatch.ref(`RQ_D/${requestId}`);
           activeRequestRef.on('value', async (snap) => {
               const val = snap.val();
-              
-              // 1. Direct fulfillment check: If the worker provides the match ID directly, join immediately.
               if (val && val.matchName) {
                   isHostRequestPending = false;
                   toggleWaiting(false);
@@ -140,24 +133,17 @@
                   lockOntoMatch(val.matchName, { status: 'SYNCING' });
                   return;
               }
-
               if (!val) { 
                   isHostRequestPending = false;
                   toggleWaiting(false);
                   localStorage.removeItem(KEY_RID);
                   activeRequestRef.off(); activeRequestRef = null;
                   setStatus("MATCH_FORMED_LOOKING");
-                  
-                  // 2. Race condition fix: Retry loop to ensure we don't miss slightly delayed database writes.
                   let matchFound = false;
-                  for (let i = 0; i < 6; i++) { // Poll 6 times (up to 6 seconds)
+                  for (let i = 0; i < 6; i++) {
                       await sleep(1000); 
-                      if (await searchForGameDBMatch()) {
-                          matchFound = true;
-                          break;
-                      }
+                      if (await searchForGameDBMatch()) { matchFound = true; break; }
                   }
-                  
                   if (!matchFound) {
                       add("Handshake dropped: Match formed but state sync failed.", "error-msg");
                       modeShown = false;
@@ -165,7 +151,6 @@
                   }
                   return;
               }
-              
               if (val.status) setStatus(`RQ_STATUS: ${val.status}`);
           });
       }
@@ -193,18 +178,9 @@
         });
       }
 
-      function getPieceChar(piece) { 
-          const rot = piece.rotation || 0;
-          return ROTATION_TABLE[piece.pieceType] ? ROTATION_TABLE[piece.pieceType][rot] : '?'; 
-      }
-
+      function getPieceChar(piece) { const rot = piece.rotation || 0; return ROTATION_TABLE[piece.pieceType] ? ROTATION_TABLE[piece.pieceType][rot] : '?'; }
       function getBoardPieces(state) { const src = state.board || state; return Array.isArray(src.pieces) ? src.pieces : (src.pieces ? Object.values(src.pieces) : []); }
-      function getReservedClass(x, y) {
-        if (BLUE_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-blue';
-        if (RED_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-red';
-        return null;
-      }
-
+      function getReservedClass(x, y) { if (BLUE_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-blue'; if (RED_RESERVED.some(s => s.x === x && s.y === y)) return 'reserved-red'; return null; }
       function inBounds(x, y) { return x >= 0 && x <= 9 && y >= 0 && y <= 7; }
       function normalizeRotation(rot) { return ((Number(rot) || 0) % 4 + 4) % 4; }
       function isReservedSquare(x, y, color) { return color === 'BLUE' ? RED_RESERVED.some(s => s.x === x && s.y === y) : BLUE_RESERVED.some(s => s.x === x && s.y === y); }
@@ -227,10 +203,8 @@
           if (seen.has(stateKey)) return { path, hit: null, looped: true };
           seen.add(stateKey);
           path.push({ x, y, dir });
-
           const piece = getPieceAt(pieces, x, y);
           if (!piece) return resolveLaserVector(x + DIRS[dir].dx, y + DIRS[dir].dy, dir, pieces, path, seen);
-
           const outcome = interactWithLaser(piece, dir);
           if (outcome.kind === 'reflect') {
               const nextDir = outcome.reflected;
@@ -242,11 +216,8 @@
       async function playLaserAnimation(state, pieces, shooterColor, victimPiece = null) {
           isAnimatingLocalTurn = true;
           const animPieces = [...pieces];
-          if (victimPiece && !animPieces.some(p => p.x === victimPiece.x && p.y === victimPiece.y)) {
-              animPieces.push(victimPiece);
-          }
+          if (victimPiece && !animPieces.some(p => p.x === victimPiece.x && p.y === victimPiece.y)) animPieces.push(victimPiece);
           const animState = { ...state, board: { ...state.board, pieces: animPieces } };
-          
           const shooter = animPieces.find(p => p && p.pieceType === 'LASER' && p.color === shooterColor);
           if (shooter) {
               const startDir = normalizeRotation(shooter.rotation);
@@ -263,10 +234,7 @@
           if (qTables.BLUE && qTables.RED) return true;
           try {
               add("Loading neural pathways from Q-tables...", "system-msg");
-              const [resBlue, resRed] = await Promise.all([
-                  fetch('blue_qtable (1).json'),
-                  fetch('red_qtable (1).json')
-              ]);
+              const [resBlue, resRed] = await Promise.all([fetch('blue_qtable (1).json'), fetch('red_qtable (1).json')]);
               const dataBlue = await resBlue.json();
               const dataRed = await resRed.json();
               qTables.BLUE = dataBlue.qTable || dataBlue;
@@ -274,17 +242,14 @@
               add("AI parameters loaded successfully.", "success-msg");
               return true;
           } catch (e) {
-              add(`Engine Error: Failed to load Q-tables. Ensure the JSON files are accessible. (${e.message})`, "error-msg");
+              add(`Engine Error: Failed to load Q-tables. (${e.message})`, "error-msg");
               return false;
           }
       }
 
       function getBoardStateKey(state, side) {
           const targetBoard = state.board || state;
-          const pieces = [...getBoardPieces(targetBoard)]
-            .map(p => `${p.color[0]}${p.pieceType[0]}${normalizeRotation(p.rotation)}@${p.x},${p.y}`)
-            .sort()
-            .join('|');
+          const pieces = [...getBoardPieces(targetBoard)].map(p => `${p.color[0]}${p.pieceType[0]}${normalizeRotation(p.rotation)}@${p.x},${p.y}`).sort().join('|');
           return `${side}|${targetBoard.turn}|${targetBoard.phase || 'MOVE'}|${pieces}`;
       }
 
@@ -292,7 +257,6 @@
           const pieces = getBoardPieces(state).filter(p => p.color === side);
           const allPieces = getBoardPieces(state);
           const actions = [];
-          
           for (const p of pieces) {
               if (p.pieceType !== 'LASER') {
                   for (let dx = -1; dx <= 1; dx++) {
@@ -300,13 +264,9 @@
                           if (dx === 0 && dy === 0) continue;
                           const nx = p.x + dx, ny = p.y + dy;
                           if (!inBounds(nx, ny) || isReservedSquare(nx, ny, side)) continue;
-                          
                           const target = getPieceAt(allPieces, nx, ny);
-                          if (!target) {
-                              actions.push({ kind: 'move', pieceId: p.id, from: { x: p.x, y: p.y }, to: { x: nx, y: ny }, pieceType: p.pieceType });
-                          } else if (p.pieceType === 'SWITCH' && (target.pieceType === 'DEFLECTOR' || target.pieceType === 'DEFENDER') && !isReservedSquare(p.x, p.y, target.color)) {
-                              actions.push({ kind: 'swap', pieceId: p.id, from: { x: p.x, y: p.y }, to: { x: nx, y: ny }, pieceType: p.pieceType });
-                          }
+                          if (!target) actions.push({ kind: 'move', pieceId: p.id, from: { x: p.x, y: p.y }, to: { x: nx, y: ny }, pieceType: p.pieceType });
+                          else if (p.pieceType === 'SWITCH' && (target.pieceType === 'DEFLECTOR' || target.pieceType === 'DEFENDER') && !isReservedSquare(p.x, p.y, target.color)) actions.push({ kind: 'swap', pieceId: p.id, from: { x: p.x, y: p.y }, to: { x: nx, y: ny }, pieceType: p.pieceType });
                       }
                   }
               }
@@ -323,30 +283,19 @@
           return actions;
       }
 
-      function serializeAIAction(a) {
-          if (a.kind === 'move' || a.kind === 'swap') return `${a.kind}:${a.pieceId}:${a.to.x},${a.to.y}`;
-          if (a.kind === 'rotate') return `${a.kind}:${a.pieceId}:${a.delta}`;
-          return a.kind;
-      }
-
+      function serializeAIAction(a) { if (a.kind === 'move' || a.kind === 'swap') return `${a.kind}:${a.pieceId}:${a.to.x},${a.to.y}`; if (a.kind === 'rotate') return `${a.kind}:${a.pieceId}:${a.delta}`; return a.kind; }
       function selectAIAction(state, side) {
           const actions = generateAIActions(state, side);
           const sKey = getBoardStateKey(state, side);
           if (!actions.length) return null;
-          
           let bestV = -Infinity;
           let bestActions = [];
           const table = qTables[side] || {};
           const stateVals = table[sKey] || {};
-
           for (const a of actions) {
               const v = stateVals[serializeAIAction(a)] || 0;
-              if (v > bestV + 1e-12) {
-                  bestV = v;
-                  bestActions = [a];
-              } else if (Math.abs(v - bestV) <= 1e-12) {
-                  bestActions.push(a);
-              }
+              if (v > bestV + 1e-12) { bestV = v; bestActions = [a]; } 
+              else if (Math.abs(v - bestV) <= 1e-12) { bestActions.push(a); }
           }
           return bestActions[Math.floor(Math.random() * bestActions.length)];
       }
@@ -357,146 +306,54 @@
           if (currentTurn === aiColor && !(latestState.status && latestState.status.endsWith('_WIN'))) {
               isAIThinking = true;
               add(`[AI] Agent is computing move for ${aiColor}...`, 'system-msg');
-              
               await sleep(600);
               const action = selectAIAction(latestState, aiColor);
-              
               if (!action) {
-                  add(`[AI] Agent yielded. No valid moves found.`, 'error-msg');
+                  add(`[AI] Agent yielded.`, 'error-msg');
                   isAIThinking = false;
                   await processGameAction({ action: 'Turn End' });
                   return;
               }
-
               let intent;
-              if (action.kind === 'move' || action.kind === 'swap') {
-                  intent = { action: 'Move', piece: { x: action.from.x, y: action.from.y, type: action.pieceType }, changes: { new: { x: action.to.x, y: action.to.y } } };
-              } else if (action.kind === 'rotate') {
-                  intent = { action: 'Rotate', piece: { x: action.from.x, y: action.from.y, type: action.pieceType }, changes: { new: { rotation: action.rot } } };
-              } else {
-                  intent = { action: 'Manual Fire' }; 
-              }
-              
-              try {
-                  await processGameAction(intent);
-              } finally {
-                  isAIThinking = false;
-              }
+              if (action.kind === 'move' || action.kind === 'swap') intent = { action: 'Move', piece: { x: action.from.x, y: action.from.y, type: action.pieceType }, changes: { new: { x: action.to.x, y: action.to.y } } };
+              else if (action.kind === 'rotate') intent = { action: 'Rotate', piece: { x: action.from.x, y: action.from.y, type: action.pieceType }, changes: { new: { rotation: action.rot } } };
+              else intent = { action: 'Manual Fire' }; 
+              try { await processGameAction(intent); } finally { isAIThinking = false; }
           }
       }
 
       async function startAIGame(chosenColor) {
-          if (!(await loadQTables())) {
-              modeShown = false;
-              showMode();
-              return;
-          }
-          
-          isLMode = true; 
-          isAIMode = true;
-          modeShown = false;
-          lockedMatchId = 'AI_GAME';
+          if (!(await loadQTables())) { modeShown = false; showMode(); return; }
+          isLMode = true; isAIMode = true; modeShown = false; lockedMatchId = 'AI_GAME';
           humanColor = chosenColor === 'RED' ? 'RED' : 'BLUE';
           aiColor = humanColor === 'RED' ? 'BLUE' : 'RED';
-
-          latestState = {
-              board: {
-                  turn: "BLUE",
-                  phase: "MOVE",
-                  moveNumber: 1,
-                  pieces: [
-                      {id: "pmpfnkxpm1", pieceType: "KING", color: "BLUE", rotation: 0, x: 4, y: 0},
-                      {id: "pmpfnl4j03", pieceType: "KING", color: "RED", rotation: 0, x: 5, y: 7},
-                      {id: "pmpfqugdq4", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 4, y: 7},
-                      {id: "pmpfquhvx5", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 6, y: 7},
-                      {id: "pmpfqunnp6", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 5, y: 0},
-                      {id: "pmpfquoqi7", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 3, y: 0},
-                      {id: "pmpfqvc388", pieceType: "SWITCH", color: "BLUE", rotation: 0, x: 5, y: 3},
-                      {id: "pmpfqvfrb9", pieceType: "SWITCH", color: "BLUE", rotation: 1, x: 4, y: 3},
-                      {id: "pmpfqvl06a", pieceType: "SWITCH", color: "RED", rotation: 0, x: 4, y: 4},
-                      {id: "pmpfqvre4b", pieceType: "SWITCH", color: "RED", rotation: 1, x: 5, y: 4},
-                      {id: "pmpfqwdqec", pieceType: "LASER", color: "RED", rotation: 2, x: 0, y: 7},
-                      {id: "pmpfqy5dve", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 0},
-                      {id: "pmpfqya0pf", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 3},
-                      {id: "pmpfqyd1rg", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 2, y: 4},
-                      {id: "pmpfqz0jlj", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 0, y: 3},
-                      {id: "pmpfqz7fpk", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 0, y: 4},
-                      {id: "pmpfqzj2ul", pieceType: "DEFLECTOR", color: "BLUE", rotation: 3, x: 7, y: 1},
-                      {id: "pmpfr0e5km", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 6, y: 2},
-                      {id: "pmpfr0t7zn", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 4},
-                      {id: "pmpfr0ww1o", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 7, y: 3},
-                      {id: "pmpfr18esp", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 9, y: 3},
-                      {id: "pmpfr1bjtq", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 9, y: 4},
-                      {id: "pmpfr2ek5s", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 3, y: 5},
-                      {id: "pmpfr2sl8u", pieceType: "DEFLECTOR", color: "RED", rotation: 1, x: 2, y: 6},
-                      {id: "pmpfr337lv", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 7},
-                      {id: "pmpfr69imw", pieceType: "LASER", color: "BLUE", rotation: 0, x: 9, y: 0}
-                  ]
-              }
-          };
-          
+          latestState = { board: { turn: "BLUE", phase: "MOVE", moveNumber: 1, pieces: [
+              {id: "pmpfnkxpm1", pieceType: "KING", color: "BLUE", rotation: 0, x: 4, y: 0}, {id: "pmpfnl4j03", pieceType: "KING", color: "RED", rotation: 0, x: 5, y: 7},
+              {id: "pmpfqugdq4", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 4, y: 7}, {id: "pmpfquhvx5", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 6, y: 7},
+              {id: "pmpfqunnp6", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 5, y: 0}, {id: "pmpfquoqi7", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 3, y: 0},
+              {id: "pmpfqvc388", pieceType: "SWITCH", color: "BLUE", rotation: 0, x: 5, y: 3}, {id: "pmpfqvfrb9", pieceType: "SWITCH", color: "BLUE", rotation: 1, x: 4, y: 3},
+              {id: "pmpfqvl06a", pieceType: "SWITCH", color: "RED", rotation: 0, x: 4, y: 4}, {id: "pmpfqvre4b", pieceType: "SWITCH", color: "RED", rotation: 1, x: 5, y: 4},
+              {id: "pmpfqwdqec", pieceType: "LASER", color: "RED", rotation: 2, x: 0, y: 7}, {id: "pmpfqy5dve", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 0},
+              {id: "pmpfqya0pf", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 3}, {id: "pmpfqyd1rg", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 2, y: 4},
+              {id: "pmpfqz0jlj", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 0, y: 3}, {id: "pmpfqz7fpk", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 0, y: 4},
+              {id: "pmpfqzj2ul", pieceType: "DEFLECTOR", color: "BLUE", rotation: 3, x: 7, y: 1}, {id: "pmpfr0e5km", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 6, y: 2},
+              {id: "pmpfr0t7zn", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 4}, {id: "pmpfr0ww1o", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 7, y: 3},
+              {id: "pmpfr18esp", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 9, y: 3}, {id: "pmpfr1bjtq", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 9, y: 4},
+              {id: "pmpfr2ek5s", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 3, y: 5}, {id: "pmpfr2sl8u", pieceType: "DEFLECTOR", color: "RED", rotation: 1, x: 2, y: 6},
+              {id: "pmpfr337lv", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 7}, {id: "pmpfr69imw", pieceType: "LASER", color: "BLUE", rotation: 0, x: 9, y: 0}
+          ]}};
           printTerminalMatrix(latestState);
-          add(`AI Environment Set. You are controlling ${humanColor}.`, "success-msg");
-          
+          add(`AI Environment Set.`, "success-msg");
           if (latestState.board.turn === aiColor) checkAITurn();
       }
       
-      function isHumanTurn() {
-          if (!latestState) return false;
-          const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
-          return isAIMode ? currentTurn === humanColor : true;
-      }
+      function isHumanTurn() { if (!latestState) return false; const currentTurn = latestState.board?.turn || latestState.turn || 'RED'; return isAIMode ? currentTurn === humanColor : true; }
 
       function startLocalGame() {
-          isLMode = true;
-          modeShown = false;
-          lockedMatchId = 'LOCAL_GAME';
-          
+          isLMode = true; modeShown = false; lockedMatchId = 'LOCAL_GAME';
           const saved = localStorage.getItem(KEY_LOCAL_STATE);
-          if (saved) {
-              try {
-                  latestState = JSON.parse(saved);
-                  add("Resuming Local Game from storage.", "success-msg");
-              } catch (e) { add("Failed to load saved game. Starting fresh.", "error-msg"); localStorage.removeItem(KEY_LOCAL_STATE); }
-          }
-          
-          if (!latestState) {
-            latestState = {
-                board: {
-                    turn: "BLUE",
-                    phase: "MOVE",
-                    moveNumber: 1,
-                    pieces: [
-                        {id: "pmpfnkxpm1", pieceType: "KING", color: "BLUE", rotation: 0, x: 4, y: 0},
-                        {id: "pmpfnl4j03", pieceType: "KING", color: "RED", rotation: 0, x: 5, y: 7},
-                        {id: "pmpfqugdq4", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 4, y: 7},
-                        {id: "pmpfquhvx5", pieceType: "DEFENDER", color: "RED", rotation: 2, x: 6, y: 7},
-                        {id: "pmpfqunnp6", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 5, y: 0},
-                        {id: "pmpfquoqi7", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 3, y: 0},
-                        {id: "pmpfqvc388", pieceType: "SWITCH", color: "BLUE", rotation: 0, x: 5, y: 3},
-                        {id: "pmpfqvfrb9", pieceType: "SWITCH", color: "BLUE", rotation: 1, x: 4, y: 3},
-                        {id: "pmpfqvl06a", pieceType: "SWITCH", color: "RED", rotation: 0, x: 4, y: 4},
-                        {id: "pmpfqvre4b", pieceType: "SWITCH", color: "RED", rotation: 1, x: 5, y: 4},
-                        {id: "pmpfqwdqec", pieceType: "LASER", color: "RED", rotation: 2, x: 0, y: 7},
-                        {id: "pmpfqy5dve", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 0},
-                        {id: "pmpfqya0pf", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 3},
-                        {id: "pmpfqyd1rg", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 2, y: 4},
-                        {id: "pmpfqz0jlj", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 0, y: 3},
-                        {id: "pmpfqz7fpk", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 0, y: 4},
-                        {id: "pmpfqzj2ul", pieceType: "DEFLECTOR", color: "BLUE", rotation: 3, x: 7, y: 1},
-                        {id: "pmpfr0e5km", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 6, y: 2},
-                        {id: "pmpfr0t7zn", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 4},
-                        {id: "pmpfr0ww1o", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 7, y: 3},
-                        {id: "pmpfr18esp", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 9, y: 3},
-                        {id: "pmpfr1bjtq", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 9, y: 4},
-                        {id: "pmpfr2ek5s", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 3, y: 5},
-                        {id: "pmpfr2sl8u", pieceType: "DEFLECTOR", color: "RED", rotation: 1, x: 2, y: 6},
-                        {id: "pmpfr337lv", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 7},
-                        {id: "pmpfr69imw", pieceType: "LASER", color: "BLUE", rotation: 0, x: 9, y: 0}
-                    ]
-                }
-            };
-          }
+          if (saved) { try { latestState = JSON.parse(saved); add("Resuming.", "success-msg"); } catch (e) { localStorage.removeItem(KEY_LOCAL_STATE); } }
+          if (!latestState) { latestState = { board: { turn: "BLUE", phase: "MOVE", moveNumber: 1, pieces: [ {id: "pmpfnkxpm1", pieceType: "KING", color: "BLUE", rotation: 0, x: 4, y: 0}, {id: "pmpfnl4j03", pieceType: "KING", color: "RED", rotation: 0, x: 5, y: 7}, {id: "pmpfqugdq4", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 4, y: 7}, {id: "pmpfquhvx5", pieceType: "DEFENDER", color: "RED", rotation: 2, x: 6, y: 7}, {id: "pmpfqunnp6", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 5, y: 0}, {id: "pmpfquoqi7", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 3, y: 0}, {id: "pmpfqvc388", pieceType: "SWITCH", color: "BLUE", rotation: 0, x: 5, y: 3}, {id: "pmpfqvfrb9", pieceType: "SWITCH", color: "BLUE", rotation: 1, x: 4, y: 3}, {id: "pmpfqvl06a", pieceType: "SWITCH", color: "RED", rotation: 0, x: 4, y: 4}, {id: "pmpfqvre4b", pieceType: "SWITCH", color: "RED", rotation: 1, x: 5, y: 4}, {id: "pmpfqwdqec", pieceType: "LASER", color: "RED", rotation: 2, x: 0, y: 7}, {id: "pmpfqy5dve", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 0}, {id: "pmpfqya0pf", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 3}, {id: "pmpfqyd1rg", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 2, y: 4}, {id: "pmpfqz0jlj", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 0, y: 3}, {id: "pmpfqz7fpk", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 0, y: 4}, {id: "pmpfqzj2ul", pieceType: "DEFLECTOR", color: "BLUE", rotation: 3, x: 7, y: 1}, {id: "pmpfr0e5km", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 6, y: 2}, {id: "pmpfr0t7zn", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 4}, {id: "pmpfr0ww1o", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 7, y: 3}, {id: "pmpfr18esp", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 9, y: 3}, {id: "pmpfr1bjtq", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 9, y: 4}, {id: "pmpfr2ek5s", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 3, y: 5}, {id: "pmpfr2sl8u", pieceType: "DEFLECTOR", color: "RED", rotation: 1, x: 2, y: 6}, {id: "pmpfr337lv", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 7}, {id: "pmpfr69imw", pieceType: "LASER", color: "BLUE", rotation: 0, x: 9, y: 0} ] } }; }
           printTerminalMatrix(latestState);
           add("Local Mode Initialized.", "success-msg");
       }
@@ -506,469 +363,213 @@
         const pieces = getBoardPieces(state);
         const grid = Array.from({ length: 8 }, () => Array(10).fill(null));
         for (const piece of pieces) { if (piece && Number.isFinite(piece.x)) grid[piece.y][piece.x] = piece; }
-        
         const container = document.createElement('div'); container.className = 'matrix-container';
-
         const currentTurn = state.board?.turn || state.turn || 'RED';
-
-        const statusBar = document.createElement('div');
-        statusBar.className = 'history-line';
-        statusBar.style.marginBottom = '12px';
-        statusBar.style.fontSize = '20px';
-        statusBar.style.borderBottom = '1px dashed var(--line)';
-        statusBar.style.paddingBottom = '6px';
-        statusBar.innerHTML = `[<span class="highlight">TURN</span>: <span class="p-${currentTurn.toLowerCase()}">${currentTurn}</span>]`;
-        container.appendChild(statusBar);
-
-        const instrHeader = document.createElement('div');
-        instrHeader.innerHTML = `<div style="font-size: 15px; border: 1px solid var(--line); padding: 10px; margin-bottom: 12px; background: var(--bg0); color: var(--text); font-family: monospace; line-height: 1.4;">
-<b style="color: var(--bright);">🏆 OBJECTIVE:</b> Eliminate the enemy <b>KING</b> by guiding your laser into it while protecting your own.<br>
-<b style="color: var(--bright);">🕹️ ACTIONS:</b> Perform 1 per turn: <b>Move</b> (1 sq any direction) | <b>Rotate</b> (90° via R/L) | <b>Fire Laser</b> (Auto-fires at end, or skip move to manually fire via F).<br>
-<b style="color: var(--bright);">🎮 CONTROLS:</b> Arrow keys to move cursor, enter to select piece/target, L to rotate counter clock wise and R to rotate clockwise.<br>
-<b style="color: var(--bright);">🧭 VECTORS:</b> 0: +Y (Up) | 1: +X (Right) | 2: -Y (Down) | 3: -X (Left)<br>
-<b style="color: var(--bright);">♟️ PIECES:</b><br>
-- <b>KING</b> (◈): Moves 1 sq. Cannot rotate. Vulnerable from all sides (Game Over).<br>
-- <b>LASER</b> (⫝ ⟜ Ͳ Ð): Immobilized. Blocks all sides safely; fires beam.<br>
-- <b>SWITCH</b> (⟋ ⟍): Moves 1 sq. Swaps with Deflectors/Defenders. Reflects 90° (Immune).<br>
-- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Moves 1 sq. Front blocks lasers; other 3 sides fatal.<br>
-- <b>DEFLECTOR</b> (◤ ◥ ◢ ◣): Moves 1 sq. Diagonal reflects 90°; other sides fatal.<br>
-<b style="color: var(--bright);">⚠️ RULES:</b> No opponent home row entry | Blue Laser faces 0/3; Red faces 1/2 | No overlap unless SWITCH swapping.
-</div>`;
-        container.appendChild(instrHeader);
-
+        const statusBar = document.createElement('div'); statusBar.className = 'history-line'; statusBar.style.marginBottom = '12px'; statusBar.style.fontSize = '20px'; statusBar.style.borderBottom = '1px dashed var(--line)'; statusBar.style.paddingBottom = '6px'; statusBar.innerHTML = `[<span class="highlight">TURN</span>: <span class="p-${currentTurn.toLowerCase()}">${currentTurn}</span>]`; container.appendChild(statusBar);
+        const instrHeader = document.createElement('div'); instrHeader.innerHTML = `<div style="font-size: 15px; border: 1px solid var(--line); padding: 10px; margin-bottom: 12px; background: var(--bg0); color: var(--text); font-family: monospace; line-height: 1.4;"><b style="color: var(--bright);">🏆 OBJECTIVE:</b> Eliminate the enemy <b>KING</b>...</div>`; container.appendChild(instrHeader);
         for (let y = 7; y >= 0; y--) {
           let rowEl = document.createElement('div'); rowEl.className = 'matrix-row';
           for (let x = 0; x < 10; x++) {
             let cellEl = document.createElement('span'); cellEl.className = 'matrix-cell';
-            
-            const resClass = getReservedClass(x, y);
-            if (resClass) cellEl.classList.add(resClass);
-            if (x === cursorX && y === cursorY) cellEl.classList.add('cursor');
-            if (selectedOrigin && x === selectedOrigin.x && y === selectedOrigin.y) cellEl.classList.add('selected-piece');
-
+            const resClass = getReservedClass(x, y); if (resClass) cellEl.classList.add(resClass); if (x === cursorX && y === cursorY) cellEl.classList.add('cursor'); if (selectedOrigin && x === selectedOrigin.x && y === selectedOrigin.y) cellEl.classList.add('selected-piece');
             cellEl.addEventListener('click', (e) => { e.preventDefault(); if (isAnimatingLocalTurn) return; cursorX = x; cursorY = y; printTerminalMatrix(latestState); handleGridAction(); });
-            const p = grid[y][x]; 
-            if (p) { 
-              cellEl.textContent = getPieceChar(p); 
-              cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue'); 
-            } else {
-              const pathSegment = laserPath.find(seg => seg.x === x && y === seg.y);
-              if (pathSegment) {
-                const syms = ['^', '>', 'v', '<'];
-                cellEl.textContent = syms[pathSegment.dir];
-                cellEl.style.color = 'var(--laser)';
-              } else {
-                cellEl.textContent = '·'; 
-              }
-            }
+            const p = grid[y][x]; if (p) { cellEl.textContent = getPieceChar(p); cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue'); } else { const pathSegment = laserPath.find(seg => seg.x === x && y === seg.y); if (pathSegment) { cellEl.textContent = ['^', '>', 'v', '<'][pathSegment.dir]; cellEl.style.color = 'var(--laser)'; } else cellEl.textContent = '·'; }
             rowEl.appendChild(cellEl);
           }
           container.appendChild(rowEl);
         }
-        
-        if (state.status && state.status.endsWith('_WIN')) {
-            const winner = state.status.split('_')[0];
-            const div = document.createElement('div');
-            div.className = 'success-msg';
-            div.style.marginTop = '10px';
-            div.textContent = `GAME OVER: ${winner} WINS!`;
-            container.appendChild(div);
-        }
-        
-        if (replace && activeMatrixContainer && activeMatrixContainer.parentNode) activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); 
-        else if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); else logContainer.appendChild(container); 
-        
-        if (replace) activeMatrixContainer = container; 
-        scrollToBottom();
+        if (state.status && state.status.endsWith('_WIN')) { const winner = state.status.split('_')[0]; const div = document.createElement('div'); div.className = 'success-msg'; div.style.marginTop = '10px'; div.textContent = `GAME OVER: ${winner} WINS!`; container.appendChild(div); }
+        if (replace && activeMatrixContainer && activeMatrixContainer.parentNode) activeMatrixContainer.parentNode.replaceChild(container, activeMatrixContainer); else if (currentPromptWrap) logContainer.insertBefore(container, currentPromptWrap); else logContainer.appendChild(container); 
+        if (replace) activeMatrixContainer = container; scrollToBottom();
       }
 
       window.addEventListener('keydown', (e) => {
         if (currentPromptWrap || isAnimatingLocalTurn || isHostRequestPending || !isHumanTurn()) return;
         if (e.key.toLowerCase() === 'q') { processGameAction({ action: 'Resign' }); return; }
-
-        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key) || 
-            ['r', 'l', 'f', 'q'].includes(e.key.toLowerCase())) {
-            e.preventDefault();
-        } else {
-            return;
-        }
-        if (e.key === 'ArrowUp' && cursorY < 7) cursorY++;
-        else if (e.key === 'ArrowDown' && cursorY > 0) cursorY--;
-        else if (e.key === 'ArrowLeft' && cursorX > 0) cursorX--;
-        else if (e.key === 'ArrowRight' && cursorX < 9) cursorX++;
-        else if (e.key === 'Enter') handleGridAction();
-        else if (e.key.toLowerCase() === 'r') rotatePiece(1);
-        else if (e.key.toLowerCase() === 'l') rotatePiece(-1);
-        else if (e.key.toLowerCase() === 'f') skipTurnAndFire();
-        
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key) || ['r', 'l', 'f', 'q'].includes(e.key.toLowerCase())) e.preventDefault(); else return;
+        if (e.key === 'ArrowUp' && cursorY < 7) cursorY++; else if (e.key === 'ArrowDown' && cursorY > 0) cursorY--; else if (e.key === 'ArrowLeft' && cursorX > 0) cursorX--; else if (e.key === 'ArrowRight' && cursorX < 9) cursorX++; else if (e.key === 'Enter') handleGridAction(); else if (e.key.toLowerCase() === 'r') rotatePiece(1); else if (e.key.toLowerCase() === 'l') rotatePiece(-1); else if (e.key.toLowerCase() === 'f') skipTurnAndFire();
         if (latestState) printTerminalMatrix(latestState);
       });
 
       async function processGameAction(intent) {
         if (!latestState) return;
-        
         const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
-        let activePlayer;
-        if (isAIMode) {
-            activePlayer = isAIThinking ? aiColor : humanColor;
-        } else {
-            activePlayer = isLMode ? currentTurn : (localStorage.getItem('ls_my_color') || 'RED');
-        }
-        
+        let activePlayer = isAIMode ? (isAIThinking ? aiColor : humanColor) : (isLMode ? currentTurn : (localStorage.getItem('ls_my_color') || 'RED'));
         if (intent.action === 'Resign') {
             const winner = currentTurn === 'RED' ? 'BLUE' : 'RED';
             latestState.status = `${winner}_WIN`;
             add(`${currentTurn} RESIGNED. ${winner} WINS.`, "success-msg");
             localStorage.removeItem(KEY_LOCAL_STATE);
             printTerminalMatrix(latestState);
-            
-            if (isLMode || isAIMode) {
-                add("Returning to lobby in 5 seconds...", "system-msg");
-                setTimeout(() => {
-                    lockedMatchId = null;
-                    isLMode = false;
-                    isAIMode = false;
-                    modeShown = false;
-                    showMode();
-                }, 5000);
-            }
+            if (isLMode || isAIMode) { setTimeout(() => { lockedMatchId = null; isLMode = false; isAIMode = false; modeShown = false; showMode(); }, 5000); }
             return;
         }
-
-        if (!isLMode && (!localStorage.getItem(KEY_RID) || !localStorage.getItem(KEY_USER) || !localStorage.getItem(KEY_PASS))) { add("Engine Rejection: Missing local session credentials.", "error-msg"); return; }
-
+        if (!isLMode && (!localStorage.getItem(KEY_RID) || !localStorage.getItem(KEY_USER) || !localStorage.getItem(KEY_PASS))) { add("Error: Missing credentials.", "error-msg"); return; }
         try {
-            if ((isAIMode || !isLMode) && currentTurn !== activePlayer) throw new Error(`Turn violation: It is ${currentTurn}'s turn, but you are ${activePlayer}.`);
-            
+            if ((isAIMode || !isLMode) && currentTurn !== activePlayer) throw new Error(`Turn violation: It is ${currentTurn}'s turn.`);
             if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
                 const piecesDryRun = getBoardPieces(latestState);
                 const dbPiece = getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y);
-                
-                if (!dbPiece) throw new Error("Selection configuration anomaly: No piece occupies chosen origin.");
-                if ((isAIMode || !isLMode) && dbPiece.color !== activePlayer) throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but you are ${activePlayer}.`);
-                if (dbPiece.pieceType !== intent.piece.type) throw new Error("State discrepancy: Local component entity mismatch.");
-                
+                if (!dbPiece) throw new Error("No piece at origin.");
+                if ((isAIMode || !isLMode) && dbPiece.color !== activePlayer) throw new Error(`Color violation.`);
                 if (intent.action === 'Move') {
-                    const nx = intent.changes.new.x; const ny = intent.changes.new.y; const dx = Math.abs(nx - dbPiece.x); const dy = Math.abs(ny - dbPiece.y);
-                    if (dx > 1 || dy > 1 || (dx === 0 && dy === 0)) throw new Error("Invalid move: Relocation offset bounds exceeded.");
-                    if (dbPiece.pieceType === 'LASER') throw new Error("Invalid move: Sphinx (LASER) structural column immobilized.");
-                    if (isReservedSquare(nx, ny, dbPiece.color)) throw new Error("Invalid move: Restricted landing zone column conflict.");
-                    const pieceAtTarget = getPieceAt(piecesDryRun, nx, ny);
-                    if (pieceAtTarget) {
-                        if (dbPiece.pieceType === 'SWITCH' && (pieceAtTarget.pieceType === 'DEFLECTOR' || pieceAtTarget.pieceType === 'DEFENDER')) {
-                            if (isReservedSquare(dbPiece.x, dbPiece.y, pieceAtTarget.color)) throw new Error("Invalid move: Trapped swap rule violation on target zone.");
-                        } else { throw new Error("Invalid move: Destructive spatial overlap. Target square occupied."); }
-                    }
-                } else if (intent.action === 'Rotate') {
-                    const newRot = intent.changes.new.rotation;
-                    if (dbPiece.pieceType === 'KING') throw new Error("Invalid rotate: Pharaoh (KING) directional system locked.");
-                    if (dbPiece.pieceType === 'LASER') {
-                        if (dbPiece.color === 'BLUE' && (newRot === 1 || newRot === 2)) throw new Error("Invalid rotate: Blue Sphinx sector limits restricted to 0 or 3.");
-                        if (dbPiece.color === 'RED' && (newRot === 3 || newRot === 0)) throw new Error("Invalid rotate: Red Sphinx sector limits restricted to 1 or 2.");
-                    }
+                    const nx = intent.changes.new.x; const ny = intent.changes.new.y; const pieceAtTarget = getPieceAt(piecesDryRun, nx, ny);
+                    if (dbPiece.pieceType === 'LASER') throw new Error("LASER immobilized.");
+                    if (isReservedSquare(nx, ny, dbPiece.color)) throw new Error("Reserved zone conflict.");
+                    if (pieceAtTarget && !(dbPiece.pieceType === 'SWITCH' && (pieceAtTarget.pieceType === 'DEFLECTOR' || pieceAtTarget.pieceType === 'DEFENDER'))) throw new Error("Collision.");
                 }
             }
-        } catch (localErr) { add(`Local Validation Rejected: ${localErr.message}`, 'error-msg'); selectedOrigin = null; printTerminalMatrix(latestState); return; }
-        
+        } catch (localErr) { add(`Validation Error: ${localErr.message}`, 'error-msg'); selectedOrigin = null; printTerminalMatrix(latestState); return; }
         const initialStateBackup = JSON.parse(JSON.stringify(latestState));
         isAnimatingLocalTurn = true; 
         try {
             const stateCopy = JSON.parse(JSON.stringify(latestState)); let pieces = getBoardPieces(stateCopy);
             if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
                 const dbPiece = getPieceAt(pieces, intent.piece.x, intent.piece.y);
-                if (intent.action === 'Move') {
-                    const nx = intent.changes.new.x; const ny = intent.changes.new.y; const pieceAtTarget = getPieceAt(pieces, nx, ny);
-                    if (pieceAtTarget && dbPiece.pieceType === 'SWITCH') { pieceAtTarget.x = dbPiece.x; pieceAtTarget.y = dbPiece.y; }
-                    dbPiece.x = nx; dbPiece.y = ny; add(`MOVE METADATA: (${intent.piece.x},${intent.piece.y}) -> (${nx},${ny})`, 'success-msg');
-                } else if (intent.action === 'Rotate') {
-                    dbPiece.rotation = intent.changes.new.rotation; add(`ROTATION METADATA: ${dbPiece.pieceType} modified to position ${dbPiece.rotation}`, 'success-msg');
-                }
+                if (intent.action === 'Move') { const nx = intent.changes.new.x; const ny = intent.changes.new.y; const pieceAtTarget = getPieceAt(pieces, nx, ny); if (pieceAtTarget && dbPiece.pieceType === 'SWITCH') { pieceAtTarget.x = dbPiece.x; pieceAtTarget.y = dbPiece.y; } dbPiece.x = nx; dbPiece.y = ny; } 
+                else if (intent.action === 'Rotate') dbPiece.rotation = intent.changes.new.rotation;
                 if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
                 activeMatrixContainer = null; printTerminalMatrix(stateCopy); await sleep(500);
             }
             const shooter = pieces.find(p => p && p.pieceType === 'LASER' && p.color === activePlayer);
             if (shooter) {
-                const startDir = normalizeRotation(shooter.rotation);
-                const trace = resolveLaserVector(shooter.x + DIRS[startDir].dx, shooter.y + DIRS[startDir].dy, startDir, pieces);
+                const trace = resolveLaserVector(shooter.x + DIRS[normalizeRotation(shooter.rotation)].dx, shooter.y + DIRS[normalizeRotation(shooter.rotation)].dy, normalizeRotation(shooter.rotation), pieces);
                 const victim = (trace.hit && trace.hit.destroyed) ? trace.hit.piece : null;
                 await playLaserAnimation(stateCopy, pieces, activePlayer, victim);
                 if (victim) {
                     pieces = pieces.filter(p => !(p.x === victim.x && p.y === victim.y));
                     if (stateCopy.board) stateCopy.board.pieces = pieces; else stateCopy.pieces = pieces;
-                    add(`Laser beam eliminated ${victim.color} ${victim.pieceType} at coordinate (${victim.x}, ${victim.y}).`, "error-msg");
-                    if (victim.pieceType === 'KING') { 
-                        const winnerColor = victim.color === 'RED' ? 'BLUE' : 'RED';
-                        stateCopy.status = `${winnerColor}_WIN`; 
-                        add(`CRITICAL ALERT: ${victim.color} KING DESTROYED. ${winnerColor} ACHIEVES VICTORY.`, "success-msg"); 
-                        
-                        localStorage.removeItem(KEY_LOCAL_STATE);
-                        if (isLMode || isAIMode) {
-                            add("Returning to lobby in 5 seconds...", "system-msg");
-                            setTimeout(() => {
-                                lockedMatchId = null;
-                                isLMode = false;
-                                isAIMode = false;
-                                modeShown = false;
-                                showMode();
-                            }, 5000);
-                        }
-                    }
+                    if (victim.pieceType === 'KING') { stateCopy.status = `${victim.color === 'RED' ? 'BLUE' : 'RED'}_WIN`; }
                     activeMatrixContainer = null; printTerminalMatrix(stateCopy); await sleep(500);
                 }
             }
-            
             const nextTurn = currentTurn === 'RED' ? 'BLUE' : 'RED';
-            if (stateCopy.board) { stateCopy.board.turn = nextTurn; stateCopy.board.moveNumber = (stateCopy.board.moveNumber || 0) + 1; }
-            else { stateCopy.turn = nextTurn; stateCopy.moveNumber = (stateCopy.moveNumber || 0) + 1; }
+            if (stateCopy.board) { stateCopy.board.turn = nextTurn; stateCopy.board.moveNumber = (stateCopy.board.moveNumber || 0) + 1; } else { stateCopy.turn = nextTurn; stateCopy.moveNumber = (stateCopy.moveNumber || 0) + 1; }
             latestState = stateCopy;
-            
-            if (latestState.status && latestState.status.endsWith('_WIN')) {
-                localStorage.removeItem(KEY_LOCAL_STATE);
-            } else {
-                localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
-                if (isLMode) localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
-            }
-
+            localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
             if (!isLMode) {
-                add(`Transmitting intent: ${intent.action}...`, 'system-msg');
                 const resp = await fetch(MOVE_CHECKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ matchId: lockedMatchId, username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), intent: intent }) });
                 const result = await resp.json();
-                if (!resp.ok || !result.ok) throw new Error(result.error || "Unknown validation failure.");
+                if (!resp.ok || !result.ok) throw new Error(result.error || "Validation failure.");
             }
-        } catch (err) { add(`Engine Mutation Failure: ${err.message}`, 'error-msg'); latestState = initialStateBackup; } finally { 
-            activeMatrixContainer = null; 
-            isAnimatingLocalTurn = false; 
-            printTerminalMatrix(latestState); 
-            if (pendingStateUpdate) {
-                const s = pendingStateUpdate;
-                pendingStateUpdate = null;
-                applyRemoteState(s);
-            }
+        } catch (err) { add(`Mutation Error: ${err.message}`, 'error-msg'); latestState = initialStateBackup; } finally { 
+            activeMatrixContainer = null; isAnimatingLocalTurn = false; printTerminalMatrix(latestState); 
+            if (pendingStateUpdate) { const s = pendingStateUpdate; pendingStateUpdate = null; applyRemoteState(s); }
             if (isAIMode) setTimeout(checkAITurn, 100);
         }
         selectedOrigin = null;
       }
 
-      async function skipTurnAndFire() { if (!latestState) return; add("Initiating direct fire / skipping move phase...", "system-msg"); await processGameAction({ action: 'Turn End' }); }
+      async function skipTurnAndFire() { await processGameAction({ action: 'Turn End' }); }
       function rotatePiece(dir) {
         if (!selectedOrigin || !latestState || !isHumanTurn()) return;
         const pieces = getBoardPieces(latestState); const p = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
-        if (p) { const nextRotation = ((p.rotation || 0) + dir + 4) % 4; processGameAction({ action: 'Rotate', piece: { x: selectedOrigin.x, y: selectedOrigin.y, type: p.pieceType }, changes: { new: { rotation: nextRotation } } }); }
+        if (p) processGameAction({ action: 'Rotate', piece: { x: selectedOrigin.x, y: selectedOrigin.y, type: p.pieceType }, changes: { new: { rotation: ((p.rotation || 0) + dir + 4) % 4 } } });
       }
 
       async function handleGridAction() {
         if (!latestState || isAnimatingLocalTurn || !isHumanTurn()) return;
         if (!selectedOrigin) {
             const pieces = getBoardPieces(latestState); const p = pieces.find(p => p.x === cursorX && p.y === cursorY);
-            if (p) { selectedOrigin = { x: cursorX, y: cursorY }; add(`Selected: ${cursorX},${cursorY}`, 'system-msg'); } else { add(`No piece at ${cursorX},${cursorY}`, 'error-msg'); }
-            printTerminalMatrix(latestState);
+            if (p) { selectedOrigin = { x: cursorX, y: cursorY }; printTerminalMatrix(latestState); }
         } else {
             const pieces = getBoardPieces(latestState); const movingPiece = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
-            if (selectedOrigin.x === cursorX && selectedOrigin.y === cursorY) { selectedOrigin = null; add(`Deselected`, 'system-msg'); printTerminalMatrix(latestState); }
-            else { await processGameAction({ action: 'Move', piece: { x: selectedOrigin.x, y: selectedOrigin.y, type: movingPiece ? movingPiece.pieceType : null }, changes: { new: { x: cursorX, y: cursorY } } }); }
+            if (selectedOrigin.x === cursorX && selectedOrigin.y === cursorY) { selectedOrigin = null; printTerminalMatrix(latestState); }
+            else await processGameAction({ action: 'Move', piece: { x: selectedOrigin.x, y: selectedOrigin.y, type: movingPiece?.pieceType }, changes: { new: { x: cursorX, y: cursorY } } });
         }
       }
 
       function terminateMatch(msg) { 
-        add(msg, 'error-msg'); 
-        localStorage.removeItem(KEY_RID); 
-        localStorage.removeItem('ls_my_color'); 
-        lockedMatchId = null; 
-        activeMatrixContainer = null; 
-        modeShown = false; 
-        isLMode = false;
-        isAIMode = false;
+        add(msg, 'error-msg'); localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); lockedMatchId = null; modeShown = false; isLMode = false; isAIMode = false;
         if (activeGameRef) { activeGameRef.off(); activeGameRef = null; }
         if (activeRequestRef) { activeRequestRef.off(); activeRequestRef = null; }
-        setStatus("IDLE"); 
-        startPolling(); 
+        setStatus("IDLE"); startPolling(); 
       }
 
       async function applyRemoteState(state) {
         const status = state.status || '';
         const ld = state.metadata?.lastdestroyed;
-        const currentMoveNum = state.board?.moveNumber || state.moveNumber || 0;
-        
-        let gameOverDetected = false;
-        let victoryMsg = "";
-
-        if (status.endsWith('_WIN')) {
-            gameOverDetected = true;
-            const winnerColor = status.split('_')[0];
-            const loserColor = winnerColor === 'RED' ? 'BLUE' : 'RED';
-            victoryMsg = `CRITICAL ALERT: ${loserColor} KING ELIMINATED. ${winnerColor} ACHIEVES VICTORY!`;
-        } else if (status === 'DRAW_REPETITION') {
-            gameOverDetected = true;
-            victoryMsg = `GAME DRAWN: Three-fold repetition detected.`;
-        }
-
         isAnimatingLocalTurn = true;
         try {
-          if (ld && ld.turn === currentMoveNum - 1 && lastAnimatedTurn !== ld.turn) {
-              lastAnimatedTurn = ld.turn;
-              await playLaserAnimation(state, getBoardPieces(state), ld.shooterColor, ld.piece);
-              add(`Visual Summary: Laser blast vaporized ${ld.piece.color} ${ld.piece.pieceType} at (${ld.piece.x}, ${ld.piece.y}).`, "error-msg");
-              
-              if (ld.piece.pieceType === 'KING') {
-                  gameOverDetected = true;
-                  const winnerColor = ld.piece.color === 'RED' ? 'BLUE' : 'RED';
-                  victoryMsg = `CRITICAL ALERT: ${ld.piece.color} KING DESTROYED. ${winnerColor} ACHIEVES VICTORY!`;
-              }
-          }
-
+          if (ld && ld.turn !== lastAnimatedTurn) { lastAnimatedTurn = ld.turn; await playLaserAnimation(state, getBoardPieces(state), ld.shooterColor, ld.piece); }
           printTerminalMatrix(state); 
-
-          if (gameOverDetected) {
-              add(victoryMsg, "success-msg");
-              add("Game Over. Disconnecting terminal and rolling back to lobby setup in 5 seconds...", "system-msg");
-              pendingStateUpdate = null;
-              if (activeGameRef) { activeGameRef.off(); activeGameRef = null; }
-              await sleep(5000);
-              terminateMatch('Handshake reset complete.');
-          }
-        } finally {
-          isAnimatingLocalTurn = false;
-          if (pendingStateUpdate && !gameOverDetected) {
-              const s = pendingStateUpdate;
-              pendingStateUpdate = null;
-              applyRemoteState(s);
-          }
-        }
+          if (status.endsWith('_WIN')) { add("Game Over.", "success-msg"); await sleep(5000); terminateMatch('Reset.'); }
+        } finally { isAnimatingLocalTurn = false; if (pendingStateUpdate) { const s = pendingStateUpdate; pendingStateUpdate = null; applyRemoteState(s); } }
       }
 
       function lockOntoMatch(id, entry) {
         lockedMatchId = id; localStorage.setItem(KEY_RID, id); stopPolling(); toggleWaiting(false); modeShown = false;
         setStatus("LOCKED");
-        isAnimatingLocalTurn = false;
-        pendingStateUpdate = null;
-        add(`LINK ESTABLISHED: ${id}`, 'success-msg'); 
         activeGameRef = dbGame.ref(`G/${id}`);
-        
         activeGameRef.on('value', async snap => { 
           const state = snap.val(); 
           if (!state) { terminateMatch('MATCH TERMINATED.'); return; } 
-
-          if (isAnimatingLocalTurn && latestState) {
-              pendingStateUpdate = state;
-              return;
-          }
+          if (isAnimatingLocalTurn) { pendingStateUpdate = state; return; }
           await applyRemoteState(state);
         });
       }
 
       function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
         if (active) { if (waitAnimationInterval) return; const l = createLine('wait-msg'); let dots = 0; waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = contextMsg + ".".repeat(dots); }, 500); } 
-        else { if (waitAnimationInterval) { clearInterval(waitAnimationInterval); waitAnimationInterval = null; } }
+        else if (waitAnimationInterval) { clearInterval(waitAnimationInterval); waitAnimationInterval = null; }
       }
 
       async function handleAuth(v) {
         const val = v.trim();
-        if (val.length === 0 || val.length > 20) {
-            add("Error: Input must be 1-20 characters.", "error-msg");
-            if (!localStorage.getItem(KEY_USER)) return add('Session Username:', '', true, handleAuth);
-            return add('Session Password:', '', true, handleAuth);
-        }
-
-        if (!localStorage.getItem(KEY_USER)) { 
-            localStorage.setItem(KEY_USER, val.toUpperCase()); 
-            return boot(); 
-        }
-        if (!localStorage.getItem(KEY_PASS)) { 
-            localStorage.setItem(KEY_PASS, val); 
-            return boot(); 
-        }
+        if (!localStorage.getItem(KEY_USER)) { localStorage.setItem(KEY_USER, val.toUpperCase()); return boot(); }
+        if (!localStorage.getItem(KEY_PASS)) { localStorage.setItem(KEY_PASS, val); return boot(); }
       }
 
-      function applyFontPreference(pref) {
-        if (pref === 'BASIC') document.body.classList.add('basic-font');
-        else document.body.classList.remove('basic-font');
-      }
+      function applyFontPreference(pref) { if (pref === 'BASIC') document.body.classList.add('basic-font'); else document.body.classList.remove('basic-font'); }
 
       async function handleFontChoice(v) {
         const val = v.trim().toUpperCase();
-        if (val === 'T') { localStorage.setItem(KEY_FONT, 'THEMATIC'); return boot(); } 
-        else if (val === 'B') { localStorage.setItem(KEY_FONT, 'BASIC'); return boot(); } 
-        else {
-            add("Invalid option. Please input 'T' or 'B'.", "error-msg");
-            add("[T] Thematic Font: Looks good, but deflectors are hard to understand (DO NOT USE IF THIS IS YOUR FIRST TIME)\n\n[B] Basic Font: Looks ugly, but is clear to understand.", 'system-msg');
-            return add('Selection (T/B):', '', true, handleFontChoice);
-        }
+        if (val === 'T') localStorage.setItem(KEY_FONT, 'THEMATIC'); else if (val === 'B') localStorage.setItem(KEY_FONT, 'BASIC'); else return add('Selection (T/B):', '', true, handleFontChoice);
+        boot();
       }
 
       async function boot() {
         const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
-        
-        add('====================================================', 'system-msg');
-        add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg');
-        add('====================================================', 'system-msg');
-        addHTML('Tutorial: <a href="https://en.wikipedia.org/wiki/Khet_(game)" target="_blank">Read Here</a> Or just search on Youtube LASER CHESS IF IT IS YOUR FIRST TIME. You will find a tutorial (the physical game already exists)', 'system-msg');
-        addHTML('Discord: <a href="https://discord.gg/HnBHssXq" target="_blank">Join Server</a>', 'system-msg');
-        addHTML('Support: <a href="mailto:later5143@gmail.com">later5143@gmail.com</a>', 'system-msg');
-
-        if (!u) { return add('Session Username:', '', true, handleAuth); }
-        if (!p) { add('Username available (for now)', 'success-msg'); return add('Session Password:', '', true, handleAuth); }
-
+        add('LASER CHESS', 'system-msg');
+        if (!u) return add('Session Username:', '', true, handleAuth);
+        if (!p) return add('Session Password:', '', true, handleAuth);
         const fontPref = localStorage.getItem(KEY_FONT);
-        if (!fontPref) {
-            add("[T] Thematic Font: Looks good, but deflectors are hard to understand (DO NOT USE IF THIS IS YOUR FIRST TIME)\n\n[B] Basic Font: Looks ugly, but is clear to understand.", 'system-msg');
-            return add('Selection (T/B):', '', true, handleFontChoice);
-        }
+        if (!fontPref) { add("[T] Thematic\n[B] Basic", 'system-msg'); return add('Selection (T/B):', '', true, handleFontChoice); }
         applyFontPreference(fontPref);
-
-        if (localStorage.getItem(KEY_LOCAL_STATE)) {
-            add("Local game data found. Use [L] to resume.", "system-msg");
-        }
-
-        add('Ready to Play!', 'success-msg');
-        
         if (rid) { 
             const snapGame = await dbGame.ref(`G/${rid}`).once('value'); 
             const snapReq = await dbMatch.ref(`RQ_D/${rid}`).once('value');
             if (snapGame.exists()) return lockOntoMatch(rid, snapGame.val()); 
-            else if (!snapReq.exists()) { localStorage.removeItem(KEY_RID); localStorage.removeItem('ls_my_color'); add("Stale match data cleared.", "system-msg"); }
-            else { 
-                isHostRequestPending = true;
-                setStatus("WAITING_FOR_MATCH");
-                toggleWaiting(true, "Awaiting Match");
-                startRequestMonitoring(rid); 
-            }
+            else if (!snapReq.exists()) { localStorage.removeItem(KEY_RID); }
+            else { isHostRequestPending = true; setStatus("WAITING_FOR_MATCH"); startRequestMonitoring(rid); }
         }
-        
-        await scanOwnRequest();
-
         if (!lockedMatchId) await startPolling();
       }
 
+      function startQueueListener() {
+          if (queueRef) return;
+          queueRef = dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1);
+          queueRef.on('value', (snap) => {
+              const data = snap.val();
+              if (!data) currentHead = null;
+              else {
+                  const firstKey = Object.keys(data)[0];
+                  currentHead = { id: firstKey, data: data[firstKey] };
+              }
+          });
+      }
+
       async function startPolling() {
-        if (isPollingStarting) return; isPollingStarting = true;
-        if (rqPollInterval) clearInterval(rqPollInterval); await pollFirstMatch({ silentEmpty: true }); modeShown = false; await showMode();
-        if (!localStorage.getItem(KEY_RID) && !lockedMatchId) { rqPollInterval = setInterval(() => pollFirstMatch({ silentEmpty: false }), 6000); }
+        if (isPollingStarting) return; 
+        isPollingStarting = true;
+        startQueueListener();
+        modeShown = false; 
+        await showMode();
         isPollingStarting = false;
       }
 
-      function stopPolling() { if (rqPollInterval) { clearInterval(rqPollInterval); rqPollInterval = null; } }
-
-      async function searchForGameDBMatch() {
-        const myName = localStorage.getItem(KEY_USER); if (!myName) return false;
-        try {
-          const snap = await dbGame.ref('G').once('value'); const games = snap.val(); if (!games) return false;
-          const matchID = Object.keys(games).find(key => String(key).toUpperCase().includes(myName.toUpperCase()));
-          if (matchID) { add(`[AUTO-JOIN] Match detected: ${matchID}`, 'success-msg'); lockOntoMatch(matchID, games[matchID]); return true; }
-        } catch (e) { console.error(e); } return false;
-      }
-
-      async function pollFirstMatch({ silentEmpty = false } = {}) {
-        if (localStorage.getItem(KEY_RID) || lockedMatchId) return false;
-        try {
-          const snapshot = await dbMatch.ref('/RQ_Q').orderByKey().limitToFirst(1).once('value'); 
-          const data = snapshot.val();
-          if (!data) return false;
-          const firstKey = Object.keys(data)[0]; 
-          const matchData = data[firstKey];
-          const myName = localStorage.getItem(KEY_USER) || '';
-          if (matchData.username && matchData.username.toUpperCase() === myName.toUpperCase()) return false;
-          currentHead = { id: firstKey, data: matchData }; return true;
-        } catch (e) { currentHead = null; return false; }
+      function stopPolling() { 
+          if (queueRef) { queueRef.off(); queueRef = null; }
       }
 
       async function showMode() {
@@ -976,134 +577,48 @@
         while (processing) await sleep(10); 
         if (modeShown) return; 
         modeShown = true;
-        
-        addHTML(`<div style="font-size: 15px; border: 1px solid var(--line); padding: 10px; margin-bottom: 12px; background: var(--bg0); color: var(--text); font-family: monospace; line-height: 1.4;">
-<b style="color: var(--bright);">🏆 OBJECTIVE:</b> Eliminate the enemy <b>KING</b> by guiding your laser into it while protecting your own.<br>
-<b style="color: var(--bright);">🕹️ ACTIONS:</b> Perform 1 per turn: <b>Move</b> (1 sq any direction) | <b>Rotate</b> (90° via R/L) | <b>Fire Laser</b> (Auto-fires at end, or skip move to manually fire via F).<br>
-<b style="color: var(--bright);">🎮 CONTROLS:</b> Arrow keys to move cursor, enter to select piece/target, L to rotate counter clock wise and R to rotate clockwise.<br>
-<b style="color: var(--bright);">🧭 VECTORS:</b> 0: +Y (Up) | 1: +X (Right) | 2: -Y (Down) | 3: -X (Left)<br>
-<b style="color: var(--bright);">♟️ PIECES:</b><br>
-- <b>KING</b> (◈): Moves 1 sq. Cannot rotate. Vulnerable from all sides (Game Over).<br>
-- <b>LASER</b> (⫝ ⟜ Ͳ Ð): Immobilized. Blocks all sides safely; fires beam.<br>
-- <b>SWITCH</b> (⟋ ⟍): Moves 1 sq. Swaps with Deflectors/Defenders. Reflects 90° (Immune).<br>
-- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Moves 1 sq. Front blocks lasers; other 3 sides fatal.<br>
-- <b>DEFLECTOR</b> (◤ ◥ ◢ ◣): Moves 1 sq. Diagonal reflects 90°; other sides fatal.<br>
-<b style="color: var(--bright);">⚠️ RULES:</b> No opponent home row entry | Blue Laser faces 0/3; Red faces 1/2 | No overlap unless SWITCH swapping.
-</div>`, 'system-msg');
-
         let menu = "--- MENU ---\n";
         if (!currentHead) menu += "Queue Empty.\n";
         else if (currentHead.data.color === 0) menu += "RED at head. [A] Join as Blue\n"; 
         else menu += "BLUE at head. [A] Join as Red\n";
-        menu += "[R] Host A PvP Match Where your color is Red | [B] Host A PvP Match Where your color is Blue | [P] Host A Private PvP Match. | [J] Join A Private Match | [L] Local Play (Pass and Play mode) | [C] Play vs Computer (AI)";
-        
+        menu += "[R] Host Red | [B] Host Blue | [P] Private | [J] Join Private | [L] Local | [C] AI";
         add(menu, 'system-msg');
         add('MODE:', '', true, handleMode);
       }
 
       async function handleMode(val) {
-        if (val === 'L') { startLocalGame(); }
-        else if (val === 'A') { 
-            if (!currentHead) { add('JOIN FAILED.', 'error-msg'); modeShown = false; return showMode(); } 
-            registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
-        } else if (val === 'R') { registerHost(0, false); } 
-        else if (val === 'B') { registerHost(1, false); }
-        else if (val === 'P') {
-            add('Target Username ([ENTER] for open):', '', true, async (target) => {
-                add('Choose Color:\n[R] Red | [B] Blue', '', true, async (colorKey) => {
-                    const color = (colorKey === 'R') ? 0 : 1;
-                    requestPrivateMatch(color, target || null);
-                });
-            });
-        }
-        else if (val === 'J') {
-            add('Enter Invite Code:', '', true, async (code) => {
-                joinPrivateMatch(code);
-            });
-        }
-        else if (val === 'C') {
-            add('Target Assignment:\n[R] Play as Red | [B] Play as Blue', '', true, async (colorKey) => {
-                const color = (colorKey === 'R') ? 'RED' : 'BLUE';
-                startAIGame(color);
-            });
-        }
-        else { add('Unknown Command.', 'error-msg'); modeShown = false; showMode(); }
+        if (val === 'L') startLocalGame();
+        else if (val === 'A') { if (!currentHead) { add('EMPTY', 'error-msg'); modeShown = false; return showMode(); } registerHost(currentHead.data.color === 0 ? 1 : 0, true); } 
+        else if (val === 'R') registerHost(0, false); 
+        else if (val === 'B') registerHost(1, false);
+        else if (val === 'P') { add('Target User:', '', true, (target) => add('Color [R/B]:', '', true, (c) => requestPrivateMatch(c === 'R' ? 0 : 1, target))); }
+        else if (val === 'J') { add('Invite Code:', '', true, (code) => joinPrivateMatch(code)); }
+        else if (val === 'C') { add('Color [R/B]:', '', true, (c) => startAIGame(c === 'R' ? 'RED' : 'BLUE')); }
+        else { add('Unknown.', 'error-msg'); modeShown = false; showMode(); }
       }
 
       async function requestPrivateMatch(color, target) {
-          setStatus("NEGOTIATING_PRIVATE");
-          toggleWaiting(true, "Creating Private Lobby");
+          setStatus("NEGOTIATING");
+          toggleWaiting(true, "Lobbying");
           try {
-              const res = await fetch(WORKER_URL, { 
-                  method: 'POST', 
-                  headers: { 'Content-Type': 'application/json' }, 
-                  body: JSON.stringify({ 
-                      mode: "PRIVATE_MATCH_REQUEST", 
-                      body: { 
-                          requester: localStorage.getItem(KEY_USER), 
-                          secret: localStorage.getItem(KEY_PASS), 
-                          color, 
-                          target 
-                      } 
-                  }) 
-              });
+              const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: "PRIVATE_MATCH_REQUEST", body: { requester: localStorage.getItem(KEY_USER), secret: localStorage.getItem(KEY_PASS), color, target } }) });
               const data = await res.json();
-              if (data.ok) {
-                  add(`Lobby Created!\nInvite Code: ${data.inviteCode}`, 'success-msg');
-                  localStorage.setItem(KEY_RID, data.requestId);
-                  isHostRequestPending = true;
-                  setStatus("WAITING_FOR_GUEST");
-                  startRequestMonitoring(data.requestId);
-              } else {
-                  add(`Private Request Rejected: ${data.error}`, 'error-msg');
-                  toggleWaiting(false);
-                  isHostRequestPending = false;
-                  modeShown = false;
-                  startPolling();
-              }
-          } catch (e) {
-              add(`Connection Error: ${e.message}`, 'error-msg');
-              toggleWaiting(false);
-              isHostRequestPending = false;
-              modeShown = false;
-              startPolling();
-          }
+              if (data.ok) { localStorage.setItem(KEY_RID, data.requestId); isHostRequestPending = true; startRequestMonitoring(data.requestId); } else { add(data.error, 'error-msg'); toggleWaiting(false); modeShown = false; startPolling(); }
+          } catch (e) { toggleWaiting(false); modeShown = false; startPolling(); }
       }
 
       async function joinPrivateMatch(inviteCode) {
-          setStatus("JOINING_PRIVATE");
-          toggleWaiting(true, "Joining Lobby");
+          setStatus("JOINING");
           try {
-              const res = await fetch(WORKER_URL, { 
-                  method: 'POST', 
-                  headers: { 'Content-Type': 'application/json' }, 
-                  body: JSON.stringify({ 
-                      username: localStorage.getItem(KEY_USER),
-                      password: localStorage.getItem(KEY_PASS),
-                      isPrivate: true,
-                      privateMode: "JOIN",
-                      inviteCode
-                  }) 
-              });
+              const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), isPrivate: true, privateMode: "JOIN", inviteCode }) });
               const data = await res.json();
-              if (data.ok) {
-                  add(`Successfully joined ${data.matchName}`, 'success-msg');
-                  lockOntoMatch(data.matchName, { status: 'SYNCING' });
-              } else {
-                  add(`Join Failed: ${data.error}`, 'error-msg');
-                  toggleWaiting(false);
-              }
-          } catch (e) {
-              add(`Connection Error: ${e.message}`, 'error-msg');
-              toggleWaiting(false);
-          }
+              if (data.ok) lockOntoMatch(data.matchName, { status: 'SYNCING' }); else add(data.error, 'error-msg');
+          } catch (e) { add('Error', 'error-msg'); }
       }
 
       async function registerHost(color, isIntercept = false) {
-        if (isHostRequestPending) { add("Request already in progress.", "error-msg"); return; }
+        if (isHostRequestPending) return;
         isHostRequestPending = true;
-        setStatus("NEGOTIATING");
-        toggleWaiting(true, "Negotiating Match");
         localStorage.setItem('ls_my_color', color === 0 ? 'RED' : 'BLUE');
         try {
           const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), color, isIntercept }) }); const data = await res.json();
@@ -1111,10 +626,10 @@
             const idToStore = data.matchName || data.requestId || data.timestamp; 
             if (idToStore) localStorage.setItem(KEY_RID, idToStore); 
             stopPolling(); 
-            if (data.matchName) { isHostRequestPending = false; setStatus("LOCKED"); lockOntoMatch(data.matchName, { status: 'SYNCING' }); } 
-            else { setStatus("WAITING_FOR_MATCH"); startRequestMonitoring(idToStore); }
-          } else { add(`Request rejected: ${data.error || 'Unknown'}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); localStorage.removeItem('ls_my_color'); modeShown = false; startPolling(); }
-        } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); localStorage.removeItem('ls_my_color'); modeShown = false; startPolling(); }
+            if (data.matchName) lockOntoMatch(data.matchName, { status: 'SYNCING' }); 
+            else startRequestMonitoring(idToStore);
+          } else { isHostRequestPending = false; modeShown = false; startPolling(); }
+        } catch (e) { isHostRequestPending = false; modeShown = false; startPolling(); }
       }
 
       window.addEventListener('DOMContentLoaded', boot);
