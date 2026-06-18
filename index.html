@@ -356,8 +356,11 @@
                   intent = { action: 'Manual Fire' }; 
               }
               
-              isAIThinking = false;
-              await processGameAction(intent);
+              try {
+                  await processGameAction(intent);
+              } finally {
+                  isAIThinking = false;
+              }
           }
       }
 
@@ -528,7 +531,7 @@
               cellEl.textContent = getPieceChar(p); 
               cellEl.classList.add(p.color === 'RED' ? 'p-red' : 'p-blue'); 
             } else {
-              const pathSegment = laserPath.find(seg => seg.x === x && seg.y === y);
+              const pathSegment = laserPath.find(seg => seg.x === x && y === seg.y);
               if (pathSegment) {
                 const syms = ['^', '>', 'v', '<'];
                 cellEl.textContent = syms[pathSegment.dir];
@@ -584,7 +587,12 @@
         if (!latestState) return;
         
         const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
-        const activePlayer = isLMode ? currentTurn : (localStorage.getItem('ls_my_color') || 'RED');
+        let activePlayer;
+        if (isAIMode) {
+            activePlayer = isAIThinking ? aiColor : humanColor;
+        } else {
+            activePlayer = isLMode ? currentTurn : (localStorage.getItem('ls_my_color') || 'RED');
+        }
         
         if (intent.action === 'Resign') {
             const winner = currentTurn === 'RED' ? 'BLUE' : 'RED';
@@ -609,14 +617,14 @@
         if (!isLMode && (!localStorage.getItem(KEY_RID) || !localStorage.getItem(KEY_USER) || !localStorage.getItem(KEY_PASS))) { add("Engine Rejection: Missing local session credentials.", "error-msg"); return; }
 
         try {
-            if (!isLMode && currentTurn !== activePlayer) throw new Error(`Turn violation: It is ${currentTurn}'s turn, but you are ${activePlayer}.`);
+            if ((isAIMode || !isLMode) && currentTurn !== activePlayer) throw new Error(`Turn violation: It is ${currentTurn}'s turn, but you are ${activePlayer}.`);
             
             if (intent.action !== 'Turn End' && intent.action !== 'Manual Fire' && intent.piece) {
                 const piecesDryRun = getBoardPieces(latestState);
                 const dbPiece = getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y);
                 
                 if (!dbPiece) throw new Error("Selection configuration anomaly: No piece occupies chosen origin.");
-                if (!isLMode && dbPiece.color !== activePlayer) throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but it is ${activePlayer}'s turn.`);
+                if ((isAIMode || !isLMode) && dbPiece.color !== activePlayer) throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but you are ${activePlayer}.`);
                 if (dbPiece.pieceType !== intent.piece.type) throw new Error("State discrepancy: Local component entity mismatch.");
                 
                 if (intent.action === 'Move') {
