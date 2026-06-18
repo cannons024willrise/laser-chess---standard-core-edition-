@@ -131,20 +131,41 @@
           activeRequestRef = dbMatch.ref(`RQ_D/${requestId}`);
           activeRequestRef.on('value', async (snap) => {
               const val = snap.val();
+              
+              // 1. Direct fulfillment check: If the worker provides the match ID directly, join immediately.
+              if (val && val.matchName) {
+                  isHostRequestPending = false;
+                  toggleWaiting(false);
+                  activeRequestRef.off(); activeRequestRef = null;
+                  lockOntoMatch(val.matchName, { status: 'SYNCING' });
+                  return;
+              }
+
               if (!val) { 
                   isHostRequestPending = false;
                   toggleWaiting(false);
                   localStorage.removeItem(KEY_RID);
                   activeRequestRef.off(); activeRequestRef = null;
                   setStatus("MATCH_FORMED_LOOKING");
-                  await sleep(1000); 
-                  if (!(await searchForGameDBMatch())) {
-                      add("Request fulfilled, but match not found yet. Retrying...", "error-msg");
+                  
+                  // 2. Race condition fix: Retry loop to ensure we don't miss slightly delayed database writes.
+                  let matchFound = false;
+                  for (let i = 0; i < 6; i++) { // Poll 6 times (up to 6 seconds)
+                      await sleep(1000); 
+                      if (await searchForGameDBMatch()) {
+                          matchFound = true;
+                          break;
+                      }
+                  }
+                  
+                  if (!matchFound) {
+                      add("Handshake dropped: Match formed but state sync failed.", "error-msg");
                       modeShown = false;
                       startPolling();
                   }
                   return;
               }
+              
               if (val.status) setStatus(`RQ_STATUS: ${val.status}`);
           });
       }
