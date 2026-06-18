@@ -400,6 +400,9 @@
             latestState.status = `${winner}_WIN`;
             add(`${currentTurn} RESIGNED. ${winner} WINS.`, "success-msg");
             localStorage.removeItem(KEY_LOCAL_STATE);
+            if (!isLMode && !isAIMode) {
+                fetch(MOVE_CHECKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ matchId: lockedMatchId, username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), intent: intent }) }).catch(e => add(`Resign Error: ${e.message}`, 'error-msg'));
+            }
             printTerminalMatrix(latestState);
             if (isLMode || isAIMode) { setTimeout(() => { lockedMatchId = null; isLMode = false; isAIMode = false; modeShown = false; showMode(); }, 5000); }
             return;
