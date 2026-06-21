@@ -417,6 +417,9 @@
           aiColor = humanColor === 'RED' ? 'BLUE' : 'RED';
 
           latestState = {
+              isAIMode: true,
+              aiColor: aiColor,
+              humanColor: humanColor,
               board: {
                   turn: "BLUE",
                   phase: "MOVE",
@@ -452,6 +455,7 @@
               }
           };
           
+          localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
           printTerminalMatrix(latestState);
           add(`AI Environment Set. You are controlling ${humanColor}.`, "success-msg");
           
@@ -473,7 +477,16 @@
           if (saved) {
               try {
                   latestState = JSON.parse(saved);
-                  add("Resuming Local Game from storage.", "success-msg");
+                  if (latestState && latestState.isAIMode) {
+                      isAIMode = true;
+                      aiColor = latestState.aiColor;
+                      humanColor = latestState.humanColor;
+                      lockedMatchId = 'AI_GAME';
+                      add(`Resuming AI Game from storage. You are controlling ${humanColor}.`, "success-msg");
+                  } else {
+                      isAIMode = false;
+                      add("Resuming Local Game from storage.", "success-msg");
+                  }
               } catch (e) { add("Failed to load saved game. Starting fresh.", "error-msg"); localStorage.removeItem(KEY_LOCAL_STATE); }
           }
           
@@ -513,9 +526,12 @@
                     ]
                 }
             };
+            add("Local Mode Initialized.", "success-msg");
           }
           printTerminalMatrix(latestState);
-          add("Local Mode Initialized.", "success-msg");
+          if (isAIMode && latestState && latestState.board && latestState.board.turn === aiColor) {
+              setTimeout(checkAITurn, 100);
+          }
       }
 
       function printTerminalMatrix(state, laserPath = [], replace = true) {
@@ -737,8 +753,14 @@
             if (latestState.status && latestState.status.endsWith('_WIN')) {
                 localStorage.removeItem(KEY_LOCAL_STATE);
             } else {
+                if (isAIMode) {
+                    latestState.isAIMode = true;
+                    latestState.aiColor = aiColor;
+                    latestState.humanColor = humanColor;
+                } else {
+                    latestState.isAIMode = false;
+                }
                 localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
-                if (isLMode) localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
             }
 
             if (!isLMode) {
@@ -974,7 +996,16 @@
         applyFontPreference(fontPref);
 
         if (localStorage.getItem(KEY_LOCAL_STATE)) {
-            add("Local game data found. Use [L] to resume.", "system-msg");
+            try {
+                const savedData = JSON.parse(localStorage.getItem(KEY_LOCAL_STATE));
+                if (savedData && savedData.isAIMode) {
+                    add(`Saved AI game data found (AI side: ${savedData.aiColor}). Use [L] to resume.`, "system-msg");
+                } else {
+                    add("Local game data found. Use [L] to resume.", "system-msg");
+                }
+            } catch (e) {
+                add("Local game data found. Use [L] to resume.", "system-msg");
+            }
         }
 
         add('Ready to Play!', 'success-msg');
