@@ -37,6 +37,10 @@
         /* Mobile Controls Styling */
         #mobile-controls { 
             display: none; 
+            position: fixed; 
+            bottom: 20px; 
+            left: 50%; 
+            transform: translateX(-50%); 
             background: var(--bg1); 
             border: 2px solid var(--line); 
             padding: 10px; 
@@ -44,18 +48,12 @@
             z-index: 1000; 
             box-shadow: 0 4px 20px rgba(0,0,0,0.8); 
             border-radius: 4px;
-            margin: 25px auto 0 auto;
-            width: max-content;
-            max-width: 100%;
-            box-sizing: border-box;
         }
         body.is-mobile { 
-            padding-bottom: 40px; 
+            padding-bottom: 100px; 
         }
         body.is-mobile #mobile-controls { 
             display: flex; 
-            flex-wrap: wrap;
-            justify-content: center;
         }
         .mobile-btn { 
             background: var(--bg0); 
@@ -740,7 +738,7 @@
                             setTimeout(() => {
                                 lockedMatchId = null;
                                 isLMode = false;
-                               --------- isAIMode = false;
+                                isAIMode = false;
                                 modeShown = false;
                                 showMode();
                             }, 5000);
