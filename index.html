@@ -587,13 +587,12 @@
         const activePlayer = isLMode ? currentTurn : (localStorage.getItem('ls_my_color') || 'RED');
         
         if (intent.action === 'Resign') {
-            const winner = currentTurn === 'RED' ? 'BLUE' : 'RED';
-            latestState.status = `${winner}_WIN`;
-            add(`${currentTurn} RESIGNED. ${winner} WINS.`, "success-msg");
-            localStorage.removeItem(KEY_LOCAL_STATE);
-            printTerminalMatrix(latestState);
-            
             if (isLMode || isAIMode) {
+                const winner = currentTurn === 'RED' ? 'BLUE' : 'RED';
+                latestState.status = `${winner}_WIN`;
+                add(`${currentTurn} RESIGNED. ${winner} WINS.`, "success-msg");
+                localStorage.removeItem(KEY_LOCAL_STATE);
+                printTerminalMatrix(latestState);
                 add("Returning to lobby in 5 seconds...", "system-msg");
                 setTimeout(() => {
                     lockedMatchId = null;
@@ -602,8 +601,26 @@
                     modeShown = false;
                     showMode();
                 }, 5000);
+                return;
+            } else {
+                if (!localStorage.getItem(KEY_RID) || !localStorage.getItem(KEY_USER) || !localStorage.getItem(KEY_PASS)) { 
+                    add("Engine Rejection: Missing local session credentials.", "error-msg"); 
+                    return; 
+                }
+                add(`Transmitting intent: Resign...`, 'system-msg');
+                try {
+                    const resp = await fetch(MOVE_CHECKER_URL, { 
+                        method: "POST", 
+                        headers: { "Content-Type": "application/json" }, 
+                        body: JSON.stringify({ matchId: lockedMatchId, username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), intent: intent }) 
+                    });
+                    const result = await resp.json();
+                    if (!resp.ok || !result.ok) throw new Error(result.error || "Unknown validation failure.");
+                } catch (err) { 
+                    add(`Engine Mutation Failure: ${err.message}`, 'error-msg'); 
+                }
+                return;
             }
-            return;
         }
 
         if (!isLMode && (!localStorage.getItem(KEY_RID) || !localStorage.getItem(KEY_USER) || !localStorage.getItem(KEY_PASS))) { add("Engine Rejection: Missing local session credentials.", "error-msg"); return; }
