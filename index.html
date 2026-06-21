@@ -413,53 +413,68 @@
           isAIMode = true;
           modeShown = false;
           lockedMatchId = 'AI_GAME';
-          humanColor = chosenColor === 'RED' ? 'RED' : 'BLUE';
-          aiColor = humanColor === 'RED' ? 'BLUE' : 'RED';
 
-          latestState = {
-              isAIMode: true,
-              aiColor: aiColor,
-              humanColor: humanColor,
-              board: {
-                  turn: "BLUE",
-                  phase: "MOVE",
-                  moveNumber: 1,
-                  pieces: [
-                      {id: "pmpfnkxpm1", pieceType: "KING", color: "BLUE", rotation: 0, x: 4, y: 0},
-                      {id: "pmpfnl4j03", pieceType: "KING", color: "RED", rotation: 0, x: 5, y: 7},
-                      {id: "pmpfqugdq4", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 4, y: 7},
-                      {id: "pmpfquhvx5", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 6, y: 7},
-                      {id: "pmpfqunnp6", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 5, y: 0},
-                      {id: "pmpfquoqi7", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 3, y: 0},
-                      {id: "pmpfqvc388", pieceType: "SWITCH", color: "BLUE", rotation: 0, x: 5, y: 3},
-                      {id: "pmpfqvfrb9", pieceType: "SWITCH", color: "BLUE", rotation: 1, x: 4, y: 3},
-                      {id: "pmpfqvl06a", pieceType: "SWITCH", color: "RED", rotation: 0, x: 4, y: 4},
-                      {id: "pmpfqvre4b", pieceType: "SWITCH", color: "RED", rotation: 1, x: 5, y: 4},
-                      {id: "pmpfqwdqec", pieceType: "LASER", color: "RED", rotation: 2, x: 0, y: 7},
-                      {id: "pmpfqy5dve", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 0},
-                      {id: "pmpfqya0pf", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 3},
-                      {id: "pmpfqyd1rg", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 2, y: 4},
-                      {id: "pmpfqz0jlj", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 0, y: 3},
-                      {id: "pmpfqz7fpk", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 0, y: 4},
-                      {id: "pmpfqzj2ul", pieceType: "DEFLECTOR", color: "BLUE", rotation: 3, x: 7, y: 1},
-                      {id: "pmpfr0e5km", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 6, y: 2},
-                      {id: "pmpfr0t7zn", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 4},
-                      {id: "pmpfr0ww1o", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 7, y: 3},
-                      {id: "pmpfr18esp", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 9, y: 3},
-                      {id: "pmpfr1bjtq", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 9, y: 4},
-                      {id: "pmpfr2ek5s", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 3, y: 5},
-                      {id: "pmpfr2sl8u", pieceType: "DEFLECTOR", color: "RED", rotation: 1, x: 2, y: 6},
-                      {id: "pmpfr337lv", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 7},
-                      {id: "pmpfr69imw", pieceType: "LASER", color: "BLUE", rotation: 0, x: 9, y: 0}
-                  ]
+          const saved = localStorage.getItem(KEY_LOCAL_STATE);
+          if (!chosenColor && saved) {
+              try {
+                  latestState = JSON.parse(saved);
+                  humanColor = localStorage.getItem('ls_ai_human_color') || (latestState.board?.turn || latestState.turn || 'BLUE');
+                  aiColor = humanColor === 'RED' ? 'BLUE' : 'RED';
+                  add("Resuming AI Game from storage.", "success-msg");
+              } catch (e) {
+                  add("Failed to load saved AI game. Starting fresh.", "error-msg");
+                  localStorage.removeItem(KEY_LOCAL_STATE);
+                  chosenColor = 'BLUE';
               }
-          };
+          }
           
-          localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
+          if (chosenColor) {
+              humanColor = chosenColor === 'RED' ? 'RED' : 'BLUE';
+              aiColor = humanColor === 'RED' ? 'BLUE' : 'RED';
+              localStorage.setItem('ls_ai_human_color', humanColor);
+
+              latestState = {
+                  board: {
+                      turn: "BLUE",
+                      phase: "MOVE",
+                      moveNumber: 1,
+                      pieces: [
+                          {id: "pmpfnkxpm1", pieceType: "KING", color: "BLUE", rotation: 0, x: 4, y: 0},
+                          {id: "pmpfnl4j03", pieceType: "KING", color: "RED", rotation: 0, x: 5, y: 7},
+                          {id: "pmpfqugdq4", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 4, y: 7},
+                          {id: "pmpfquhvx5", pieceType: "DEFENDER", color: "RED", rotation: 0, x: 6, y: 7},
+                          {id: "pmpfqunnp6", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 5, y: 0},
+                          {id: "pmpfquoqi7", pieceType: "DEFENDER", color: "BLUE", rotation: 2, x: 3, y: 0},
+                          {id: "pmpfqvc388", pieceType: "SWITCH", color: "BLUE", rotation: 0, x: 5, y: 3},
+                          {id: "pmpfqvfrb9", pieceType: "SWITCH", color: "BLUE", rotation: 1, x: 4, y: 3},
+                          {id: "pmpfqvl06a", pieceType: "SWITCH", color: "RED", rotation: 0, x: 4, y: 4},
+                          {id: "pmpfqvre4b", pieceType: "SWITCH", color: "RED", rotation: 1, x: 5, y: 4},
+                          {id: "pmpfqwdqec", pieceType: "LASER", color: "RED", rotation: 2, x: 0, y: 7},
+                          {id: "pmpfqy5dve", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 0},
+                          {id: "pmpfqya0pf", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 2, y: 3},
+                          {id: "pmpfqyd1rg", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 2, y: 4},
+                          {id: "pmpfqz0jlj", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 0, y: 3},
+                          {id: "pmpfqz7fpk", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 0, y: 4},
+                          {id: "pmpfqzj2ul", pieceType: "DEFLECTOR", color: "BLUE", rotation: 3, x: 7, y: 1},
+                          {id: "pmpfr0e5km", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 6, y: 2},
+                          {id: "pmpfr0t7zn", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 4},
+                          {id: "pmpfr0ww1o", pieceType: "DEFLECTOR", color: "RED", rotation: 3, x: 7, y: 3},
+                          {id: "pmpfr18esp", pieceType: "DEFLECTOR", color: "BLUE", rotation: 1, x: 9, y: 3},
+                          {id: "pmpfr1bjtq", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 9, y: 4},
+                          {id: "pmpfr2ek5s", pieceType: "DEFLECTOR", color: "BLUE", rotation: 2, x: 3, y: 5},
+                          {id: "pmpfr2sl8u", pieceType: "DEFLECTOR", color: "RED", rotation: 1, x: 2, y: 6},
+                          {id: "pmpfr337lv", pieceType: "DEFLECTOR", color: "RED", rotation: 0, x: 7, y: 7},
+                          {id: "pmpfr69imw", pieceType: "LASER", color: "BLUE", rotation: 0, x: 9, y: 0}
+                      ]
+                  }
+              };
+          }
+          
           printTerminalMatrix(latestState);
           add(`AI Environment Set. You are controlling ${humanColor}.`, "success-msg");
           
-          if (latestState.board.turn === aiColor) checkAITurn();
+          const currentTurn = latestState.board?.turn || latestState.turn || 'RED';
+          if (currentTurn === aiColor) checkAITurn();
       }
       
       function isHumanTurn() {
@@ -477,16 +492,7 @@
           if (saved) {
               try {
                   latestState = JSON.parse(saved);
-                  if (latestState && latestState.isAIMode) {
-                      isAIMode = true;
-                      aiColor = latestState.aiColor;
-                      humanColor = latestState.humanColor;
-                      lockedMatchId = 'AI_GAME';
-                      add(`Resuming AI Game from storage. You are controlling ${humanColor}.`, "success-msg");
-                  } else {
-                      isAIMode = false;
-                      add("Resuming Local Game from storage.", "success-msg");
-                  }
+                  add("Resuming Local Game from storage.", "success-msg");
               } catch (e) { add("Failed to load saved game. Starting fresh.", "error-msg"); localStorage.removeItem(KEY_LOCAL_STATE); }
           }
           
@@ -526,12 +532,9 @@
                     ]
                 }
             };
-            add("Local Mode Initialized.", "success-msg");
           }
           printTerminalMatrix(latestState);
-          if (isAIMode && latestState && latestState.board && latestState.board.turn === aiColor) {
-              setTimeout(checkAITurn, 100);
-          }
+          add("Local Mode Initialized.", "success-msg");
       }
 
       function printTerminalMatrix(state, laserPath = [], replace = true) {
@@ -753,14 +756,8 @@
             if (latestState.status && latestState.status.endsWith('_WIN')) {
                 localStorage.removeItem(KEY_LOCAL_STATE);
             } else {
-                if (isAIMode) {
-                    latestState.isAIMode = true;
-                    latestState.aiColor = aiColor;
-                    latestState.humanColor = humanColor;
-                } else {
-                    latestState.isAIMode = false;
-                }
                 localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
+                if (isLMode) localStorage.setItem(KEY_LOCAL_STATE, JSON.stringify(latestState));
             }
 
             if (!isLMode) {
@@ -996,16 +993,7 @@
         applyFontPreference(fontPref);
 
         if (localStorage.getItem(KEY_LOCAL_STATE)) {
-            try {
-                const savedData = JSON.parse(localStorage.getItem(KEY_LOCAL_STATE));
-                if (savedData && savedData.isAIMode) {
-                    add(`Saved AI game data found (AI side: ${savedData.aiColor}). Use [L] to resume.`, "system-msg");
-                } else {
-                    add("Local game data found. Use [L] to resume.", "system-msg");
-                }
-            } catch (e) {
-                add("Local game data found. Use [L] to resume.", "system-msg");
-            }
+            add("Local game data found. Use [L] to resume.", "system-msg");
         }
 
         add('Ready to Play!', 'success-msg');
@@ -1111,10 +1099,14 @@
             });
         }
         else if (val === 'C') {
-            add('Target Assignment:\n[R] Play as Red | [B] Play as Blue', '', true, async (colorKey) => {
-                const color = (colorKey === 'R') ? 'RED' : 'BLUE';
-                startAIGame(color);
-            });
+            if (localStorage.getItem(KEY_LOCAL_STATE)) {
+                startAIGame(null);
+            } else {
+                add('Target Assignment:\n[R] Play as Red | [B] Play as Blue', '', true, async (colorKey) => {
+                    const color = (colorKey === 'R') ? 'RED' : 'BLUE';
+                    startAIGame(color);
+                });
+            }
         }
         else { add('Unknown Command.', 'error-msg'); modeShown = false; showMode(); }
       }
