@@ -33,6 +33,46 @@
         .system-msg { color: var(--muted); }
         .highlight { color: var(--bright); }
         a { color: var(--blue); text-decoration: none; }
+
+        /* Mobile Controls Styling */
+        #mobile-controls { 
+            display: none; 
+            position: fixed; 
+            bottom: 20px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            background: var(--bg1); 
+            border: 2px solid var(--line); 
+            padding: 10px; 
+            gap: 10px; 
+            z-index: 1000; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.8); 
+            border-radius: 4px;
+        }
+        body.is-mobile { 
+            padding-bottom: 100px; 
+        }
+        body.is-mobile #mobile-controls { 
+            display: flex; 
+        }
+        .mobile-btn { 
+            background: var(--bg0); 
+            border: 1px solid var(--line); 
+            color: var(--bright); 
+            padding: 12px 20px; 
+            font-family: inherit; 
+            font-size: 18px; 
+            cursor: pointer; 
+            outline: none; 
+            border-radius: 4px;
+        }
+        .mobile-btn:active { 
+            background: var(--line); 
+        }
+        .mobile-btn.btn-resign { 
+            color: var(--error); 
+            border-color: var(--error); 
+        }
     </style>
 </head>
 <body>
@@ -867,7 +907,50 @@
         }
       }
 
+      function setupMobileControls() {
+        if (document.getElementById('mobile-controls')) return;
+        const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        if (!isMobile) return;
+
+        document.body.classList.add('is-mobile');
+        
+        const container = document.createElement('div');
+        container.id = 'mobile-controls';
+        
+        const btnLeft = document.createElement('button');
+        btnLeft.className = 'mobile-btn';
+        btnLeft.textContent = '⟲ Rotate L';
+        btnLeft.onclick = () => {
+          if (currentPromptWrap || isAnimatingLocalTurn || isHostRequestPending || !isHumanTurn()) return;
+          rotatePiece(-1);
+          if (latestState) printTerminalMatrix(latestState);
+        };
+
+        const btnRight = document.createElement('button');
+        btnRight.className = 'mobile-btn';
+        btnRight.textContent = '⟳ Rotate R';
+        btnRight.onclick = () => {
+          if (currentPromptWrap || isAnimatingLocalTurn || isHostRequestPending || !isHumanTurn()) return;
+          rotatePiece(1);
+          if (latestState) printTerminalMatrix(latestState);
+        };
+
+        const btnResign = document.createElement('button');
+        btnResign.className = 'mobile-btn btn-resign';
+        btnResign.textContent = '🏳 Resign';
+        btnResign.onclick = () => {
+          if (currentPromptWrap || isAnimatingLocalTurn || isHostRequestPending || !isHumanTurn()) return;
+          processGameAction({ action: 'Resign' });
+        };
+
+        container.appendChild(btnLeft);
+        container.appendChild(btnRight);
+        container.appendChild(btnResign);
+        document.body.appendChild(container);
+      }
+
       async function boot() {
+        setupMobileControls();
         const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
         
         if (!bannerTyped) {
