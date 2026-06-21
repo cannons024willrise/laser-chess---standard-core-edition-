@@ -78,6 +78,7 @@
       // --------------------------
 
       let selectedOrigin = null;
+      let bannerTyped = false;
 
       const DIRS = [ { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 } ]; 
       const ROTATION_TABLE = { 
@@ -500,7 +501,7 @@
         instrHeader.innerHTML = `<div style="font-size: 15px; border: 1px solid var(--line); padding: 10px; margin-bottom: 12px; background: var(--bg0); color: var(--text); font-family: monospace; line-height: 1.4;">
 <b style="color: var(--bright);">🏆 OBJECTIVE:</b> Eliminate the enemy <b>KING</b> by guiding your laser into it while protecting your own.<br>
 <b style="color: var(--bright);">🕹️ ACTIONS:</b> Perform 1 per turn: <b>Move</b> (1 sq any direction) | <b>Rotate</b> (90° via R/L) | <b>Fire Laser</b> (Auto-fires at end, or skip move to manually fire via F).<br>
-<b style="color: var(--bright);">🎮 CONTROLS:</b> Arrow keys to move cursor, enter to select piece/target, L to rotate counter clock wise and R to rotate clockwise.<br>
+<b style="color: var(--bright);">🎮 CONTROLS:</b> Arrow keys to move cursor, enter to select piece/target, L to rotate counter clock wise, R to rotate clockwise, and Q to resign.<br>
 <b style="color: var(--bright);">🧭 VECTORS:</b> 0: +Y (Up) | 1: +X (Right) | 2: -Y (Down) | 3: -X (Left)<br>
 <b style="color: var(--bright);">♟️ PIECES:</b><br>
 - <b>KING</b> (◈): Moves 1 sq. Cannot rotate. Vulnerable from all sides (Game Over).<br>
@@ -587,12 +588,13 @@
         const activePlayer = isLMode ? currentTurn : (localStorage.getItem('ls_my_color') || 'RED');
         
         if (intent.action === 'Resign') {
+            const winner = currentTurn === 'RED' ? 'BLUE' : 'RED';
+            latestState.status = `${winner}_WIN`;
+            add(`${currentTurn} RESIGNED. ${winner} WINS.`, "success-msg");
+            localStorage.removeItem(KEY_LOCAL_STATE);
+            printTerminalMatrix(latestState);
+            
             if (isLMode || isAIMode) {
-                const winner = currentTurn === 'RED' ? 'BLUE' : 'RED';
-                latestState.status = `${winner}_WIN`;
-                add(`${currentTurn} RESIGNED. ${winner} WINS.`, "success-msg");
-                localStorage.removeItem(KEY_LOCAL_STATE);
-                printTerminalMatrix(latestState);
                 add("Returning to lobby in 5 seconds...", "system-msg");
                 setTimeout(() => {
                     lockedMatchId = null;
@@ -601,26 +603,8 @@
                     modeShown = false;
                     showMode();
                 }, 5000);
-                return;
-            } else {
-                if (!localStorage.getItem(KEY_RID) || !localStorage.getItem(KEY_USER) || !localStorage.getItem(KEY_PASS)) { 
-                    add("Engine Rejection: Missing local session credentials.", "error-msg"); 
-                    return; 
-                }
-                add(`Transmitting intent: Resign...`, 'system-msg');
-                try {
-                    const resp = await fetch(MOVE_CHECKER_URL, { 
-                        method: "POST", 
-                        headers: { "Content-Type": "application/json" }, 
-                        body: JSON.stringify({ matchId: lockedMatchId, username: localStorage.getItem(KEY_USER), password: localStorage.getItem(KEY_PASS), intent: intent }) 
-                    });
-                    const result = await resp.json();
-                    if (!resp.ok || !result.ok) throw new Error(result.error || "Unknown validation failure.");
-                } catch (err) { 
-                    add(`Engine Mutation Failure: ${err.message}`, 'error-msg'); 
-                }
-                return;
             }
+            return;
         }
 
         if (!isLMode && (!localStorage.getItem(KEY_RID) || !localStorage.getItem(KEY_USER) || !localStorage.getItem(KEY_PASS))) { add("Engine Rejection: Missing local session credentials.", "error-msg"); return; }
@@ -886,12 +870,15 @@
       async function boot() {
         const u = localStorage.getItem(KEY_USER), p = localStorage.getItem(KEY_PASS), rid = localStorage.getItem(KEY_RID);
         
-        add('====================================================', 'system-msg');
-        add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg');
-        add('====================================================', 'system-msg');
-        addHTML('Tutorial: <a href="https://en.wikipedia.org/wiki/Khet_(game)" target="_blank">Read Here</a> Or just search on Youtube LASER CHESS IF IT IS YOUR FIRST TIME. You will find a tutorial (the physical game already exists)', 'system-msg');
-        addHTML('Discord: <a href="https://discord.gg/HnBHssXq" target="_blank">Join Server</a>', 'system-msg');
-        addHTML('Support: <a href="mailto:later5143@gmail.com">later5143@gmail.com</a>', 'system-msg');
+        if (!bannerTyped) {
+            add('====================================================', 'system-msg');
+            add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg');
+            add('====================================================', 'system-msg');
+            addHTML('Tutorial: <a href="https://en.wikipedia.org/wiki/Khet_(game)" target="_blank">Read Here</a> Or just search on Youtube LASER CHESS IF IT IS YOUR FIRST TIME. You will find a tutorial (the physical game already exists)', 'system-msg');
+            addHTML('Discord: <a href="https://discord.gg/HnBHssXq" target="_blank">Join Server</a>', 'system-msg');
+            addHTML('Support: <a href="mailto:later5143@gmail.com">later5143@gmail.com</a>', 'system-msg');
+            bannerTyped = true;
+        }
 
         if (!u) { return add('Session Username:', '', true, handleAuth); }
         if (!p) { add('Username available (for now)', 'success-msg'); return add('Session Password:', '', true, handleAuth); }
@@ -968,7 +955,7 @@
         addHTML(`<div style="font-size: 15px; border: 1px solid var(--line); padding: 10px; margin-bottom: 12px; background: var(--bg0); color: var(--text); font-family: monospace; line-height: 1.4;">
 <b style="color: var(--bright);">🏆 OBJECTIVE:</b> Eliminate the enemy <b>KING</b> by guiding your laser into it while protecting your own.<br>
 <b style="color: var(--bright);">🕹️ ACTIONS:</b> Perform 1 per turn: <b>Move</b> (1 sq any direction) | <b>Rotate</b> (90° via R/L) | <b>Fire Laser</b> (Auto-fires at end, or skip move to manually fire via F).<br>
-<b style="color: var(--bright);">🎮 CONTROLS:</b> Arrow keys to move cursor, enter to select piece/target, L to rotate counter clock wise and R to rotate clockwise.<br>
+<b style="color: var(--bright);">🎮 CONTROLS:</b> Arrow keys to move cursor, enter to select piece/target, L to rotate counter clock wise, R to rotate clockwise, and Q to resign.<br>
 <b style="color: var(--bright);">🧭 VECTORS:</b> 0: +Y (Up) | 1: +X (Right) | 2: -Y (Down) | 3: -X (Left)<br>
 <b style="color: var(--bright);">♟️ PIECES:</b><br>
 - <b>KING</b> (◈): Moves 1 sq. Cannot rotate. Vulnerable from all sides (Game Over).<br>
