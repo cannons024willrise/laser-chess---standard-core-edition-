@@ -968,6 +968,14 @@
           if (latestState) printTerminalMatrix(latestState);
         };
 
+        const btnFire = document.createElement('button');
+        btnFire.className = 'mobile-btn';
+        btnFire.textContent = '🔥 Fire';
+        btnFire.onclick = () => {
+          if (currentPromptWrap || isAnimatingLocalTurn || isHostRequestPending || !isHumanTurn()) return;
+          skipTurnAndFire();
+        };
+
         const btnResign = document.createElement('button');
         btnResign.className = 'mobile-btn btn-resign';
         btnResign.textContent = '🏳 Resign';
@@ -987,6 +995,7 @@
 
         container.appendChild(btnLeft);
         container.appendChild(btnRight);
+        container.appendChild(btnFire);
         container.appendChild(btnResign);
         container.appendChild(btnCancel);
         document.body.appendChild(container);
