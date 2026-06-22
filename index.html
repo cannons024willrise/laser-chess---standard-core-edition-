@@ -690,7 +690,15 @@
                 const dbPiece = getPieceAt(piecesDryRun, intent.piece.x, intent.piece.y);
                 
                 if (!dbPiece) throw new Error("Selection configuration anomaly: No piece occupies chosen origin.");
-                if (!isLMode && dbPiece.color !== activePlayer) throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but it is ${activePlayer}'s turn.`);
+                
+                // --- MODIFIED: Strict ownership validation ---
+                if (isAIMode) {
+                    if (dbPiece.color !== humanColor) throw new Error(`Color ownership violation: You are ${humanColor}, but this piece is ${dbPiece.color}.`);
+                } else if (!isLMode && dbPiece.color !== activePlayer) {
+                    throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but it is ${activePlayer}'s turn.`);
+                }
+                // ----------------------------------------------
+                
                 if (dbPiece.pieceType !== intent.piece.type) throw new Error("State discrepancy: Local component entity mismatch.");
                 
                 if (intent.action === 'Move') {
@@ -805,7 +813,15 @@
         if (!latestState || isAnimatingLocalTurn || !isHumanTurn()) return;
         if (!selectedOrigin) {
             const pieces = getBoardPieces(latestState); const p = pieces.find(p => p.x === cursorX && p.y === cursorY);
-            if (p) { selectedOrigin = { x: cursorX, y: cursorY }; add(`Selected: ${cursorX},${cursorY}`, 'system-msg'); } else { add(`No piece at ${cursorX},${cursorY}`, 'error-msg'); }
+            if (p) {
+                // --- MODIFIED: Prevent selection of AI pieces ---
+                if (isAIMode && p.color !== humanColor) {
+                    add(`Error: Cannot select ${p.color} piece.`, 'error-msg');
+                    return;
+                }
+                // ------------------------------------------------
+                selectedOrigin = { x: cursorX, y: cursorY }; add(`Selected: ${cursorX},${cursorY}`, 'system-msg');
+            } else { add(`No piece at ${cursorX},${cursorY}`, 'error-msg'); }
             printTerminalMatrix(latestState);
         } else {
             const pieces = getBoardPieces(latestState); const movingPiece = pieces.find(p => p.x === selectedOrigin.x && p.y === selectedOrigin.y);
@@ -1256,7 +1272,7 @@
             add(`Cancellation rejected by worker: ${data.error || 'Unknown error'}`, "error-msg");
           }
         } catch (e) {
-          add(`Worker communication failure: ${e.message}`, "error-msg");
+          add(`Worker communication failure: ${e.message}`, 'error-msg');
         }
 
         isHostRequestPending = false;
