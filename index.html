@@ -619,7 +619,17 @@
       }
 
       window.addEventListener('keydown', (e) => {
-        if (currentPromptWrap || isAnimatingLocalTurn || isHostRequestPending || !isHumanTurn()) return;
+        if (currentPromptWrap || isAnimatingLocalTurn) return;
+
+        if (isHostRequestPending) {
+            if (e.key.toLowerCase() === 'x') {
+                e.preventDefault();
+                cancelMatchRequest();
+            }
+            return;
+        }
+
+        if (!isHumanTurn()) return;
         if (e.key.toLowerCase() === 'q') { processGameAction({ action: 'Resign' }); return; }
 
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key) || 
@@ -888,7 +898,7 @@
       }
 
       function toggleWaiting(active, contextMsg = "Awaiting Handshake") {
-        if (active) { if (waitAnimationInterval) return; const l = createLine('wait-msg'); let dots = 0; waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = contextMsg + ".".repeat(dots); }, 500); } 
+        if (active) { if (waitAnimationInterval) return; const l = createLine('wait-msg'); let dots = 0; waitAnimationInterval = setInterval(() => { dots = (dots + 1) % 4; l.textContent = contextMsg + ".".repeat(dots) + " [Press 'X' to cancel]"; }, 500); } 
         else { if (waitAnimationInterval) { clearInterval(waitAnimationInterval); waitAnimationInterval = null; } }
       }
 
@@ -1196,6 +1206,47 @@
             else { setStatus("WAITING_FOR_MATCH"); startRequestMonitoring(idToStore); }
           } else { add(`Request rejected: ${data.error || 'Unknown'}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); localStorage.removeItem('ls_my_color'); modeShown = false; startPolling(); }
         } catch (e) { add(`Worker Error: ${e.message}`, 'error-msg'); isHostRequestPending = false; setStatus("IDLE"); toggleWaiting(false); localStorage.removeItem('ls_my_color'); modeShown = false; startPolling(); }
+      }
+
+      async function cancelMatchRequest() {
+        const rid = localStorage.getItem(KEY_RID);
+        const username = localStorage.getItem(KEY_USER);
+        const password = localStorage.getItem(KEY_PASS);
+        if (!rid) return;
+
+        add("Sending cancellation request to worker...", "system-msg");
+        try {
+          const res = await fetch(WORKER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              mode: "CANCEL_MATCH_REQUEST",
+              username: username,
+              password: password,
+              requestId: rid
+            })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            add("Match request successfully cancelled.", "success-msg");
+          } else {
+            add(`Cancellation rejected by worker: ${data.error || 'Unknown error'}`, "error-msg");
+          }
+        } catch (e) {
+          add(`Worker communication failure: ${e.message}`, "error-msg");
+        }
+
+        isHostRequestPending = false;
+        setStatus("IDLE");
+        toggleWaiting(false);
+        localStorage.removeItem(KEY_RID);
+        localStorage.removeItem('ls_my_color');
+        if (activeRequestRef) {
+          activeRequestRef.off();
+          activeRequestRef = null;
+        }
+        modeShown = false;
+        startPolling();
       }
 
       window.addEventListener('DOMContentLoaded', boot);
