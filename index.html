@@ -693,7 +693,7 @@
                 
                 // --- MODIFIED: Strict ownership validation ---
                 if (isAIMode) {
-                    if (dbPiece.color !== humanColor) throw new Error(`Color ownership violation: You are ${humanColor}, but this piece is ${dbPiece.color}.`);
+                    if (dbPiece.color !== currentTurn) throw new Error(`Color ownership violation: It is ${currentTurn}'s turn, but this piece is ${dbPiece.color}.`);
                 } else if (!isLMode && dbPiece.color !== activePlayer) {
                     throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but it is ${activePlayer}'s turn.`);
                 }
