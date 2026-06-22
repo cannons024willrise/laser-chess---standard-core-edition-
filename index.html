@@ -73,6 +73,10 @@
             color: var(--error); 
             border-color: var(--error); 
         }
+        .mobile-btn.btn-cancel { 
+            color: var(--error); 
+            border-color: var(--error); 
+        }
     </style>
 </head>
 <body>
@@ -971,10 +975,20 @@
           if (currentPromptWrap || isAnimatingLocalTurn || isHostRequestPending || !isHumanTurn()) return;
           processGameAction({ action: 'Resign' });
         };
+        
+        const btnCancel = document.createElement('button');
+        btnCancel.className = 'mobile-btn btn-cancel';
+        btnCancel.textContent = '❌ Cancel';
+        btnCancel.onclick = () => {
+          if (isHostRequestPending) {
+              cancelMatchRequest();
+          }
+        };
 
         container.appendChild(btnLeft);
         container.appendChild(btnRight);
         container.appendChild(btnResign);
+        container.appendChild(btnCancel);
         document.body.appendChild(container);
       }
 
