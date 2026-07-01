@@ -562,17 +562,17 @@
 
         const instrHeader = document.createElement('div');
         instrHeader.innerHTML = `<div style="font-size: 15px; border: 1px solid var(--line); padding: 10px; margin-bottom: 12px; background: var(--bg0); color: var(--text); font-family: monospace; line-height: 1.4;">
-<b style="color: var(--bright);">🏆 OBJECTIVE:</b> Eliminate the enemy <b>KING</b> by guiding your laser into it while protecting your own.<br>
-<b style="color: var(--bright);">🕹️ ACTIONS:</b> Perform 1 per turn: <b>Move</b> (1 sq any direction) | <b>Rotate</b> (90° via R/L) | <b>Fire Laser</b> (Auto-fires at end, or skip move to manually fire via F).<br>
-<b style="color: var(--bright);">🎮 CONTROLS:</b> Arrow keys to move cursor, enter to select piece/target, L to rotate counter clock wise, R to rotate clockwise, and Q to resign.<br>
-<b style="color: var(--bright);">🧭 VECTORS:</b> 0: +Y (Up) | 1: +X (Right) | 2: -Y (Down) | 3: -X (Left)<br>
+<b style="color: var(--bright);">🏆 OBJECTIVE:</b> Destroy the enemy <b>KING</b> with your laser while protecting your own.<br>
+<b style="color: var(--bright);">🕹️ TURN:</b> On your turn, do <b>one</b> thing: <b>Move</b>, <b>Rotate</b>, or <b>Fire</b>.<br>
+<b style="color: var(--bright);">🎮 CONTROLS:</b> Arrow keys move the cursor. <b>Enter</b> selects a piece or target. <b>L</b> / <b>R</b> rotate the selected piece. <b>F</b> fires. <b>Q</b> resigns.<br>
+<b style="color: var(--bright);">🧩 HOW TO PLAY:</b> Select one of your pieces, then pick where to move it, or press L / R to rotate it. After that, the laser fires.<br>
 <b style="color: var(--bright);">♟️ PIECES:</b><br>
-- <b>KING</b> (◈): Moves 1 sq. Cannot rotate. Vulnerable from all sides (Game Over).<br>
-- <b>LASER</b> (⫝ ⟜ Ͳ Ð): Immobilized. Blocks all sides safely; fires beam.<br>
-- <b>SWITCH</b> (⟋ ⟍): Moves 1 sq. Swaps with Deflectors/Defenders. Reflects 90° (Immune).<br>
-- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Moves 1 sq. Front blocks lasers; other 3 sides fatal.<br>
-- <b>DEFLECTOR</b> (◤ ◥ ◢ ◣): Moves 1 sq. Diagonal reflects 90°; other sides fatal.<br>
-<b style="color: var(--bright);">⚠️ RULES:</b> No opponent home row entry | Blue Laser faces 0/3; Red faces 1/2 | No overlap unless SWITCH swapping.
+- <b>KING</b> (◈): Protect this piece. If the laser hits it, you lose.<br>
+- <b>LASER</b> (⫝ ⟜ Ͳ Ð): Cannot move. Fires the beam.<br>
+- <b>SWITCH</b> (⟋ ⟍): Moves 1 square. Can swap with some pieces and reflects lasers.<br>
+- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Blocks lasers from one side. Other sides are dangerous.<br>
+- <b>DEFLECTOR</b> (◤ ◥ ◢ ◣): Reflects lasers from the mirrored side. Other sides destroy it.<br>
+<b style="color: var(--bright);">⚠️ TIP:</b> Watch the laser path before you commit a move.
 </div>`;
         container.appendChild(instrHeader);
 
@@ -951,7 +951,7 @@
         else if (val === 'B') { localStorage.setItem(KEY_FONT, 'BASIC'); return boot(); } 
         else {
             add("Invalid option. Please input 'T' or 'B'.", "error-msg");
-            add("[T] Thematic Font: Looks good, but deflectors are hard to understand (DO NOT USE IF THIS IS YOUR FIRST TIME)\n\n[B] Basic Font: Looks ugly, but is clear to understand.", 'system-msg');
+            add("[T] Thematic Font: stylish but harder to read\n\n[B] Basic Font: clearer for first-time players.", 'system-msg');
             return add('Selection (T/B):', '', true, handleFontChoice);
         }
       }
@@ -1025,7 +1025,7 @@
             add('====================================================', 'system-msg');
             add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg');
             add('====================================================', 'system-msg');
-            addHTML('Tutorial: <a href="https://en.wikipedia.org/wiki/Khet_(game)" target="_blank">Read Here</a> Or just search on Youtube LASER CHESS IF IT IS YOUR FIRST TIME. You will find a tutorial (the physical game already exists)', 'system-msg');
+            addHTML('Tutorial: Use the quick guide below, or search YouTube for a Khet tutorial if this is your first time.', 'system-msg');
             addHTML('Discord: <a href="https://discord.gg/HnBHssXq" target="_blank">Join Server</a>', 'system-msg');
             addHTML('Support: <a href="mailto:later5143@gmail.com">later5143@gmail.com</a>', 'system-msg');
             bannerTyped = true;
@@ -1036,7 +1036,7 @@
 
         const fontPref = localStorage.getItem(KEY_FONT);
         if (!fontPref) {
-            add("[T] Thematic Font: Looks good, but deflectors are hard to understand (DO NOT USE IF THIS IS YOUR FIRST TIME)\n\n[B] Basic Font: Looks ugly, but is clear to understand.", 'system-msg');
+            add("[T] Thematic Font: stylish but harder to read\n\n[B] Basic Font: clearer for first-time players.", 'system-msg');
             return add('Selection (T/B):', '', true, handleFontChoice);
         }
         applyFontPreference(fontPref);
@@ -1104,17 +1104,17 @@
         modeShown = true;
         
         addHTML(`<div style="font-size: 15px; border: 1px solid var(--line); padding: 10px; margin-bottom: 12px; background: var(--bg0); color: var(--text); font-family: monospace; line-height: 1.4;">
-<b style="color: var(--bright);">🏆 OBJECTIVE:</b> Eliminate the enemy <b>KING</b> by guiding your laser into it while protecting your own.<br>
-<b style="color: var(--bright);">🕹️ ACTIONS:</b> Perform 1 per turn: <b>Move</b> (1 sq any direction) | <b>Rotate</b> (90° via R/L) | <b>Fire Laser</b> (Auto-fires at end, or skip move to manually fire via F).<br>
-<b style="color: var(--bright);">🎮 CONTROLS:</b> Arrow keys to move cursor, enter to select piece/target, L to rotate counter clock wise, R to rotate clockwise, and Q to resign.<br>
-<b style="color: var(--bright);">🧭 VECTORS:</b> 0: +Y (Up) | 1: +X (Right) | 2: -Y (Down) | 3: -X (Left)<br>
+<b style="color: var(--bright);">🏆 OBJECTIVE:</b> Destroy the enemy <b>KING</b> with your laser while protecting your own.<br>
+<b style="color: var(--bright);">🕹️ TURN:</b> On your turn, do <b>one</b> thing: <b>Move</b>, <b>Rotate</b>, or <b>Fire</b>.<br>
+<b style="color: var(--bright);">🎮 CONTROLS:</b> Arrow keys move the cursor. <b>Enter</b> selects a piece or target. <b>L</b> / <b>R</b> rotate the selected piece. <b>F</b> fires. <b>Q</b> resigns.<br>
+<b style="color: var(--bright);">🧩 HOW TO PLAY:</b> Select one of your pieces, then pick where to move it, or press L / R to rotate it. After that, the laser fires.<br>
 <b style="color: var(--bright);">♟️ PIECES:</b><br>
-- <b>KING</b> (◈): Moves 1 sq. Cannot rotate. Vulnerable from all sides (Game Over).<br>
-- <b>LASER</b> (⫝ ⟜ Ͳ Ð): Immobilized. Blocks all sides safely; fires beam.<br>
-- <b>SWITCH</b> (⟋ ⟍): Moves 1 sq. Swaps with Deflectors/Defenders. Reflects 90° (Immune).<br>
-- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Moves 1 sq. Front blocks lasers; other 3 sides fatal.<br>
-- <b>DEFLECTOR</b> (◤ ◥ ◢ ◣): Moves 1 sq. Diagonal reflects 90°; other sides fatal.<br>
-<b style="color: var(--bright);">⚠️ RULES:</b> No opponent home row entry | Blue Laser faces 0/3; Red faces 1/2 | No overlap unless SWITCH swapping.
+- <b>KING</b> (◈): Protect this piece. If the laser hits it, you lose.<br>
+- <b>LASER</b> (⫝ ⟜ Ͳ Ð): Cannot move. Fires the beam.<br>
+- <b>SWITCH</b> (⟋ ⟍): Moves 1 square. Can swap with some pieces and reflects lasers.<br>
+- <b>DEFENDER</b> (⬓ ◧ ⬒ ◨): Blocks lasers from one side. Other sides are dangerous.<br>
+- <b>DEFLECTOR</b> (◤ ◥ ◢ ◣): Reflects lasers from the mirrored side. Other sides destroy it.<br>
+<b style="color: var(--bright);">⚠️ TIP:</b> Watch the laser path before you commit a move.
 </div>`, 'system-msg');
 
         let menu = "--- MENU ---\n";
