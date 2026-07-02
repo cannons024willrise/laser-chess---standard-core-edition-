@@ -210,7 +210,14 @@
         const input = document.createElement('textarea'); input.className = 'user-input-line'; input.rows = 1; input.spellcheck = false; wrap.appendChild(input);
         logContainer.appendChild(wrap); currentPromptWrap = wrap;
         for (const c of text) { p.textContent += c; await sleep(8); }
-        input.focus();
+        const _scrollX = window.scrollX;
+        const _scrollY = window.scrollY;
+        try {
+          input.focus({ preventScroll: !allowAutoScroll });
+        } catch (e) {
+          input.focus();
+        }
+        if (!allowAutoScroll) window.scrollTo(_scrollX, _scrollY);
         return new Promise(resolve => {
           input.addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const v = input.value.trim(); input.disabled = true; const finalLine = createLine('highlight'); finalLine.textContent = p.textContent + " " + v; wrap.remove(); currentPromptWrap = null; handler(v); resolve(); }
