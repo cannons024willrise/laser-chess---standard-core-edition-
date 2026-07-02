@@ -113,13 +113,11 @@
       let activeGameRef = null;
       let activeRequestRef = null;
       
-      // --- AI STATE VARIABLES ---
       let isAIMode = false;
       let aiColor = null;
       let humanColor = null;
       let qTables = { BLUE: null, RED: null };
       let isAIThinking = false;
-      // --------------------------
 
       let selectedOrigin = null;
       let bannerTyped = false;
@@ -691,13 +689,11 @@
                 
                 if (!dbPiece) throw new Error("Selection configuration anomaly: No piece occupies chosen origin.");
                 
-                // --- MODIFIED: Strict ownership validation ---
                 if (isAIMode) {
                     if (dbPiece.color !== currentTurn) throw new Error(`Color ownership violation: It is ${currentTurn}'s turn, but this piece is ${dbPiece.color}.`);
                 } else if (!isLMode && dbPiece.color !== activePlayer) {
                     throw new Error(`Color ownership violation: Piece belongs to ${dbPiece.color}, but it is ${activePlayer}'s turn.`);
                 }
-                // ----------------------------------------------
                 
                 if (dbPiece.pieceType !== intent.piece.type) throw new Error("State discrepancy: Local component entity mismatch.");
                 
@@ -814,12 +810,10 @@
         if (!selectedOrigin) {
             const pieces = getBoardPieces(latestState); const p = pieces.find(p => p.x === cursorX && p.y === cursorY);
             if (p) {
-                // --- MODIFIED: Prevent selection of AI pieces ---
                 if (isAIMode && p.color !== humanColor) {
                     add(`Error: Cannot select ${p.color} piece.`, 'error-msg');
                     return;
                 }
-                // ------------------------------------------------
                 selectedOrigin = { x: cursorX, y: cursorY }; add(`Selected: ${cursorX},${cursorY}`, 'system-msg');
             } else { add(`No piece at ${cursorX},${cursorY}`, 'error-msg'); }
             printTerminalMatrix(latestState);
@@ -1025,7 +1019,7 @@
             add('====================================================', 'system-msg');
             add('LASER CHESS - ThinkFun Edition (Version: Core (Efficiency-)', 'system-msg');
             add('====================================================', 'system-msg');
-            addHTML('Tutorial: Use the quick guide below, or search YouTube for a Khet tutorial if this is your first time.', 'system-msg');
+            addHTML('Tutorial: Use the quick guide below, or <a href="https://www.youtube.com/watch?v=UqLa-LOficM&t=2s" target="_blank">watch this video</a> if this is your first time.', 'system-msg');
             addHTML('Discord: <a href="https://discord.gg/HnBHssXq" target="_blank">Join Server</a>', 'system-msg');
             addHTML('Support: <a href="mailto:later5143@gmail.com">later5143@gmail.com</a>', 'system-msg');
             bannerTyped = true;
@@ -1159,7 +1153,7 @@ SWITCH SWAP
 ┌──────────────┐  ┌──────────────┐
 │              │  │              │
 │              │  │              │
-│       ◥      │→→│       ⟋     │
+│       ◥      │  │       ⟋     │
 │     ⟋        │  │     ◥       │
 │              │  │              │
 └──────────────┘  └──────────────┘
@@ -1320,7 +1314,7 @@ KEEP CAPS LOCK ON FOR SELECTING GAME MODE.
           if (data.ok) {
             add("Match request successfully cancelled.", "success-msg");
           } else {
-            add(`Cancellation rejected by worker: ${data.error || 'Unknown error'}`, "error-msg");
+            add(`Cancellation rejected by worker: ${data.error || 'Unknown error'}`, 'error-msg');
           }
         } catch (e) {
           add(`Worker communication failure: ${e.message}`, 'error-msg');
