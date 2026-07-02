@@ -123,7 +123,7 @@
 
       let selectedOrigin = null;
       let bannerTyped = false;
-      let allowAutoScroll = false;
+      let allowAutoScroll = false; // enabled only after a mode has been selected
 
       const DIRS = [ { dx: 0, dy: 1 }, { dx: 1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: 0 } ]; 
       const ROTATION_TABLE = { 
@@ -210,14 +210,7 @@
         const input = document.createElement('textarea'); input.className = 'user-input-line'; input.rows = 1; input.spellcheck = false; wrap.appendChild(input);
         logContainer.appendChild(wrap); currentPromptWrap = wrap;
         for (const c of text) { p.textContent += c; await sleep(8); }
-        const _scrollX = window.scrollX;
-        const _scrollY = window.scrollY;
-        try {
-          input.focus({ preventScroll: !allowAutoScroll });
-        } catch (e) {
-          input.focus();
-        }
-        if (!allowAutoScroll) window.scrollTo(_scrollX, _scrollY);
+        if (allowAutoScroll) input.focus();
         return new Promise(resolve => {
           input.addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const v = input.value.trim(); input.disabled = true; const finalLine = createLine('highlight'); finalLine.textContent = p.textContent + " " + v; wrap.remove(); currentPromptWrap = null; handler(v); resolve(); }
@@ -1109,8 +1102,8 @@
         if (lockedMatchId || isHostRequestPending) return; 
         while (processing) await sleep(10); 
         if (modeShown) return; 
-        modeShown = true;
         allowAutoScroll = false;
+        modeShown = true;
         
         addHTML(`<div style="font-size: 15px; border: 1px solid var(--line); padding: 10px; margin-bottom: 12px; background: var(--bg0); color: var(--text); font-family: monospace; line-height: 1.4;">
 <b style="color: var(--bright);">🏆 OBJECTIVE:</b> Destroy the enemy <b>KING</b> with your laser while protecting your own.<br>
@@ -1188,21 +1181,21 @@ KEEP CAPS LOCK ON FOR SELECTING GAME MODE.
       }
 
       async function handleMode(val) {
-        if (val === 'L') { 
+        if (val === 'L') {
             allowAutoScroll = true;
-            startLocalGame(); 
+            startLocalGame();
         }
         else if (val === 'A') { 
             if (!currentHead) { add('JOIN FAILED.', 'error-msg'); modeShown = false; return showMode(); } 
             allowAutoScroll = true;
             registerHost(currentHead.data.color === 0 ? 1 : 0, true); 
-        } else if (val === 'R') { 
+        } else if (val === 'R') {
             allowAutoScroll = true;
-            registerHost(0, false); 
+            registerHost(0, false);
         } 
-        else if (val === 'B') { 
+        else if (val === 'B') {
             allowAutoScroll = true;
-            registerHost(1, false); 
+            registerHost(1, false);
         }
         else if (val === 'P') {
             allowAutoScroll = true;
